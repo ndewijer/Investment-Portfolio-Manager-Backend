@@ -1,0 +1,12 @@
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Environment variables
+.env
+
+# SQLite database files
+*.db
