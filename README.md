@@ -34,12 +34,12 @@ Investment-Portfolio-Manager-Backend/
 
 ### Prerequisites
 
-- Go 1.21 or higher
+- Go 1.25 or higher
 - SQLite database from Python backend at `data/portfolio_manager.db`
 
 ### Installation
 
-1. Clone the repository (already done!)
+1. Clone the repository
 
 2. Copy the environment file:
 ```bash
