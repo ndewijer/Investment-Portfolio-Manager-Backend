@@ -6,7 +6,7 @@ import (
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/service"
 )
 
-// PortfolioHandler handles system-related HTTP requests
+// PortfolioHandler handles portfolio-related HTTP requests
 type PortfolioHandler struct {
 	portfolioService *service.PortfolioService
 }
@@ -19,7 +19,7 @@ func NewPortfolioHandler(portfolioService *service.PortfolioService) *PortfolioH
 }
 
 // PortfoliosResponse represents the Portfolios get response
-type PortfolioResponse struct {
+type PortfoliosResponse struct {
 	ID                  string `json:"id"`
 	Name                string `json:"name"`
 	Description         string `json:"description"`
@@ -39,9 +39,9 @@ func (h *PortfolioHandler) Portfolios(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := make([]PortfolioResponse, len(portfolios))
+	response := make([]PortfoliosResponse, len(portfolios))
 	for i, p := range portfolios {
-		response[i] = PortfolioResponse{
+		response[i] = PortfoliosResponse{
 			ID:                  p.ID,
 			Name:                p.Name,
 			Description:         p.Description,
