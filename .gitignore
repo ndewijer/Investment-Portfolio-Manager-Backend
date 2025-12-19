@@ -10,3 +10,6 @@
 
 # SQLite database files
 *.db
+
+# Created Binaries
+/bin/*
