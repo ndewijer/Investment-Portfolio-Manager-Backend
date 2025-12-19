@@ -33,9 +33,10 @@ func main() {
 
 	// Create services
 	systemService := service.NewSystemService(db)
+	portfolioService := service.NewPortfolioService(db)
 
 	// Create router
-	router := api.NewRouter(systemService, cfg)
+	router := api.NewRouter(systemService, portfolioService, cfg)
 
 	// Create HTTP server
 	server := &http.Server{

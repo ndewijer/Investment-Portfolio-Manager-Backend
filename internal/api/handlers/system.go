@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"encoding/json"
 	"net/http"
 
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/service"
@@ -24,15 +23,6 @@ type HealthResponse struct {
 	Status   string `json:"status"`
 	Database string `json:"database"`
 	Error    string `json:"error,omitempty"`
-}
-
-// respondJSON sends a JSON response with the given status code
-func respondJSON(w http.ResponseWriter, status int, data interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	if data != nil {
-		json.NewEncoder(w).Encode(data)
-	}
 }
 
 // Health checks the health of the system and database connectivity

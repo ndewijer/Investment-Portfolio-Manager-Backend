@@ -13,7 +13,7 @@ import (
 )
 
 // NewRouter creates and configures the HTTP router
-func NewRouter(systemService *service.SystemService, cfg *config.Config) http.Handler {
+func NewRouter(systemService *service.SystemService, portfolioService *service.PortfolioService, cfg *config.Config) http.Handler {
 	r := chi.NewRouter()
 
 	// Global middleware
@@ -32,6 +32,11 @@ func NewRouter(systemService *service.SystemService, cfg *config.Config) http.Ha
 		r.Route("/system", func(r chi.Router) {
 			systemHandler := handlers.NewSystemHandler(systemService)
 			r.Get("/health", systemHandler.Health)
+		})
+
+		r.Route("/portfolios", func(r chi.Router) {
+			portfolioHandler := handlers.NewPortfolioHandler(portfolioService)
+			r.Get("/", portfolioHandler.Portfolios)
 		})
 	})
 
