@@ -1,12 +1,16 @@
 .PHONY: run build test clean deps help
 
+# Module and version settings
+MODULE=github.com/ndewijer/Investment-Portfolio-Manager-Backend
+VERSION_PKG=$(MODULE)/internal/version
+
 # Run the application
 run:
-	go run cmd/server/main.go
+	go run -ldflags "-X $(VERSION_PKG).Version=$$(cat VERSION)" cmd/server/main.go
 
 # Build the application
 build:
-	go build -o bin/server cmd/server/main.go
+	go build -ldflags "-X $(VERSION_PKG).Version=$$(cat VERSION)" -o bin/server cmd/server/main.go
 
 # Run tests
 test:

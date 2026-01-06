@@ -45,3 +45,17 @@ func (h *SystemHandler) Health(w http.ResponseWriter, r *http.Request) {
 	}
 	respondJSON(w, http.StatusOK, response)
 }
+
+type VersionResponse struct {
+	VersionInfo string `json:"version_info"`
+	Error       string `json:"error,omitempty"`
+}
+
+func (h *SystemHandler) Version(w http.ResponseWriter, r *http.Request) {
+	version := h.systemService.CheckVersion()
+
+	response := VersionResponse{
+		VersionInfo: version,
+	}
+	respondJSON(w, http.StatusOK, response)
+}

@@ -10,12 +10,14 @@ func NewCORS(allowedOrigins []string) *cors.Cors {
 		AllowedOrigins: allowedOrigins,
 		AllowedMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders: []string{
-			"Accept",
-			"Authorization",
 			"Content-Type",
-			"X-API-Key",
+			"Authorization",
+			"Access-Control-Allow-Methods",
+			"Access-Control-Allow-Headers",
+			"Access-Control-Allow-Origin",
+			"Access-Control-Allow-Credentials",
 		},
-		ExposedHeaders:   []string{"Link"},
+		ExposedHeaders:   []string{"Content-Type"},
 		AllowCredentials: true,
 		MaxAge:           300,
 	})
