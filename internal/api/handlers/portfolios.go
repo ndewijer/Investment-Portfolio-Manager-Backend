@@ -52,3 +52,47 @@ func (h *PortfolioHandler) Portfolios(w http.ResponseWriter, r *http.Request) {
 
 	respondJSON(w, http.StatusOK, response)
 }
+
+type PortfolioSummaryResponse struct {
+	ID                      string  `json:"id"`
+	Name                    string  `json:"name"`
+	TotalValue              float64 `json:"totalValue"`
+	TotalCost               float64 `json:"totalCost"`
+	TotalDividends          float64 `json:"totalDividends"`
+	TotalUnrealizedGainLoss float64 `json:"totalUnrealizedGainLoss"`
+	TotalRealizedGainLoss   float64 `json:"totalRealizedGainLoss"`
+	TotalSaleProceeds       float64 `json:"totalSaleProceeds"`
+	TotalOriginalCost       float64 `json:"totalOriginalCost"`
+	TotalGainLoss           float64 `json:"totalGainLoss"`
+	IsArchived              bool    `json:"is_archived"`
+}
+
+func (h *PortfolioHandler) PortfolioSummary(w http.ResponseWriter, r *http.Request) {
+	portfolioSummary, err := h.portfolioService.GetPortfolioSummary()
+	if err != nil {
+		errorResponse := map[string]string{
+			"error": err.Error(),
+		}
+		respondJSON(w, http.StatusInternalServerError, errorResponse)
+		return
+	}
+
+	response := make([]PortfolioSummaryResponse, len(portfolioSummary))
+	for i, p := range portfolioSummary {
+		response[i] = PortfolioSummaryResponse{
+			ID:                      p.ID,
+			Name:                    p.Name,
+			TotalValue:              p.TotalValue,
+			TotalCost:               p.TotalCost,
+			TotalDividends:          p.TotalDividends,
+			TotalUnrealizedGainLoss: p.TotalUnrealizedGainLoss,
+			TotalRealizedGainLoss:   p.TotalRealizedGainLoss,
+			TotalSaleProceeds:       p.TotalSaleProceeds,
+			TotalOriginalCost:       p.TotalOriginalCost,
+			TotalGainLoss:           p.TotalGainLoss,
+			IsArchived:              p.IsArchived,
+		}
+	}
+
+	respondJSON(w, http.StatusOK, response)
+}
