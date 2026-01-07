@@ -48,7 +48,6 @@ func (h *SystemHandler) Health(w http.ResponseWriter, r *http.Request) {
 
 type VersionResponse struct {
 	VersionInfo string `json:"version_info"`
-	Error       string `json:"error,omitempty"`
 }
 
 func (h *SystemHandler) Version(w http.ResponseWriter, r *http.Request) {

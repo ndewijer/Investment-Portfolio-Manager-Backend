@@ -1,67 +1,153 @@
 # Investment Portfolio Manager - Go Backend
 
-This is a Go rewrite of the Python/Flask backend, designed to maintain API compatibility with the existing React frontend.
+A personal learning project rebuilding the Investment Portfolio Manager backend in Go. This project is part of my journey to learn Go by reimplementing a production Python/Flask backend that manages investment fund portfolios, transactions, and dividend tracking.
 
-## Project Structure
+**Important:** This backend is being built **manually by me, not AI-generated**. Every line of code is written to understand Go fundamentals, patterns, and best practices. The implementation follows a phased approach starting with raw `database/sql` to learn the foundations before migrating to modern tools like `sqlc` and Atlas.
+
+## Project Status
+
+🚧 **In Active Development** - Currently implementing core functionality
+
+This is a ground-up rewrite of the [Investment Portfolio Manager backend](https://github.com/ndewijer/Investment-Portfolio-Manager) from Python/Flask to Go. The goal is to achieve feature parity while learning Go idioms, patterns, and ecosystem.
+
+### Tech Stack
+
+- **Language:** Go 1.23+
+- **Web Framework:** Chi router (stdlib-compatible)
+- **Database Driver:** modernc.org/sqlite (pure Go, no CGO)
+- **Database Access:**
+  - Phase 1-2: `database/sql` (learning fundamentals)
+  - Phase 3+: `sqlc` + Atlas (type-safe code generation)
+- **Testing:** Go testing + testify/assert
+- **Logging:** Structured logging with levels and categories
+
+## API Implementation Status
+
+This backend aims to replicate all 73 endpoints from the Python backend. Below is the current implementation status:
 
 ```
-Investment-Portfolio-Manager-Backend/
-├── cmd/
-│   └── server/
-│       └── main.go              # Application entry point
-├── internal/
-│   ├── api/
-│   │   ├── handlers/            # HTTP handlers
-│   │   │   └── system.go       # System/health handlers
-│   │   ├── middleware/          # HTTP middleware
-│   │   │   ├── cors.go         # CORS configuration
-│   │   │   └── logger.go       # Request logging
-│   │   ├── response.go          # Response helpers
-│   │   └── router.go            # Chi router setup
-│   ├── config/
-│   │   └── config.go            # Configuration management
-│   ├── database/
-│   │   └── database.go          # Database connection
-│   └── service/
-│       └── system_service.go    # System service
-├── data/                        # Database location
-├── .env.example                 # Environment variables template
-├── Makefile                     # Build commands
-└── go.mod                       # Go module definition
+/api
+├── /system (2/2 endpoints) ✅
+│   ├── GET    /health                          ✅ Health check
+│   └── GET    /version                         ✅ Version information
+│
+├── /portfolios (1/13 endpoints) 🚧
+│   ├── GET    /                                ✅ List all portfolios
+│   ├── POST   /                                ⬜ Create portfolio
+│   ├── GET    /{id}                            ⬜ Get portfolio by ID
+│   ├── PUT    /{id}                            ⬜ Update portfolio
+│   ├── DELETE /{id}                            ⬜ Delete portfolio
+│   ├── POST   /{id}/archive                    ⬜ Archive portfolio
+│   ├── POST   /{id}/unarchive                  ⬜ Unarchive portfolio
+│   ├── GET    /summary                         ⬜ Portfolio summary
+│   ├── GET    /history                         ⬜ Portfolio history
+│   ├── GET    /{id}/fund-history               ⬜ Portfolio fund history
+│   ├── GET    /funds                           ⬜ Portfolio funds
+│   ├── POST   /funds                           ⬜ Add fund to portfolio
+│   └── DELETE /funds/{id}                      ⬜ Remove fund from portfolio
+│
+├── /funds (0/13 endpoints) ⬜
+│   ├── GET    /                                ⬜ List all funds
+│   ├── POST   /                                ⬜ Create fund
+│   ├── GET    /{id}                            ⬜ Get fund by ID
+│   ├── PUT    /{id}                            ⬜ Update fund
+│   ├── DELETE /{id}                            ⬜ Delete fund
+│   ├── GET    /isin/{isin}                     ⬜ Get fund by ISIN
+│   ├── GET    /{id}/prices                     ⬜ Get fund prices
+│   ├── POST   /{id}/prices                     ⬜ Add fund price
+│   ├── PUT    /{id}/prices/{price_id}          ⬜ Update fund price
+│   ├── DELETE /{id}/prices/{price_id}          ⬜ Delete fund price
+│   ├── POST   /{id}/update-price               ⬜ Update current price
+│   ├── POST   /update-all-prices               ⬜ Update all fund prices
+│   └── POST   /import-prices                   ⬜ Import prices from CSV
+│
+├── /transactions (0/5 endpoints) ⬜
+│   ├── GET    /                                ⬜ List all transactions
+│   ├── POST   /                                ⬜ Create transaction
+│   ├── GET    /{id}                            ⬜ Get transaction by ID
+│   ├── PUT    /{id}                            ⬜ Update transaction
+│   └── DELETE /{id}                            ⬜ Delete transaction
+│
+├── /dividends (0/6 endpoints) ⬜
+│   ├── GET    /                                ⬜ List all dividends
+│   ├── POST   /                                ⬜ Create dividend
+│   ├── GET    /{id}                            ⬜ Get dividend by ID
+│   ├── PUT    /{id}                            ⬜ Update dividend
+│   ├── DELETE /{id}                            ⬜ Delete dividend
+│   └── POST   /{id}/process-reinvestment       ⬜ Process dividend reinvestment
+│
+├── /ibkr (0/19 endpoints) ⬜
+│   ├── GET    /tokens                          ⬜ List IBKR tokens
+│   ├── POST   /tokens                          ⬜ Create IBKR token
+│   ├── GET    /tokens/{id}                     ⬜ Get IBKR token
+│   ├── PUT    /tokens/{id}                     ⬜ Update IBKR token
+│   ├── DELETE /tokens/{id}                     ⬜ Delete IBKR token
+│   ├── GET    /queries                         ⬜ List flex queries
+│   ├── POST   /queries                         ⬜ Create flex query
+│   ├── GET    /queries/{id}                    ⬜ Get flex query
+│   ├── PUT    /queries/{id}                    ⬜ Update flex query
+│   ├── DELETE /queries/{id}                    ⬜ Delete flex query
+│   ├── POST   /queries/{id}/execute            ⬜ Execute flex query
+│   ├── GET    /imports                         ⬜ List imports
+│   ├── POST   /imports                         ⬜ Create import
+│   ├── GET    /imports/{id}                    ⬜ Get import
+│   ├── DELETE /imports/{id}                    ⬜ Delete import
+│   ├── POST   /imports/{id}/process            ⬜ Process import
+│   ├── GET    /imports/{id}/preview            ⬜ Preview import
+│   ├── POST   /test-connection                 ⬜ Test IBKR connection
+│   └── GET    /mapping-suggestions             ⬜ Get mapping suggestions
+│
+└── /developer (0/15 endpoints) ⬜
+    ├── GET    /logs                            ⬜ List logs
+    ├── DELETE /logs                            ⬜ Clear logs
+    ├── GET    /logs/export                     ⬜ Export logs
+    ├── GET    /database/backup                 ⬜ Backup database
+    ├── POST   /database/restore                ⬜ Restore database
+    ├── POST   /database/reset                  ⬜ Reset database
+    ├── GET    /database/export                 ⬜ Export database
+    ├── POST   /database/import                 ⬜ Import database
+    ├── POST   /seed-sample-data                ⬜ Seed sample data
+    ├── DELETE /clear-all-data                  ⬜ Clear all data
+    ├── GET    /stats                           ⬜ Get statistics
+    ├── POST   /calculate-portfolio-values      ⬜ Calculate portfolio values
+    ├── POST   /recalculate-all-metrics         ⬜ Recalculate all metrics
+    ├── POST   /fix-data-inconsistencies        ⬜ Fix data inconsistencies
+    └── GET    /system-info                     ⬜ Get system information
+
+Legend: ✅ Implemented | 🚧 In Progress | ⬜ Planned
+Overall Progress: 3/73 endpoints (4%)
 ```
 
-## Getting Started
+## Quick Start
 
 ### Prerequisites
 
-- Go 1.25 or higher
-- SQLite database from Python backend at `data/portfolio_manager.db`
+- Go 1.23 or higher
+- SQLite database from the Python backend (or create new)
 
-### Installation
+### Setup
 
-1. Clone the repository
-
-2. Copy the environment file:
 ```bash
+# Clone the repository
+git clone https://github.com/ndewijer/Investment-Portfolio-Manager-Backend.git
+cd Investment-Portfolio-Manager-Backend
+
+# Create environment file
 cp .env.example .env
-```
+# Edit .env with your configuration
 
-3. Download dependencies:
-```bash
-make deps
-```
+# Install dependencies
+go mod download
 
-### Running the Application
-
-```bash
+# Run the server
 make run
+# or
+go run cmd/server/main.go
 ```
 
-The server will start on `http://localhost:5001`
+The server will start on `http://localhost:5001` by default.
 
 ### Testing the Health Check
-
-Open your browser or use curl:
 
 ```bash
 curl http://localhost:5001/api/system/health
@@ -75,45 +161,204 @@ Expected response:
 }
 ```
 
-## Available Commands
+### Development Commands
 
-- `make run` - Run the application
-- `make build` - Build the application binary
-- `make test` - Run tests
-- `make coverage` - Run tests with coverage report
-- `make clean` - Clean build artifacts
-- `make deps` - Download and tidy dependencies
-- `make fmt` - Format code
-- `make help` - Display all available commands
+```bash
+make run          # Run development server
+make test         # Run all tests
+make coverage     # Generate coverage report
+make build        # Build binary
+make lint         # Run linter
+make fmt          # Format code
+make deps         # Download dependencies
+```
 
-## Development
+## Project Structure
 
-This project follows the implementation plan in `docs/GO_IMPLEMENTATION_PLAN.md`.
+```
+Investment-Portfolio-Manager-Backend/
+├── cmd/
+│   └── server/
+│       └── main.go                   # Application entry point
+├── internal/
+│   ├── api/
+│   │   ├── handlers/                 # HTTP request handlers
+│   │   ├── middleware/               # HTTP middleware (CORS, logging)
+│   │   ├── response.go               # Response helpers
+│   │   └── router.go                 # Route definitions
+│   ├── config/
+│   │   └── config.go                 # Configuration management
+│   ├── database/
+│   │   └── database.go               # Database connection
+│   ├── service/                      # Business logic layer
+│   │   ├── system_service.go
+│   │   └── portfolio_service.go
+│   ├── testutil/                     # Test utilities and helpers
+│   └── version/
+│       └── version.go                # Version information
+├── data/
+│   └── portfolio_manager.db          # SQLite database
+├── docs/                             # Documentation
+│   ├── ARCHITECTURE_DECISIONS.md     # Why specific choices were made
+│   ├── GO_IMPLEMENTATION_PLAN.md     # Detailed implementation roadmap
+│   ├── GO_POINTERS_EXPLAINED.md      # Go pointers guide
+│   ├── GO_TESTING_GUIDE.md           # Testing patterns
+│   └── SETUP_EXPLAINED.md            # Detailed setup walkthrough
+├── .env.example                      # Environment template
+├── Makefile                          # Build automation
+├── go.mod                            # Go module definition
+└── README.md                         # This file
+```
 
-**Current Status:** Phase 1 - Health Check Endpoint ✅
+## Documentation
 
-### Next Steps
+### Learning Resources
 
-1. Add more system endpoints (version info)
-2. Implement Portfolio namespace
-3. Add comprehensive testing
-4. Migrate to sqlc + Atlas (Phase 3)
+- **[Architecture Decisions](docs/ARCHITECTURE_DECISIONS.md)** - Deep dive into why specific technologies and patterns were chosen
+- **[Implementation Plan](docs/GO_IMPLEMENTATION_PLAN.md)** - Phased roadmap for building the backend
+- **[Setup Explained](docs/SETUP_EXPLAINED.md)** - Detailed explanation of how everything works
+- **[Go Pointers Guide](docs/GO_POINTERS_EXPLAINED.md)** - Understanding pointers in Go
+- **[Testing Guide](docs/GO_TESTING_GUIDE.md)** - Testing patterns and practices
 
-## Tech Stack
+### Architecture Overview
 
-- **Web Framework:** Chi router (stdlib-compatible)
-- **Database:** modernc.org/sqlite (pure Go)
-- **Configuration:** godotenv (.env file support)
-- **Testing:** Go testing (to be added)
+The application follows a clean layered architecture:
 
-## API Compatibility
+```
+HTTP Request → Router → Handler → Service → Database
+                ↓
+          Middleware (logging, CORS, recovery)
+```
 
-This Go backend maintains the same API contract as the Python backend:
-- Same endpoints
-- Same request/response formats
-- Same error handling
+**Layers:**
+- **API Layer** (`internal/api/`): HTTP concerns (routing, middleware, request/response)
+- **Service Layer** (`internal/service/`): Business logic, validation, orchestration
+- **Database Layer** (`internal/database/`): Data access patterns
 
-## Learning Resources
+This separation ensures:
+- Testable components (can test services without HTTP)
+- Reusable logic (services can be called from CLI, workers, etc.)
+- Clear dependencies (API → Service → Database, never backwards)
 
-- [Go Implementation Plan](docs/GO_IMPLEMENTATION_PLAN.md) - Complete implementation guide
-- [Python Backend API Docs](https://github.com/ndewijer/Investment-Portfolio-Manager/docs/API_DOCUMENTATION.md) - API reference
+## Development Approach
+
+### Phase 1-2: Learning with database/sql ✅ Current Phase
+
+Starting with raw `database/sql` to understand:
+- How query execution works
+- Pointer semantics and scanning
+- Transaction management
+- Error handling patterns
+- NULL value handling
+
+**Benefits:**
+- Deep understanding of database operations
+- Appreciation for what code generation solves
+- Foundation for all Go database work
+
+### Phase 3: Migration to sqlc + Atlas (Planned)
+
+After gaining solid understanding, migrating to:
+- **sqlc**: Type-safe code generation from SQL
+- **Atlas**: Database schema management and migrations
+
+**Benefits:**
+- Compile-time SQL validation
+- Type-safe queries
+- Reduced boilerplate
+- Better maintainability
+
+See [Implementation Plan](docs/GO_IMPLEMENTATION_PLAN.md) for detailed migration strategy.
+
+## Key Principles
+
+### 1. Explicit Over Magic
+- Prefer readable code over clever abstractions
+- Avoid over-engineering
+- Keep it simple and clear
+
+### 2. Standard Library First
+- Use `database/sql` before ORMs
+- Use `net/http` patterns with Chi router
+- Leverage Go's excellent standard library
+
+### 3. Learn By Doing
+- Write code manually to understand patterns
+- Feel the pain points before adding tools
+- Build appreciation for productivity tools
+
+### 4. Production-Ready Patterns
+- Structured logging with categories
+- Proper error handling and wrapping
+- Comprehensive testing (95%+ coverage goal)
+- Service layer pattern for testability
+
+## Testing
+
+Tests follow Go conventions with comprehensive coverage:
+
+```bash
+# Run all tests
+make test
+
+# Run with coverage
+make coverage
+
+# Run specific package
+go test ./internal/service/...
+```
+
+**Test Organization:**
+- Unit tests alongside code (`*_test.go`)
+- Integration tests for HTTP endpoints
+- Test utilities in `internal/testutil/`
+- 95%+ coverage target
+
+## Configuration
+
+Configuration is managed through environment variables with `.env` file support:
+
+```env
+# Server
+SERVER_PORT=5001
+SERVER_HOST=localhost
+
+# Database
+DB_PATH=./data/portfolio_manager.db
+
+# CORS
+CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
+```
+
+See `.env.example` for all available options.
+
+## Contributing
+
+This is a personal learning project, but feedback and suggestions are welcome! Feel free to:
+- Open issues for bugs or questions
+- Suggest improvements to code or documentation
+- Share Go best practices I might have missed
+
+## Relationship to Original Project
+
+This backend is designed to be a drop-in replacement for the [Python/Flask backend](https://github.com/ndewijer/Investment-Portfolio-Manager). It:
+- Uses the same SQLite database schema
+- Implements the same REST API endpoints
+- Returns the same JSON response formats
+- Works with the existing React frontend
+
+The Python backend can run alongside this Go backend during development for comparison and testing.
+
+## License
+
+Apache License, Version 2.0
+
+## Acknowledgments
+
+This project is a learning exercise inspired by the need to consolidate multiple Excel spreadsheets into a single application. The original Python backend was built with LLM assistance; this Go rewrite is being built manually to learn Go from the ground up.
+
+---
+
+**Current Focus:** Implementing portfolio CRUD operations and building up core repository patterns with `database/sql`.
+
+**Next Steps:** Complete portfolio endpoints, then move to fund management, followed by transaction and dividend handling.

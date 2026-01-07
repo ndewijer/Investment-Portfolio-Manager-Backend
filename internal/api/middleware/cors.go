@@ -12,10 +12,7 @@ func NewCORS(allowedOrigins []string) *cors.Cors {
 		AllowedHeaders: []string{
 			"Content-Type",
 			"Authorization",
-			"Access-Control-Allow-Methods",
-			"Access-Control-Allow-Headers",
-			"Access-Control-Allow-Origin",
-			"Access-Control-Allow-Credentials",
+			"X-API-Key",
 		},
 		ExposedHeaders:   []string{"Content-Type"},
 		AllowCredentials: true,

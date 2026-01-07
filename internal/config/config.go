@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/joho/godotenv"
 )
@@ -31,6 +32,24 @@ type CORSConfig struct {
 	AllowedOrigins []string
 }
 
+// Get Allowed Origins from environment
+func getCORSOrigins() []string {
+	// Check for explicit CORS config first
+	if origins := os.Getenv("CORS_ALLOWED_ORIGINS"); origins != "" {
+		return strings.Split(origins, ",")
+	}
+
+	// Check DOMAIN variable (from Docker) second
+	if domain := os.Getenv("DOMAIN"); domain != "" {
+		return []string{
+			fmt.Sprintf("https://%s", domain),
+			fmt.Sprintf("http://%s", domain),
+		}
+	}
+	// If nether, return development setting
+	return []string{"http://localhost:3000"}
+}
+
 // Load reads configuration from environment variables and .env file
 func Load() (*Config, error) {
 	// Try to load .env file (ignore error if it doesn't exist)
@@ -45,10 +64,7 @@ func Load() (*Config, error) {
 			Path: getEnv("DB_PATH", "./data/portfolio_manager.db"),
 		},
 		CORS: CORSConfig{
-			AllowedOrigins: []string{
-				"http://localhost:3000",
-				"http://localhost",
-			},
+			AllowedOrigins: getCORSOrigins(),
 		},
 	}
 
