@@ -43,7 +43,7 @@ We needed to choose an HTTP router/framework for building REST APIs in Go. The P
 ```go
 mux := http.NewServeMux()
 mux.HandleFunc("GET /api/system/health", healthHandler)
-mux.HandleFunc("POST /api/portfolios/{id}", createHandler)
+mux.HandleFunc("POST /api/portfolio/{id}", createHandler)
 ```
 
 **Pros:**

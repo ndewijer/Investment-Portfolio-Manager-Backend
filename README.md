@@ -31,7 +31,7 @@ This backend aims to replicate all 73 endpoints from the Python backend. Below i
 │   ├── GET    /health                          ✅ Health check
 │   └── GET    /version                         ✅ Version information
 │
-├── /portfolios (1/13 endpoints) 🚧
+├── /portfolio (1/13 endpoints) 🚧
 │   ├── GET    /                                ✅ List all portfolios
 │   ├── POST   /                                ⬜ Create portfolio
 │   ├── GET    /{id}                            ⬜ Get portfolio by ID
@@ -42,11 +42,11 @@ This backend aims to replicate all 73 endpoints from the Python backend. Below i
 │   ├── GET    /summary                         ⬜ Portfolio summary
 │   ├── GET    /history                         ⬜ Portfolio history
 │   ├── GET    /{id}/fund-history               ⬜ Portfolio fund history
-│   ├── GET    /funds                           ⬜ Portfolio funds
-│   ├── POST   /funds                           ⬜ Add fund to portfolio
-│   └── DELETE /funds/{id}                      ⬜ Remove fund from portfolio
+│   ├── GET    /fund                           ⬜ Portfolio funds
+│   ├── POST   /fund                           ⬜ Add fund to portfolio
+│   └── DELETE /fund/{id}                      ⬜ Remove fund from portfolio
 │
-├── /funds (0/13 endpoints) ⬜
+├── /fund (0/13 endpoints) ⬜
 │   ├── GET    /                                ⬜ List all funds
 │   ├── POST   /                                ⬜ Create fund
 │   ├── GET    /{id}                            ⬜ Get fund by ID
@@ -61,14 +61,14 @@ This backend aims to replicate all 73 endpoints from the Python backend. Below i
 │   ├── POST   /update-all-prices               ⬜ Update all fund prices
 │   └── POST   /import-prices                   ⬜ Import prices from CSV
 │
-├── /transactions (0/5 endpoints) ⬜
+├── /transaction (0/5 endpoints) ⬜
 │   ├── GET    /                                ⬜ List all transactions
 │   ├── POST   /                                ⬜ Create transaction
 │   ├── GET    /{id}                            ⬜ Get transaction by ID
 │   ├── PUT    /{id}                            ⬜ Update transaction
 │   └── DELETE /{id}                            ⬜ Delete transaction
 │
-├── /dividends (0/6 endpoints) ⬜
+├── /dividend (0/6 endpoints) ⬜
 │   ├── GET    /                                ⬜ List all dividends
 │   ├── POST   /                                ⬜ Create dividend
 │   ├── GET    /{id}                            ⬜ Get dividend by ID

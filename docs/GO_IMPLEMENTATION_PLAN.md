@@ -196,10 +196,10 @@ func HealthCheck(db *sql.DB) error {
   - Request ID
 - Define namespace sub-routers:
   - `/api/system` - System handlers
-  - `/api/portfolios` - Portfolio handlers
-  - `/api/funds` - Fund handlers
-  - `/api/transactions` - Transaction handlers
-  - `/api/dividends` - Dividend handlers
+  - `/api/portfolio` - Portfolio handlers
+  - `/api/fund` - Fund handlers
+  - `/api/transaction` - Transaction handlers
+  - `/api/dividend` - Dividend handlers
   - `/api/ibkr` - IBKR handlers
   - `/api/developer` - Developer handlers
 - Mount Swagger UI at `/api/docs`
@@ -1451,7 +1451,7 @@ Add Swagger comments to each handler:
 // @Success 200 {object} model.Portfolio
 // @Failure 404 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
-// @Router /portfolios/{id} [get]
+// @Router /portfolio/{id} [get]
 func (h *PortfolioHandler) GetPortfolio(w http.ResponseWriter, r *http.Request) {
     // Implementation
 }
@@ -1591,19 +1591,19 @@ func RunMigrations(db *sql.DB) error {
    - GET /api/system/version
 
 2. **Portfolio Namespace** (13 endpoints)
-   - GET /api/portfolios (list all)
-   - POST /api/portfolios (create)
-   - GET /api/portfolios/{id} (get one)
-   - PUT /api/portfolios/{id} (update)
-   - DELETE /api/portfolios/{id} (delete)
-   - POST /api/portfolios/{id}/archive
-   - POST /api/portfolios/{id}/unarchive
-   - GET /api/portfolios-summary
-   - GET /api/portfolios-history
-   - GET /api/portfolios/{id}/fund-history
-   - GET /api/portfolios-funds
-   - POST /api/portfolios-funds
-   - DELETE /api/portfolios-funds/{id}
+   - GET /api/portfolio (list all)
+   - POST /api/portfolio (create)
+   - GET /api/portfolio/{id} (get one)
+   - PUT /api/portfolio/{id} (update)
+   - DELETE /api/portfolio/{id} (delete)
+   - POST /api/portfolio/{id}/archive
+   - POST /api/portfolio/{id}/unarchive
+   - GET /api/portfolio-summary
+   - GET /api/portfolio-history
+   - GET /api/portfolio/{id}/fund-history
+   - GET /api/portfolio-funds
+   - POST /api/portfolio-funds
+   - DELETE /api/portfolio-funds/{id}
 
 3. **Fund Namespace** (13 endpoints)
 4. **Transaction Namespace** (5 endpoints)
