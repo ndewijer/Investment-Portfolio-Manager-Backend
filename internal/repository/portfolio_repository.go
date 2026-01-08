@@ -67,9 +67,9 @@ func (s *PortfolioRepository) GetPortfolios(filter model.PortfolioFilter) ([]mod
 	return portfolios, nil
 }
 
-func (s *PortfolioRepository) GetPortfolioFundsOnPortfolioID(portfolios []model.Portfolio) (map[string][]model.Fund, map[string]string, []string, []string, error) {
+func (s *PortfolioRepository) GetPortfolioFundsOnPortfolioID(portfolios []model.Portfolio) (map[string][]model.Fund, map[string]string, map[string]string, []string, []string, error) {
 	if len(portfolios) == 0 {
-		return make(map[string][]model.Fund), make(map[string]string), []string{}, nil, nil
+		return make(map[string][]model.Fund), make(map[string]string), make(map[string]string), []string{}, nil, nil
 	}
 
 	// Set placeholder for the lazy loading
@@ -96,12 +96,13 @@ func (s *PortfolioRepository) GetPortfolioFundsOnPortfolioID(portfolios []model.
 
 	rows, err := s.db.Query(fundQuery, fundArgs...)
 	if err != nil {
-		return nil, nil, nil, nil, fmt.Errorf("failed to query portfolio_fund or funds table: %w", err)
+		return nil, nil, nil, nil, nil, fmt.Errorf("failed to query portfolio_fund or funds table: %w", err)
 	}
 	defer rows.Close()
 
 	fundsByPortfolio := make(map[string][]model.Fund)
 	portfolioFundToPortfolio := make(map[string]string)
+	portfolioFundToFund := make(map[string]string)
 	var fundIDs, pfIDs []string
 
 	for rows.Next() {
@@ -122,18 +123,19 @@ func (s *PortfolioRepository) GetPortfolioFundsOnPortfolioID(portfolios []model.
 			&f.DividendType,
 		)
 		if err != nil {
-			return nil, nil, nil, nil, fmt.Errorf("failed to scan funds table results: %w", err)
+			return nil, nil, nil, nil, nil, fmt.Errorf("failed to scan funds table results: %w", err)
 		}
 
 		fundsByPortfolio[portfolioID] = append(fundsByPortfolio[portfolioID], f)
 		portfolioFundToPortfolio[pfID] = portfolioID
+		portfolioFundToFund[pfID] = f.ID
 		pfIDs = append(pfIDs, pfID)
 		fundIDs = append(fundIDs, f.ID)
 
 		if err = rows.Err(); err != nil {
-			return nil, nil, nil, nil, fmt.Errorf("error iterating funds table: %w", err)
+			return nil, nil, nil, nil, nil, fmt.Errorf("error iterating funds table: %w", err)
 		}
 	}
 
-	return fundsByPortfolio, portfolioFundToPortfolio, pfIDs, fundIDs, nil
+	return fundsByPortfolio, portfolioFundToPortfolio, portfolioFundToFund, pfIDs, fundIDs, nil
 }

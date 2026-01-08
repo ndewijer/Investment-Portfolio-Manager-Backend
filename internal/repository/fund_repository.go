@@ -80,6 +80,7 @@ func (s *FundRepository) GetFundPrice(fundIDs []string) (map[string][]model.Fund
 		SELECT id, fund_id, date, price
 		FROM 'fund_price'
 		WHERE fund_id IN (` + strings.Join(fundPricePlaceholders, ",") + `)
+		ORDER BY fund_id ASC,date DESC
 	`
 
 	fundPriceArgs := make([]interface{}, len(fundIDs))
