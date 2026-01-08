@@ -32,6 +32,7 @@ func (s *DividendRepository) GetDividend(pfIDs []string, portfolioFundToPortfoli
 		dividend_per_share, total_amount, reinvestment_status, buy_order_date, reinvestment_transaction_id, created_at
 		FROM dividend
 		WHERE portfolio_fund_id IN (` + strings.Join(dividendPlaceholders, ",") + `)
+		ORDER BY ex_dividend_date ASC
 	`
 
 	dividendArgs := make([]interface{}, len(pfIDs))

@@ -32,6 +32,7 @@ func (s *RealizedGainLossRepository) GetRealizedGainLossByPortfolio(portfolio []
 		sale_proceeds, realized_gain_loss, created_at
 		FROM 'realized_gain_loss'
 		WHERE portfolio_id IN (` + strings.Join(realizedGainLossPlaceholders, ",") + `)
+		ORDER BY created_at ASC
 	`
 
 	realizedGainLossdArgs := make([]interface{}, len(portfolio))

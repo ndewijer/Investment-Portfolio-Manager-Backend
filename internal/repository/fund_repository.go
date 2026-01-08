@@ -103,7 +103,7 @@ func (s *FundRepository) GetFundPrice(fundIDs []string) (map[string][]model.Fund
 
 			&fp.ID,
 			&fp.FundID,
-			dateStr,
+			&dateStr,
 			&fp.Price,
 		)
 		if err != nil {

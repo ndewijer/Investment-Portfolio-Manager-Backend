@@ -29,8 +29,9 @@ func (s *TransactionRepository) GetTransactions(pfIDs []string, portfolioFundToP
 	// Retrieve all transactions based on returned portfolio_fund IDs
 	transactionQuery := `
 		SELECT id, portfolio_fund_id, date, type, shares, cost_per_share, created_at
-		FROM 'transaction'
+		FROM "transaction"
 		WHERE portfolio_fund_id IN (` + strings.Join(transactionPlaceholders, ",") + `)
+		ORDER BY date ASC
 	`
 
 	transactiondArgs := make([]interface{}, len(pfIDs))
@@ -47,6 +48,7 @@ func (s *TransactionRepository) GetTransactions(pfIDs []string, portfolioFundToP
 	transactionsByPortfolio := make(map[string][]model.Transaction)
 
 	for rows.Next() {
+
 		var dateStr, createdAtStr string
 		var t model.Transaction
 
@@ -62,7 +64,6 @@ func (s *TransactionRepository) GetTransactions(pfIDs []string, portfolioFundToP
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan transaction table results: %w", err)
 		}
-
 		t.Date, err = ParseTime(dateStr)
 		if err != nil || t.Date.IsZero() {
 			return nil, fmt.Errorf("failed to parse date: %w", err)
@@ -75,10 +76,14 @@ func (s *TransactionRepository) GetTransactions(pfIDs []string, portfolioFundToP
 
 		portfolioID := portfolioFundToPortfolio[t.PortfolioFundID]
 		transactionsByPortfolio[portfolioID] = append(transactionsByPortfolio[portfolioID], t)
-
-		if err = rows.Err(); err != nil {
-			return nil, fmt.Errorf("error iterating transaction table: %w", err)
+		if portfolioID == "" {
+			fmt.Printf("WARNING: Transaction %s has unmapped portfolio_fund_id: %s\n", t.ID, t.PortfolioFundID)
 		}
+	}
+
+	if err = rows.Err(); err != nil {
+		fmt.Printf("ERROR during iteration: %v\n", err)
+		return nil, fmt.Errorf("error iterating transaction table: %w", err)
 	}
 
 	return transactionsByPortfolio, nil
