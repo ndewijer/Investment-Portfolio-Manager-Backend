@@ -1,65 +1,302 @@
 package service
 
 import (
-	"database/sql"
+	"errors"
 	"fmt"
+	"math"
+	"time"
+
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/repository"
 )
 
 // PortfolioService handles Portfolio-related operations
 type PortfolioService struct {
-	db *sql.DB
+	portfolioRepo        *repository.PortfolioRepository
+	transactionRepo      *repository.TransactionRepository
+	fundRepo             *repository.FundRepository
+	dividendRepo         *repository.DividendRepository
+	realizedGainLossRepo *repository.RealizedGainLossRepository
 }
 
-// NewPortfolioService creates a new PortfolioService
-func NewPortfolioService(db *sql.DB) *PortfolioService {
+func NewPortfolioService(
+	portfolioRepo *repository.PortfolioRepository,
+	transactionRepo *repository.TransactionRepository,
+	fundRepo *repository.FundRepository,
+	dividendRepo *repository.DividendRepository,
+	realizedGainLossRepo *repository.RealizedGainLossRepository,
+) *PortfolioService {
 	return &PortfolioService{
-		db: db,
+		portfolioRepo:        portfolioRepo,
+		transactionRepo:      transactionRepo,
+		fundRepo:             fundRepo,
+		dividendRepo:         dividendRepo,
+		realizedGainLossRepo: realizedGainLossRepo,
 	}
 }
 
-// Portfolio represents a portfolio from the database
-type Portfolio struct {
-	ID                  string
-	Name                string
-	Description         string
-	IsArchived          bool
-	ExcludeFromOverview bool
+// GetAllPortfolios retrieves all portfolios from the database (no filters)
+func (s *PortfolioService) GetAllPortfolios() ([]model.Portfolio, error) {
+	return s.portfolioRepo.GetPortfolios(model.PortfolioFilter{
+		IncludeArchived: true,
+		IncludeExcluded: true,
+	})
 }
 
-// GetAllPortfolios retrieves all portfolios from the database
-func (s *PortfolioService) GetAllPortfolios() ([]Portfolio, error) {
-	query := `
-          SELECT id, name, description, is_archived, exclude_from_overview
-          FROM portfolio
-      `
-	rows, err := s.db.Query(query)
+// Struct for returning TransactionMetrics out off processTransactionsForDate()
+type TransactionMetrics struct {
+	TotalShares    float64
+	TotalCost      float64
+	TotalValue     float64
+	TotalDividends float64
+	TotalFees      float64
+}
+
+// The struc that will be returned by GetPortfolioSummary
+type PortfolioSummary struct {
+	ID                      string
+	Name                    string
+	TotalValue              float64
+	TotalCost               float64
+	TotalDividends          float64
+	TotalUnrealizedGainLoss float64
+	TotalRealizedGainLoss   float64
+	TotalSaleProceeds       float64
+	TotalOriginalCost       float64
+	TotalGainLoss           float64
+	IsArchived              bool
+}
+
+// Gets portfolio summary from database
+func (s *PortfolioService) GetPortfolioSummary() ([]PortfolioSummary, error) {
+	// Load data
+	portfolios, err := s.loadActivePortfolios()
 	if err != nil {
-		return nil, fmt.Errorf("failed to query portfolios table: %w", err)
+		return nil, err
 	}
-	defer rows.Close() // IMPORTANT: Always close rows!
 
-	portfolios := []Portfolio{}
+	_, portfolioFundToPortfolio, portfolioFundToFund, pfIDs, fundIDs, err := s.loadPortfolioFunds(portfolios)
+	if err != nil {
+		return nil, err
+	}
 
-	for rows.Next() {
-		var p Portfolio
+	transactionsByPortfolio, err := s.loadTransactions(pfIDs, portfolioFundToPortfolio)
+	if err != nil {
+		return nil, err
+	}
 
-		err := rows.Scan(
-			&p.ID,
-			&p.Name,
-			&p.Description,
-			&p.IsArchived,
-			&p.ExcludeFromOverview,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to scan portfolio table results: %w", err)
+	dividendByPortfolio, err := s.loadDividend(pfIDs, portfolioFundToPortfolio)
+	if err != nil {
+		return nil, err
+	}
+
+	fundPriceByFund, err := s.loadFundPrices(fundIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	realizedGainLossByPortfolio, err := s.loadRealizedGainLoss(portfolios)
+	if err != nil {
+		return nil, err
+	}
+
+	portfolioSummary := []PortfolioSummary{}
+
+	for _, portfolio := range portfolios {
+
+		dividendsByPF := make(map[string][]model.Dividend)
+		for _, div := range dividendByPortfolio[portfolio.ID] {
+			dividendsByPF[div.PortfolioFundID] = append(dividendsByPF[div.PortfolioFundID], div)
 		}
 
-		portfolios = append(portfolios, p)
+		transactionsByPF := make(map[string][]model.Transaction)
+		for _, tx := range transactionsByPortfolio[portfolio.ID] {
+			transactionsByPF[tx.PortfolioFundID] = append(transactionsByPF[tx.PortfolioFundID], tx)
+		}
+
+		totalDividendSharesPerPF, err := s.processDividendSharesForDate(dividendsByPF, transactionsByPortfolio[portfolio.ID])
+		if err != nil {
+			return nil, err
+		}
+
+		transactionMetrics, err := s.processTransactionsForDate(transactionsByPF, totalDividendSharesPerPF, portfolioFundToFund, fundPriceByFund, time.Now())
+		if err != nil {
+			return nil, err
+		}
+		totalDividendAmount, err := s.processDividendAmountForDate(dividendByPortfolio[portfolio.ID], time.Now())
+		if err != nil {
+			return nil, err
+		}
+		totalRealizedGainLoss, totalSaleProceeds, totalCostBasis, err := s.processRealizedGainLossForDate(realizedGainLossByPortfolio[portfolio.ID], time.Now())
+		if err != nil {
+			return nil, err
+		}
+
+		p := PortfolioSummary{
+			ID:                      portfolio.ID,
+			Name:                    portfolio.Name,
+			TotalValue:              math.Round(transactionMetrics.TotalValue*RoundingPrecision) / RoundingPrecision,
+			TotalCost:               math.Round(transactionMetrics.TotalCost*RoundingPrecision) / RoundingPrecision,
+			TotalDividends:          math.Round(totalDividendAmount*RoundingPrecision) / RoundingPrecision,
+			TotalUnrealizedGainLoss: math.Round((transactionMetrics.TotalValue-transactionMetrics.TotalCost)*RoundingPrecision) / RoundingPrecision,
+			TotalRealizedGainLoss:   math.Round(totalRealizedGainLoss*RoundingPrecision) / RoundingPrecision,
+			TotalSaleProceeds:       math.Round(totalSaleProceeds*RoundingPrecision) / RoundingPrecision,
+			TotalOriginalCost:       math.Round(totalCostBasis*RoundingPrecision) / RoundingPrecision,
+			TotalGainLoss:           math.Round((totalRealizedGainLoss+(transactionMetrics.TotalValue-transactionMetrics.TotalCost))*RoundingPrecision) / RoundingPrecision,
+			IsArchived:              portfolio.IsArchived,
+		}
+
+		portfolioSummary = append(portfolioSummary, p)
 	}
 
-	if err = rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating portfolios table: %w", err)
+	return portfolioSummary, nil
+}
+
+// loadActivePortfolios retrieves only active, non-excluded portfolios
+func (s *PortfolioService) loadActivePortfolios() ([]model.Portfolio, error) {
+	return s.portfolioRepo.GetPortfolios(model.PortfolioFilter{
+		IncludeArchived: false,
+		IncludeExcluded: false,
+	})
+}
+
+// loadPortfolioFunds retrieves all funds for the given portfolios
+// Returns: fundsByPortfolio map, portfolioFundToPortfolio map, pfIDs slice, error
+func (s *PortfolioService) loadPortfolioFunds(portfolios []model.Portfolio) (map[string][]model.Fund, map[string]string, map[string]string, []string, []string, error) {
+	return s.portfolioRepo.GetPortfolioFundsOnPortfolioID(portfolios)
+}
+
+// loadTransactions retrieves all transactions for the given portfolio_fund IDs
+func (s *PortfolioService) loadTransactions(pfIDs []string, portfolioFundToPortfolio map[string]string) (map[string][]model.Transaction, error) {
+	return s.transactionRepo.GetTransactions(pfIDs, portfolioFundToPortfolio)
+}
+
+// loadDividend retrieves all dividend for the given portfolio_fund IDs
+func (s *PortfolioService) loadDividend(pfIDs []string, portfolioFundToPortfolio map[string]string) (map[string][]model.Dividend, error) {
+	return s.dividendRepo.GetDividend(pfIDs, portfolioFundToPortfolio)
+}
+
+// loadDividend retrieves all dividend for the given portfolio_fund IDs
+func (s *PortfolioService) loadFundPrices(fundIDs []string) (map[string][]model.FundPrice, error) {
+	return s.fundRepo.GetFundPrice(fundIDs)
+}
+
+func (s *PortfolioService) loadRealizedGainLoss(portfolio []model.Portfolio) (map[string][]model.RealizedGainLoss, error) {
+	return s.realizedGainLossRepo.GetRealizedGainLossByPortfolio(portfolio)
+}
+
+func (s *PortfolioService) processRealizedGainLossForDate(realizedGainLoss []model.RealizedGainLoss, date time.Time) (float64, float64, float64, error) {
+	if len(realizedGainLoss) == 0 {
+		return 0.0, 0.0, 0.0, nil
+	}
+	var totalRealizedGainLoss, totalSaleProceeds, totalCostBasis float64
+
+	for _, r := range realizedGainLoss {
+		totalRealizedGainLoss += r.RealizedGainLoss
+		totalSaleProceeds += r.SaleProceeds
+		totalCostBasis += r.CostBasis
 	}
 
-	return portfolios, nil
+	return totalRealizedGainLoss, totalSaleProceeds, totalCostBasis, nil
+}
+
+func (s *PortfolioService) processDividendSharesForDate(dividendMap map[string][]model.Dividend, transactions []model.Transaction) (map[string]float64, error) {
+	totalDividendMap := make(map[string]float64)
+
+	for pfID, dividend := range dividendMap {
+		var dividendShares float64
+		for _, div := range dividend {
+			if div.ReinvestmentTransactionId != "" {
+				// Find the transaction with this ID
+				for _, transaction := range transactions {
+					if transaction.ID == div.ReinvestmentTransactionId {
+						dividendShares += transaction.Shares
+						break
+					}
+				}
+			}
+		}
+		totalDividendMap[pfID] = dividendShares
+	}
+
+	return totalDividendMap, nil
+}
+
+func (s *PortfolioService) processDividendAmountForDate(dividend []model.Dividend, date time.Time) (float64, error) {
+	if len(dividend) == 0 {
+		return 0.0, nil
+	}
+	var totalDividend float64
+
+	for _, d := range dividend {
+		totalDividend += d.TotalAmount
+	}
+
+	return totalDividend, nil
+}
+
+func (s *PortfolioService) processTransactionsForDate(transactionsMap map[string][]model.Transaction, dividendShares map[string]float64, fundMapping map[string]string, fundPriceByFund map[string][]model.FundPrice, date time.Time) (TransactionMetrics, error) {
+	if len(transactionsMap) == 0 {
+		return TransactionMetrics{}, nil
+	}
+	var totalShares, totalCost, totalValue, totalDividends, totalFees float64
+	for pfID, transactions := range transactionsMap {
+		var shares, cost, dividends, value, fees float64
+		shares = dividendShares[pfID]
+
+		for _, transaction := range transactions {
+
+			if transaction.Date.Before(date) || transaction.Date.Equal(date) {
+
+				switch transaction.Type {
+				case "buy":
+					shares += transaction.Shares
+					cost += transaction.Shares * transaction.CostPerShare
+				case "dividend":
+					dividends += transaction.Shares * transaction.CostPerShare
+				case "sell":
+					shares -= transaction.Shares
+					if shares > 0.0 {
+						cost = (cost / (shares + transaction.Shares)) * shares
+					} else {
+						cost = 0.0
+					}
+				case "fee":
+					cost += transaction.CostPerShare
+					fees += transaction.CostPerShare
+				default:
+					err := errors.New("Unknown transaction type.")
+					return TransactionMetrics{}, fmt.Errorf(": %w", err)
+				}
+			}
+		}
+		fundID := fundMapping[pfID]
+		prices := fundPriceByFund[fundID]
+
+		if len(prices) > 0 {
+			latestPrice := prices[0].Price
+			value = shares * latestPrice
+			totalValue += value
+		}
+
+		totalShares += shares
+		totalCost += cost
+		totalDividends += dividends
+		totalFees += fees
+	}
+
+	totalShares = max(0, totalShares)
+	totalCost = max(0, totalCost)
+	totalValue = max(0, totalValue)
+	totalDividends = max(0, totalDividends)
+	totalFees = max(0, totalFees)
+
+	transactionMetrics := TransactionMetrics{
+		TotalShares:    totalShares,
+		TotalCost:      totalCost,
+		TotalDividends: totalDividends,
+		TotalFees:      totalFees,
+	}
+
+	return transactionMetrics, nil
 }

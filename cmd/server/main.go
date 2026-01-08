@@ -12,6 +12,7 @@ import (
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/config"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/database"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/repository"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/service"
 )
 
@@ -31,9 +32,22 @@ func main() {
 
 	log.Printf("Connected to database: %s", cfg.Database.Path)
 
+	// Create repositories
+	portfolioRepo := repository.NewPortfolioRepository(db)
+	transactionRepo := repository.NewTransactionRepository(db)
+	fundRepo := repository.NewFundRepository(db)
+	dividendRepo := repository.NewDividendRepository(db)
+	realizedGainLossRepo := repository.NewRealizedGainLossRepository(db)
+
 	// Create services
 	systemService := service.NewSystemService(db)
-	portfolioService := service.NewPortfolioService(db)
+	portfolioService := service.NewPortfolioService(
+		portfolioRepo,
+		transactionRepo,
+		fundRepo,
+		dividendRepo,
+		realizedGainLossRepo,
+	)
 
 	// Create router
 	router := api.NewRouter(systemService, portfolioService, cfg)
