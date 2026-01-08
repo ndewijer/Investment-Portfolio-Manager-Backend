@@ -69,7 +69,7 @@ func (s *PortfolioRepository) GetPortfolios(filter model.PortfolioFilter) ([]mod
 
 func (s *PortfolioRepository) GetPortfolioFundsOnPortfolioID(portfolios []model.Portfolio) (map[string][]model.Fund, map[string]string, map[string]string, []string, []string, error) {
 	if len(portfolios) == 0 {
-		return make(map[string][]model.Fund), make(map[string]string), make(map[string]string), []string{}, nil, nil
+		return nil, nil, nil, nil, nil, nil
 	}
 
 	// Set placeholder for the lazy loading
@@ -132,9 +132,9 @@ func (s *PortfolioRepository) GetPortfolioFundsOnPortfolioID(portfolios []model.
 		pfIDs = append(pfIDs, pfID)
 		fundIDs = append(fundIDs, f.ID)
 
-		if err = rows.Err(); err != nil {
-			return nil, nil, nil, nil, nil, fmt.Errorf("error iterating funds table: %w", err)
-		}
+	}
+	if err = rows.Err(); err != nil {
+		return nil, nil, nil, nil, nil, fmt.Errorf("error iterating funds table: %w", err)
 	}
 
 	return fundsByPortfolio, portfolioFundToPortfolio, portfolioFundToFund, pfIDs, fundIDs, nil

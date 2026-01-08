@@ -43,6 +43,15 @@ func (s *PortfolioService) GetAllPortfolios() ([]model.Portfolio, error) {
 	})
 }
 
+// Struct for returning TransactionMetrics out off processTransactionsForDate()
+type TransactionMetrics struct {
+	TotalShares    float64
+	TotalCost      float64
+	TotalValue     float64
+	TotalDividends float64
+	TotalFees      float64
+}
+
 // The struc that will be returned by GetPortfolioSummary
 type PortfolioSummary struct {
 	ID                      string
@@ -66,7 +75,7 @@ func (s *PortfolioService) GetPortfolioSummary() ([]PortfolioSummary, error) {
 		return nil, err
 	}
 
-	fundsByPortfolio, portfolioFundToPortfolio, portfolioFundToFund, pfIDs, fundIDs, err := s.loadPortfolioFunds(portfolios)
+	_, portfolioFundToPortfolio, portfolioFundToFund, pfIDs, fundIDs, err := s.loadPortfolioFunds(portfolios)
 	if err != nil {
 		return nil, err
 	}
@@ -105,17 +114,12 @@ func (s *PortfolioService) GetPortfolioSummary() ([]PortfolioSummary, error) {
 			transactionsByPF[tx.PortfolioFundID] = append(transactionsByPF[tx.PortfolioFundID], tx)
 		}
 
-		// fundPricebyPF := make(map[string][]model.FundPrice)
-		// for f, fp := range fundPriceByFund {
-		// 	fundPricebyPF[fundtoPortfolioFund[f]] = append(fundPricebyPF[fundtoPortfolioFund[f]], fp)
-		// }
-
 		totalDividendSharesPerPF, err := s.processDividendSharesForDate(dividendsByPF, transactionsByPortfolio[portfolio.ID])
 		if err != nil {
 			return nil, err
 		}
 
-		_, totalCost, totalValue, _, _, err := s.processTransactionsForDate(transactionsByPF, totalDividendSharesPerPF, portfolioFundToFund, fundPriceByFund, time.Now())
+		transactionMetrics, err := s.processTransactionsForDate(transactionsByPF, totalDividendSharesPerPF, portfolioFundToFund, fundPriceByFund, time.Now())
 		if err != nil {
 			return nil, err
 		}
@@ -131,24 +135,19 @@ func (s *PortfolioService) GetPortfolioSummary() ([]PortfolioSummary, error) {
 		p := PortfolioSummary{
 			ID:                      portfolio.ID,
 			Name:                    portfolio.Name,
-			TotalValue:              math.Round(totalValue*1e6) / 1e6,
-			TotalCost:               math.Round(totalCost*1e6) / 1e6,
-			TotalDividends:          math.Round(totalDividendAmount*1e6) / 1e6,
-			TotalUnrealizedGainLoss: math.Round((totalValue-totalCost)*1e6) / 1e6,
-			TotalRealizedGainLoss:   math.Round(totalRealizedGainLoss*1e6) / 1e6,
-			TotalSaleProceeds:       math.Round(totalSaleProceeds*1e6) / 1e6,
-			TotalOriginalCost:       math.Round(totalCostBasis*1e6) / 1e6,
-			TotalGainLoss:           math.Round((totalRealizedGainLoss+(totalValue-totalCost))*1e6) / 1e6,
+			TotalValue:              math.Round(transactionMetrics.TotalValue*RoundingPrecision) / RoundingPrecision,
+			TotalCost:               math.Round(transactionMetrics.TotalCost*RoundingPrecision) / RoundingPrecision,
+			TotalDividends:          math.Round(totalDividendAmount*RoundingPrecision) / RoundingPrecision,
+			TotalUnrealizedGainLoss: math.Round((transactionMetrics.TotalValue-transactionMetrics.TotalCost)*RoundingPrecision) / RoundingPrecision,
+			TotalRealizedGainLoss:   math.Round(totalRealizedGainLoss*RoundingPrecision) / RoundingPrecision,
+			TotalSaleProceeds:       math.Round(totalSaleProceeds*RoundingPrecision) / RoundingPrecision,
+			TotalOriginalCost:       math.Round(totalCostBasis*RoundingPrecision) / RoundingPrecision,
+			TotalGainLoss:           math.Round((totalRealizedGainLoss+(transactionMetrics.TotalValue-transactionMetrics.TotalCost))*RoundingPrecision) / RoundingPrecision,
 			IsArchived:              portfolio.IsArchived,
 		}
 
 		portfolioSummary = append(portfolioSummary, p)
 	}
-
-	// TODO: Calculate metrics and return summaries
-	// For now, just return empty summaries
-	_ = fundsByPortfolio
-	_ = fundPriceByFund
 
 	return portfolioSummary, nil
 }
@@ -188,8 +187,7 @@ func (s *PortfolioService) loadRealizedGainLoss(portfolio []model.Portfolio) (ma
 
 func (s *PortfolioService) processRealizedGainLossForDate(realizedGainLoss []model.RealizedGainLoss, date time.Time) (float64, float64, float64, error) {
 	if len(realizedGainLoss) == 0 {
-		err := errors.New("RealizedGainLoss is empty")
-		return 0.0, 0.0, 0.0, fmt.Errorf(": %w", err)
+		return 0.0, 0.0, 0.0, nil
 	}
 	var totalRealizedGainLoss, totalSaleProceeds, totalCostBasis float64
 
@@ -203,11 +201,8 @@ func (s *PortfolioService) processRealizedGainLossForDate(realizedGainLoss []mod
 }
 
 func (s *PortfolioService) processDividendSharesForDate(dividendMap map[string][]model.Dividend, transactions []model.Transaction) (map[string]float64, error) {
-	if len(dividendMap) == 0 {
-		err := errors.New("Dividend is empty")
-		return nil, fmt.Errorf(": %w", err)
-	}
 	totalDividendMap := make(map[string]float64)
+
 	for pfID, dividend := range dividendMap {
 		var dividendShares float64
 		for _, div := range dividend {
@@ -229,8 +224,7 @@ func (s *PortfolioService) processDividendSharesForDate(dividendMap map[string][
 
 func (s *PortfolioService) processDividendAmountForDate(dividend []model.Dividend, date time.Time) (float64, error) {
 	if len(dividend) == 0 {
-		err := errors.New("Dividend is empty")
-		return 0.0, fmt.Errorf(": %w", err)
+		return 0.0, nil
 	}
 	var totalDividend float64
 
@@ -241,10 +235,9 @@ func (s *PortfolioService) processDividendAmountForDate(dividend []model.Dividen
 	return totalDividend, nil
 }
 
-func (s *PortfolioService) processTransactionsForDate(transactionsMap map[string][]model.Transaction, dividendShares map[string]float64, fundMapping map[string]string, fundPriceByFund map[string][]model.FundPrice, date time.Time) (float64, float64, float64, float64, float64, error) {
+func (s *PortfolioService) processTransactionsForDate(transactionsMap map[string][]model.Transaction, dividendShares map[string]float64, fundMapping map[string]string, fundPriceByFund map[string][]model.FundPrice, date time.Time) (TransactionMetrics, error) {
 	if len(transactionsMap) == 0 {
-		err := errors.New("transactions is empty")
-		return 0.0, 0.0, 0.0, 0.0, 0.0, fmt.Errorf(": %w", err)
+		return TransactionMetrics{}, nil
 	}
 	var totalShares, totalCost, totalValue, totalDividends, totalFees float64
 	for pfID, transactions := range transactionsMap {
@@ -273,7 +266,7 @@ func (s *PortfolioService) processTransactionsForDate(transactionsMap map[string
 					fees += transaction.CostPerShare
 				default:
 					err := errors.New("Unknown transaction type.")
-					return 0.0, 0.0, 0.0, 0.0, 0.0, fmt.Errorf(": %w", err)
+					return TransactionMetrics{}, fmt.Errorf(": %w", err)
 				}
 			}
 		}
@@ -298,5 +291,12 @@ func (s *PortfolioService) processTransactionsForDate(transactionsMap map[string
 	totalDividends = max(0, totalDividends)
 	totalFees = max(0, totalFees)
 
-	return totalShares, totalCost, totalValue, totalDividends, totalFees, nil
+	transactionMetrics := TransactionMetrics{
+		TotalShares:    totalShares,
+		TotalCost:      totalCost,
+		TotalDividends: totalDividends,
+		TotalFees:      totalFees,
+	}
+
+	return transactionMetrics, nil
 }

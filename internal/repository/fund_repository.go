@@ -16,7 +16,7 @@ func NewFundRepository(db *sql.DB) *FundRepository {
 	return &FundRepository{db: db}
 }
 
-func (s *FundRepository) GetFunds(fundIDs []string) (map[string][]model.Fund, error) {
+func (s *FundRepository) GetFund(fundIDs []string) ([]model.Fund, error) {
 	fundPlaceholders := make([]string, len(fundIDs))
 	for i := range fundPlaceholders {
 		fundPlaceholders[i] = "?"
@@ -25,7 +25,7 @@ func (s *FundRepository) GetFunds(fundIDs []string) (map[string][]model.Fund, er
 	// Retrieve all funds based on returned portfolio_fund IDs
 	fundQuery := `
       SELECT id, name, isin, symbol, currency, exchange, investment_type, dividend_type
-      FROM 'fund'
+      FROM fund
       WHERE id IN (` + strings.Join(fundPlaceholders, ",") + `)
   `
 
@@ -40,7 +40,7 @@ func (s *FundRepository) GetFunds(fundIDs []string) (map[string][]model.Fund, er
 	}
 	defer rows.Close()
 
-	fundsByPortfolio := make(map[string][]model.Fund)
+	var fundsByPortfolio []model.Fund
 
 	for rows.Next() {
 		var f model.Fund
@@ -59,10 +59,10 @@ func (s *FundRepository) GetFunds(fundIDs []string) (map[string][]model.Fund, er
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan fund table results: %w", err)
 		}
-
-		if err = rows.Err(); err != nil {
-			return nil, fmt.Errorf("error iterating fund table: %w", err)
-		}
+		fundsByPortfolio = append(fundsByPortfolio, f)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating fund table: %w", err)
 	}
 
 	return fundsByPortfolio, nil
@@ -78,7 +78,7 @@ func (s *FundRepository) GetFundPrice(fundIDs []string) (map[string][]model.Fund
 	// Retrieve all funds based on returned portfolio_fund IDs
 	fundPriceQuery := `
 		SELECT id, fund_id, date, price
-		FROM 'fund_price'
+		FROM fund_price
 		WHERE fund_id IN (` + strings.Join(fundPricePlaceholders, ",") + `)
 		ORDER BY fund_id ASC,date DESC
 	`
@@ -116,11 +116,10 @@ func (s *FundRepository) GetFundPrice(fundIDs []string) (map[string][]model.Fund
 			return nil, fmt.Errorf("failed to parse date: %w", err)
 		}
 
-		if err = rows.Err(); err != nil {
-			return nil, fmt.Errorf("error iterating fund table: %w", err)
-		}
-
 		fundPriceByFund[fp.FundID] = append(fundPriceByFund[fp.FundID], fp)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating fund table: %w", err)
 	}
 
 	return fundPriceByFund, nil

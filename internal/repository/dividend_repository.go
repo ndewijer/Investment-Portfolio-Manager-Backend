@@ -93,9 +93,9 @@ func (s *DividendRepository) GetDividend(pfIDs []string, portfolioFundToPortfoli
 		portfolioID := portfolioFundToPortfolio[t.PortfolioFundID]
 		dividendByPortfolio[portfolioID] = append(dividendByPortfolio[portfolioID], t)
 
-		if err = rows.Err(); err != nil {
-			return nil, fmt.Errorf("error iterating dividend table: %w", err)
-		}
+	}
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating dividend table: %w", err)
 	}
 
 	return dividendByPortfolio, nil

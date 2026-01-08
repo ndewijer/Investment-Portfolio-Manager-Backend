@@ -33,7 +33,8 @@ func (h *PortfolioHandler) Portfolios(w http.ResponseWriter, r *http.Request) {
 	portfolios, err := h.portfolioService.GetAllPortfolios()
 	if err != nil {
 		errorResponse := map[string]string{
-			"error": err.Error(),
+			"error":  "Failed to retreive portfolios",
+			"detail": err.Error(),
 		}
 		respondJSON(w, http.StatusInternalServerError, errorResponse)
 		return
@@ -71,7 +72,8 @@ func (h *PortfolioHandler) PortfolioSummary(w http.ResponseWriter, r *http.Reque
 	portfolioSummary, err := h.portfolioService.GetPortfolioSummary()
 	if err != nil {
 		errorResponse := map[string]string{
-			"error": err.Error(),
+			"error":  "Failed to get portfolio summary",
+			"detail": err.Error(),
 		}
 		respondJSON(w, http.StatusInternalServerError, errorResponse)
 		return

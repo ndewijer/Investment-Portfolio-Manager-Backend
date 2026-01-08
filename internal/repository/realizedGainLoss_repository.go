@@ -30,7 +30,7 @@ func (s *RealizedGainLossRepository) GetRealizedGainLossByPortfolio(portfolio []
 	realizedGainLossQuery := `
 		SELECT id, portfolio_id, fund_id, transaction_id, transaction_date, shares_sold, cost_basis,
 		sale_proceeds, realized_gain_loss, created_at
-		FROM 'realized_gain_loss'
+		FROM realized_gain_loss
 		WHERE portfolio_id IN (` + strings.Join(realizedGainLossPlaceholders, ",") + `)
 		ORDER BY created_at ASC
 	`
@@ -80,9 +80,9 @@ func (s *RealizedGainLossRepository) GetRealizedGainLossByPortfolio(portfolio []
 
 		realizedGainLosssByPortfolio[r.PortfolioID] = append(realizedGainLosssByPortfolio[r.PortfolioID], r)
 
-		if err = rows.Err(); err != nil {
-			return nil, fmt.Errorf("error iterating realizedGainLoss table: %w", err)
-		}
+	}
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating realizedGainLoss table: %w", err)
 	}
 
 	return realizedGainLosssByPortfolio, nil
