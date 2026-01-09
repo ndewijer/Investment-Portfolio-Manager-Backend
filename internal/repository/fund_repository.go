@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 )
@@ -29,7 +30,7 @@ func (s *FundRepository) GetFund(fundIDs []string) ([]model.Fund, error) {
       WHERE id IN (` + strings.Join(fundPlaceholders, ",") + `)
   `
 
-	fundArgs := make([]interface{}, len(fundIDs))
+	fundArgs := make([]any, len(fundIDs))
 	for i, id := range fundIDs {
 		fundArgs[i] = id
 	}
@@ -68,11 +69,18 @@ func (s *FundRepository) GetFund(fundIDs []string) ([]model.Fund, error) {
 	return fundsByPortfolio, nil
 }
 
-func (s *FundRepository) GetFundPrice(fundIDs []string) (map[string][]model.FundPrice, error) {
+func (s *FundRepository) GetFundPrice(fundIDs []string, startDate, endDate time.Time, asc bool) (map[string][]model.FundPrice, error) {
 
 	fundPricePlaceholders := make([]string, len(fundIDs))
 	for i := range fundPricePlaceholders {
 		fundPricePlaceholders[i] = "?"
+	}
+
+	var ascSetting string
+	if asc {
+		ascSetting = "ASC"
+	} else {
+		ascSetting = "DESC"
 	}
 
 	// Retrieve all funds based on returned portfolio_fund IDs
@@ -80,10 +88,11 @@ func (s *FundRepository) GetFundPrice(fundIDs []string) (map[string][]model.Fund
 		SELECT id, fund_id, date, price
 		FROM fund_price
 		WHERE fund_id IN (` + strings.Join(fundPricePlaceholders, ",") + `)
-		ORDER BY fund_id ASC,date DESC
+		AND date > '` + startDate.String() + `' and date < '` + endDate.String() + `'
+		ORDER BY fund_id ASC,date ` + ascSetting + `
 	`
 
-	fundPriceArgs := make([]interface{}, len(fundIDs))
+	fundPriceArgs := make([]any, len(fundIDs))
 	for i, id := range fundIDs {
 		fundPriceArgs[i] = id
 	}

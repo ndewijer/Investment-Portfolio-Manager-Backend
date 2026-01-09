@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 )
@@ -16,7 +17,7 @@ func NewRealizedGainLossRepository(db *sql.DB) *RealizedGainLossRepository {
 	return &RealizedGainLossRepository{db: db}
 }
 
-func (s *RealizedGainLossRepository) GetRealizedGainLossByPortfolio(portfolio []model.Portfolio) (map[string][]model.RealizedGainLoss, error) {
+func (s *RealizedGainLossRepository) GetRealizedGainLossByPortfolio(portfolio []model.Portfolio, startDate, endDate time.Time) (map[string][]model.RealizedGainLoss, error) {
 	if len(portfolio) == 0 {
 		return make(map[string][]model.RealizedGainLoss), nil
 	}
@@ -32,10 +33,11 @@ func (s *RealizedGainLossRepository) GetRealizedGainLossByPortfolio(portfolio []
 		sale_proceeds, realized_gain_loss, created_at
 		FROM realized_gain_loss
 		WHERE portfolio_id IN (` + strings.Join(realizedGainLossPlaceholders, ",") + `)
+		AND transaction_date > '` + startDate.String() + `' and transaction_date < '` + endDate.String() + `'
 		ORDER BY created_at ASC
 	`
 
-	realizedGainLossdArgs := make([]interface{}, len(portfolio))
+	realizedGainLossdArgs := make([]any, len(portfolio))
 	for i, p := range portfolio {
 		realizedGainLossdArgs[i] = p.ID
 	}
