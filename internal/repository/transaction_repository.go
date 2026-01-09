@@ -87,7 +87,7 @@ func (s *TransactionRepository) GetTransactions(pfIDs []string, portfolioFundToP
 		fmt.Printf("ERROR during iteration: %v\n", err)
 		return nil, fmt.Errorf("error iterating transaction table: %w", err)
 	}
-	fmt.Println(transactionsByPortfolio)
+
 	return transactionsByPortfolio, nil
 }
 

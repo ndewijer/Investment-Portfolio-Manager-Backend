@@ -155,10 +155,10 @@ func (s *PortfolioService) GetPortfolioSummary() ([]PortfolioSummary, error) {
 
 type PortfolioHistory struct {
 	Date       string
-	Portfolios []PorfolioHistoryPortfolio
+	Portfolios []PortfolioHistoryPortfolio
 }
 
-type PorfolioHistoryPortfolio struct {
+type PortfolioHistoryPortfolio struct {
 	ID             string
 	Name           string
 	Value          float64
@@ -205,12 +205,32 @@ func (s *PortfolioService) GetPortfolioHistory(startDate, endDate time.Time) ([]
 		return nil, err
 	}
 
+	dividendsByPFByPortfolio := make(map[string]map[string][]model.Dividend)
+	transactionsByPFByPortfolio := make(map[string]map[string][]model.Transaction)
+	for _, portfolio := range portfolios {
+		dividendsByPF := make(map[string][]model.Dividend)
+		for _, div := range dividendByPortfolio[portfolio.ID] {
+			dividendsByPF[div.PortfolioFundID] = append(dividendsByPF[div.PortfolioFundID], div)
+		}
+		dividendsByPFByPortfolio[portfolio.ID] = dividendsByPF
+
+		transactionsByPF := make(map[string][]model.Transaction)
+		for _, tx := range transactionsByPortfolio[portfolio.ID] {
+			transactionsByPF[tx.PortfolioFundID] = append(transactionsByPF[tx.PortfolioFundID], tx)
+		}
+		transactionsByPFByPortfolio[portfolio.ID] = transactionsByPF
+	}
+
 	portfolioHistory := []PortfolioHistory{}
 	for date := startDate; !date.After(endDate); date = date.AddDate(0, 0, 1) {
 
-		porfolioHistoryPortfolio := []PorfolioHistoryPortfolio{}
+		portfolioHistoryPortfolio := []PortfolioHistoryPortfolio{}
 
 		for _, portfolio := range portfolios {
+
+			if len(transactionsByPortfolio[portfolio.ID]) == 0 {
+				continue
+			}
 
 			oldest := slices.MinFunc(transactionsByPortfolio[portfolio.ID], func(a, b model.Transaction) int {
 				return a.Date.Compare(b.Date)
@@ -219,15 +239,8 @@ func (s *PortfolioService) GetPortfolioHistory(startDate, endDate time.Time) ([]
 				continue
 			}
 
-			dividendsByPF := make(map[string][]model.Dividend)
-			for _, div := range dividendByPortfolio[portfolio.ID] {
-				dividendsByPF[div.PortfolioFundID] = append(dividendsByPF[div.PortfolioFundID], div)
-			}
-
-			transactionsByPF := make(map[string][]model.Transaction)
-			for _, tx := range transactionsByPortfolio[portfolio.ID] {
-				transactionsByPF[tx.PortfolioFundID] = append(transactionsByPF[tx.PortfolioFundID], tx)
-			}
+			dividendsByPF := dividendsByPFByPortfolio[portfolio.ID]
+			transactionsByPF := transactionsByPFByPortfolio[portfolio.ID]
 
 			totalDividendSharesPerPF, err := s.processDividendSharesForDate(dividendsByPF, transactionsByPortfolio[portfolio.ID], date)
 			if err != nil {
@@ -244,30 +257,25 @@ func (s *PortfolioService) GetPortfolioHistory(startDate, endDate time.Time) ([]
 				return nil, err
 			}
 
-			php := PorfolioHistoryPortfolio{
+			php := PortfolioHistoryPortfolio{
 
 				ID:             portfolio.ID,
 				Name:           portfolio.Name,
 				Value:          math.Round(transactionMetrics.TotalValue*RoundingPrecision) / RoundingPrecision,
 				Cost:           math.Round(transactionMetrics.TotalCost*RoundingPrecision) / RoundingPrecision,
-				RealizedGain:   math.Round((transactionMetrics.TotalValue-transactionMetrics.TotalCost)*RoundingPrecision) / RoundingPrecision,
-				UnrealizedGain: math.Round(totalRealizedGainLoss*RoundingPrecision) / RoundingPrecision,
+				RealizedGain:   math.Round(totalRealizedGainLoss*RoundingPrecision) / RoundingPrecision,
+				UnrealizedGain: math.Round((transactionMetrics.TotalValue-transactionMetrics.TotalCost)*RoundingPrecision) / RoundingPrecision,
 			}
 
-			porfolioHistoryPortfolio = append(porfolioHistoryPortfolio, php)
+			portfolioHistoryPortfolio = append(portfolioHistoryPortfolio, php)
 
 		}
 		ph := PortfolioHistory{
 			Date:       date.Format("2006-01-02"),
-			Portfolios: porfolioHistoryPortfolio,
+			Portfolios: portfolioHistoryPortfolio,
 		}
 		portfolioHistory = append(portfolioHistory, ph)
 	}
-
-	_ = transactionsByPortfolio
-	_ = dividendByPortfolio
-	_ = fundPriceByFund
-	_ = realizedGainLossByPortfolio
 
 	return portfolioHistory, nil
 }
@@ -319,11 +327,11 @@ func (s *PortfolioService) loadDividend(pfIDs []string, portfolioFundToPortfolio
 func (s *PortfolioService) loadAllFundPrices(fundIDs []string) (map[string][]model.FundPrice, error) {
 	startDate, _ := time.Parse("2006-01-02", "1970-01-01")
 	endDate := time.Now()
-	return s.fundRepo.GetFundPrice(fundIDs, startDate, endDate, false)
+	return s.fundRepo.GetFundPrice(fundIDs, startDate, endDate)
 }
 
 func (s *PortfolioService) loadFundPrices(fundIDs []string, startDate, endDate time.Time) (map[string][]model.FundPrice, error) {
-	return s.fundRepo.GetFundPrice(fundIDs, startDate, endDate, true)
+	return s.fundRepo.GetFundPrice(fundIDs, startDate, endDate)
 }
 
 func (s *PortfolioService) loadAllRealizedGainLoss(portfolio []model.Portfolio) (map[string][]model.RealizedGainLoss, error) {

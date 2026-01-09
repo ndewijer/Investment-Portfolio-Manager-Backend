@@ -69,18 +69,11 @@ func (s *FundRepository) GetFund(fundIDs []string) ([]model.Fund, error) {
 	return fundsByPortfolio, nil
 }
 
-func (s *FundRepository) GetFundPrice(fundIDs []string, startDate, endDate time.Time, asc bool) (map[string][]model.FundPrice, error) {
+func (s *FundRepository) GetFundPrice(fundIDs []string, startDate, endDate time.Time) (map[string][]model.FundPrice, error) {
 
 	fundPricePlaceholders := make([]string, len(fundIDs))
 	for i := range fundPricePlaceholders {
 		fundPricePlaceholders[i] = "?"
-	}
-
-	var ascSetting string
-	if asc {
-		ascSetting = "ASC"
-	} else {
-		ascSetting = "DESC"
 	}
 
 	// Retrieve all funds based on returned portfolio_fund IDs
@@ -89,7 +82,7 @@ func (s *FundRepository) GetFundPrice(fundIDs []string, startDate, endDate time.
 		FROM fund_price
 		WHERE fund_id IN (` + strings.Join(fundPricePlaceholders, ",") + `)
 		AND date >= '` + startDate.Format("2006-01-02") + `' and date <= '` + endDate.Format("2006-01-02") + `'
-		ORDER BY fund_id ASC,date ` + ascSetting + `
+		ORDER BY fund_id ASC,date DESC
 	`
 
 	fundPriceArgs := make([]any, len(fundIDs))

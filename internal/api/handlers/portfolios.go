@@ -101,19 +101,18 @@ func (h *PortfolioHandler) PortfolioSummary(w http.ResponseWriter, r *http.Reque
 }
 
 type PortfolioHistoryResponse struct {
-	Date       string                             `json:"date"`
-	Portfolios []service.PorfolioHistoryPortfolio `json:"portfolios"`
-	// Portfolios []PortfolioHistoryPortfolioResponse `json:"portfolios"`
+	Date       string                              `json:"date"`
+	Portfolios []PortfolioHistoryPortfolioResponse `json:"portfolios"`
 }
 
-// type PortfolioHistoryPortfolioResponse struct {
-// 	ID             string  `json:"id"`
-// 	Name           string  `json:"name"`
-// 	Value          float64 `json:"value"`
-// 	Cost           float64 `json:"cost"`
-// 	RealizedGain   float64 `json:"realized_gain"`
-// 	UnrealizedGain float64 `json:"unrealized_gain"`
-// }
+type PortfolioHistoryPortfolioResponse struct {
+	ID             string  `json:"id"`
+	Name           string  `json:"name"`
+	Value          float64 `json:"value"`
+	Cost           float64 `json:"cost"`
+	RealizedGain   float64 `json:"realized_gain"`
+	UnrealizedGain float64 `json:"unrealized_gain"`
+}
 
 func (h *PortfolioHandler) PortfolioHistory(w http.ResponseWriter, r *http.Request) {
 	var startDate, endDate time.Time
@@ -179,9 +178,20 @@ func (h *PortfolioHandler) PortfolioHistory(w http.ResponseWriter, r *http.Reque
 
 	response := make([]PortfolioHistoryResponse, len(portfolioHistory))
 	for i, p := range portfolioHistory {
+		subResponse := make([]PortfolioHistoryPortfolioResponse, len(p.Portfolios))
+		for j, q := range p.Portfolios {
+			subResponse[j] = PortfolioHistoryPortfolioResponse{
+				ID:             q.ID,
+				Name:           q.Name,
+				Value:          q.Value,
+				Cost:           q.Cost,
+				RealizedGain:   q.RealizedGain,
+				UnrealizedGain: q.UnrealizedGain,
+			}
+		}
 		response[i] = PortfolioHistoryResponse{
 			Date:       p.Date,
-			Portfolios: p.Portfolios,
+			Portfolios: subResponse,
 		}
 	}
 
