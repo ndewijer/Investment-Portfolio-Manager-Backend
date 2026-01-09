@@ -32,7 +32,7 @@ func (s *TransactionRepository) GetTransactions(pfIDs []string, portfolioFundToP
 		SELECT id, portfolio_fund_id, date, type, shares, cost_per_share, created_at
 		FROM "transaction"
 		WHERE portfolio_fund_id IN (` + strings.Join(transactionPlaceholders, ",") + `)
-		AND date > '` + startDate.String() + `' and date < '` + endDate.String() + `'
+		AND date >= '` + startDate.Format("2006-01-02") + `' and date <= '` + endDate.Format("2006-01-02") + `'
 		ORDER BY date ASC
 	`
 
@@ -87,7 +87,7 @@ func (s *TransactionRepository) GetTransactions(pfIDs []string, portfolioFundToP
 		fmt.Printf("ERROR during iteration: %v\n", err)
 		return nil, fmt.Errorf("error iterating transaction table: %w", err)
 	}
-
+	fmt.Println(transactionsByPortfolio)
 	return transactionsByPortfolio, nil
 }
 

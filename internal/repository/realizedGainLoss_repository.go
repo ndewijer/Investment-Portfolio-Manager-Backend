@@ -33,7 +33,7 @@ func (s *RealizedGainLossRepository) GetRealizedGainLossByPortfolio(portfolio []
 		sale_proceeds, realized_gain_loss, created_at
 		FROM realized_gain_loss
 		WHERE portfolio_id IN (` + strings.Join(realizedGainLossPlaceholders, ",") + `)
-		AND transaction_date > '` + startDate.String() + `' and transaction_date < '` + endDate.String() + `'
+		AND transaction_date >= '` + startDate.Format("2006-01-02") + `' and transaction_date <= '` + endDate.Format("2006-01-02") + `'
 		ORDER BY created_at ASC
 	`
 

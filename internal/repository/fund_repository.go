@@ -88,7 +88,7 @@ func (s *FundRepository) GetFundPrice(fundIDs []string, startDate, endDate time.
 		SELECT id, fund_id, date, price
 		FROM fund_price
 		WHERE fund_id IN (` + strings.Join(fundPricePlaceholders, ",") + `)
-		AND date > '` + startDate.String() + `' and date < '` + endDate.String() + `'
+		AND date >= '` + startDate.Format("2006-01-02") + `' and date <= '` + endDate.Format("2006-01-02") + `'
 		ORDER BY fund_id ASC,date ` + ascSetting + `
 	`
 

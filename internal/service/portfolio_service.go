@@ -213,7 +213,7 @@ func (s *PortfolioService) GetPortfolioHistory(startDate, endDate time.Time) ([]
 		for _, portfolio := range portfolios {
 
 			oldest := slices.MinFunc(transactionsByPortfolio[portfolio.ID], func(a, b model.Transaction) int {
-				return a.Date.Compare(b.Date) // Simpler with Go 1.20+
+				return a.Date.Compare(b.Date)
 			})
 			if oldest.Date.After(date) {
 				continue
