@@ -167,7 +167,7 @@ type PortfolioHistoryPortfolio struct {
 	UnrealizedGain float64
 }
 
-func (s *PortfolioService) GetPortfolioHistory(startDate, endDate time.Time) ([]PortfolioHistory, error) {
+func (s *PortfolioService) GetPortfolioHistory(requestedStartDate, requestedEndDate time.Time) ([]PortfolioHistory, error) {
 
 	portfolios, err := s.loadActivePortfolios()
 	if err != nil {
@@ -181,29 +181,34 @@ func (s *PortfolioService) GetPortfolioHistory(startDate, endDate time.Time) ([]
 
 	oldestTransactionDate := s.getOldestTransaction(pfIDs)
 
-	if oldestTransactionDate.After(startDate) {
-		startDate = oldestTransactionDate
+	dataStartDate := oldestTransactionDate
+	dataEndDate := time.Now()
+
+	displayStartDate := requestedStartDate
+	displayEndDate := requestedEndDate
+	if displayStartDate.Before(dataStartDate) {
+		displayStartDate = dataStartDate
 	}
-	if endDate.After(time.Now()) {
-		endDate = time.Now()
+	if displayEndDate.After(dataEndDate) {
+		displayEndDate = dataEndDate
 	}
 
-	transactionsByPortfolio, err := s.loadTransactions(pfIDs, portfolioFundToPortfolio, startDate, endDate)
+	transactionsByPortfolio, err := s.loadTransactions(pfIDs, portfolioFundToPortfolio, dataStartDate, dataEndDate)
 	if err != nil {
 		return nil, err
 	}
 
-	dividendByPortfolio, err := s.loadDividend(pfIDs, portfolioFundToPortfolio, startDate, endDate)
+	dividendByPortfolio, err := s.loadDividend(pfIDs, portfolioFundToPortfolio, dataStartDate, dataEndDate)
 	if err != nil {
 		return nil, err
 	}
 
-	fundPriceByFund, err := s.loadFundPrices(fundIDs, startDate, endDate)
+	fundPriceByFund, err := s.loadFundPrices(fundIDs, dataStartDate, dataEndDate)
 	if err != nil {
 		return nil, err
 	}
 
-	realizedGainLossByPortfolio, err := s.loadRealizedGainLoss(portfolios, startDate, endDate)
+	realizedGainLossByPortfolio, err := s.loadRealizedGainLoss(portfolios, dataStartDate, dataEndDate)
 	if err != nil {
 		return nil, err
 	}
@@ -225,7 +230,7 @@ func (s *PortfolioService) GetPortfolioHistory(startDate, endDate time.Time) ([]
 	}
 
 	portfolioHistory := []PortfolioHistory{}
-	for date := startDate; !date.After(endDate); date = date.AddDate(0, 0, 1) {
+	for date := dataStartDate; !date.After(dataEndDate); date = date.AddDate(0, 0, 1) {
 
 		portfolioHistoryPortfolio := []PortfolioHistoryPortfolio{}
 
@@ -273,11 +278,14 @@ func (s *PortfolioService) GetPortfolioHistory(startDate, endDate time.Time) ([]
 			portfolioHistoryPortfolio = append(portfolioHistoryPortfolio, php)
 
 		}
-		ph := PortfolioHistory{
-			Date:       date.Format("2006-01-02"),
-			Portfolios: portfolioHistoryPortfolio,
+		if (date.After(displayStartDate) || date.Equal(displayStartDate)) &&
+			(date.Before(displayEndDate) || date.Equal(displayEndDate)) {
+			ph := PortfolioHistory{
+				Date:       date.Format("2006-01-02"),
+				Portfolios: portfolioHistoryPortfolio,
+			}
+			portfolioHistory = append(portfolioHistory, ph)
 		}
-		portfolioHistory = append(portfolioHistory, ph)
 	}
 
 	return portfolioHistory, nil
