@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 )
@@ -29,7 +30,7 @@ func (s *FundRepository) GetFund(fundIDs []string) ([]model.Fund, error) {
       WHERE id IN (` + strings.Join(fundPlaceholders, ",") + `)
   `
 
-	fundArgs := make([]interface{}, len(fundIDs))
+	fundArgs := make([]any, len(fundIDs))
 	for i, id := range fundIDs {
 		fundArgs[i] = id
 	}
@@ -68,25 +69,35 @@ func (s *FundRepository) GetFund(fundIDs []string) ([]model.Fund, error) {
 	return fundsByPortfolio, nil
 }
 
-func (s *FundRepository) GetFundPrice(fundIDs []string) (map[string][]model.FundPrice, error) {
+func (s *FundRepository) GetFundPrice(fundIDs []string, startDate, endDate time.Time, sortOrder string) (map[string][]model.FundPrice, error) {
 
 	fundPricePlaceholders := make([]string, len(fundIDs))
 	for i := range fundPricePlaceholders {
 		fundPricePlaceholders[i] = "?"
 	}
 
-	// Retrieve all funds based on returned portfolio_fund IDs
-	fundPriceQuery := `
-		SELECT id, fund_id, date, price
-		FROM fund_price
-		WHERE fund_id IN (` + strings.Join(fundPricePlaceholders, ",") + `)
-		ORDER BY fund_id ASC,date DESC
-	`
-
-	fundPriceArgs := make([]interface{}, len(fundIDs))
-	for i, id := range fundIDs {
-		fundPriceArgs[i] = id
+	// Validate and sanitize sortOrder (can't be parameterized)
+	if strings.ToUpper(sortOrder) != "ASC" && strings.ToUpper(sortOrder) != "DESC" {
+		sortOrder = "DESC"
 	}
+
+	// Build query with sortOrder directly in the string
+	fundPriceQuery := `
+    SELECT id, fund_id, date, price
+    FROM fund_price
+    WHERE fund_id IN (` + strings.Join(fundPricePlaceholders, ",") + `)
+    AND date >= ?
+    AND date <= ?
+    ORDER BY fund_id ASC, date ` + sortOrder + `
+`
+
+	// Build args: fundIDs first, then startDate, then endDate
+	fundPriceArgs := make([]any, 0, len(fundIDs)+2)
+	for _, id := range fundIDs {
+		fundPriceArgs = append(fundPriceArgs, id)
+	}
+	fundPriceArgs = append(fundPriceArgs, startDate.Format("2006-01-02"))
+	fundPriceArgs = append(fundPriceArgs, endDate.Format("2006-01-02"))
 
 	rows, err := s.db.Query(fundPriceQuery, fundPriceArgs...)
 	if err != nil {

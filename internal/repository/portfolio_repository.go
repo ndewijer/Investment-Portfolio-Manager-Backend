@@ -89,7 +89,7 @@ func (s *PortfolioRepository) GetPortfolioFundsOnPortfolioID(portfolios []model.
 	`
 
 	// Extract portfolio IDs
-	fundArgs := make([]interface{}, len(portfolios))
+	fundArgs := make([]any, len(portfolios))
 	for i, p := range portfolios {
 		fundArgs[i] = p.ID
 	}
