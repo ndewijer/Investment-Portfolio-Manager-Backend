@@ -9,14 +9,19 @@ import (
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 )
 
+// FundRepository provides data access methods for fund and fund_price tables.
+// It handles retrieving fund metadata and historical price data.
 type FundRepository struct {
 	db *sql.DB
 }
 
+// NewFundRepository creates a new FundRepository with the provided database connection.
 func NewFundRepository(db *sql.DB) *FundRepository {
 	return &FundRepository{db: db}
 }
 
+// GetFund retrieves fund records for the given fund IDs.
+// Returns a slice of Fund objects containing metadata like name, ISIN, symbol, currency, etc.
 func (s *FundRepository) GetFund(fundIDs []string) ([]model.Fund, error) {
 	fundPlaceholders := make([]string, len(fundIDs))
 	for i := range fundPlaceholders {
@@ -69,6 +74,19 @@ func (s *FundRepository) GetFund(fundIDs []string) ([]model.Fund, error) {
 	return fundsByPortfolio, nil
 }
 
+// GetFundPrice retrieves historical price data for the given fund IDs within the specified date range.
+//
+// Parameters:
+//   - fundIDs: slice of fund IDs to query
+//   - startDate: inclusive start date for the query
+//   - endDate: inclusive end date for the query
+//   - sortOrder: "ASC" or "DESC" for date ordering (defaults to "DESC" if invalid)
+//
+// The sortOrder parameter controls how prices are sorted by date within each fund group:
+//   - "ASC": oldest first - efficient for date-aware lookups (getPriceForDate)
+//   - "DESC": newest first - efficient for latest-price lookups
+//
+// Returns a map of fundID -> []FundPrice, grouped by fund and sorted by date according to sortOrder.
 func (s *FundRepository) GetFundPrice(fundIDs []string, startDate, endDate time.Time, sortOrder string) (map[string][]model.FundPrice, error) {
 
 	fundPricePlaceholders := make([]string, len(fundIDs))

@@ -9,14 +9,28 @@ import (
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 )
 
+// RealizedGainLossRepository provides data access methods for the realized_gain_loss table.
+// It handles retrieving records of gains and losses from sold positions.
 type RealizedGainLossRepository struct {
 	db *sql.DB
 }
 
+// NewRealizedGainLossRepository creates a new RealizedGainLossRepository with the provided database connection.
 func NewRealizedGainLossRepository(db *sql.DB) *RealizedGainLossRepository {
 	return &RealizedGainLossRepository{db: db}
 }
 
+// GetRealizedGainLossByPortfolio retrieves all realized gain/loss records for the given portfolios within the specified date range.
+// Records are filtered by transaction_date and sorted in ascending order by created_at.
+//
+// Parameters:
+//   - portfolio: slice of portfolios to query
+//   - startDate: inclusive start date for the query (compared against transaction_date)
+//   - endDate: inclusive end date for the query (compared against transaction_date)
+//
+// Returns a map of portfolioID -> []RealizedGainLoss. If portfolio is empty, returns an empty map.
+// Each record contains details about a sell transaction including shares sold, cost basis,
+// sale proceeds, and the calculated realized gain or loss.
 func (s *RealizedGainLossRepository) GetRealizedGainLossByPortfolio(portfolio []model.Portfolio, startDate, endDate time.Time) (map[string][]model.RealizedGainLoss, error) {
 	if len(portfolio) == 0 {
 		return make(map[string][]model.RealizedGainLoss), nil
