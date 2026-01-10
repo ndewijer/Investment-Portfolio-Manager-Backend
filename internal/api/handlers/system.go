@@ -46,15 +46,32 @@ func (h *SystemHandler) Health(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, response)
 }
 
-type VersionResponse struct {
-	VersionInfo string `json:"version_info"`
+type VersionInfoResponse struct {
+	AppVersion       string          `json:"app_version"`
+	DbVersion        string          `json:"db_version"`
+	Features         map[string]bool `json:"features"`
+	MigrationNeeded  bool            `json:"migration_needed"`
+	MigrationMessage *string         `json:"migration_message"`
 }
 
 func (h *SystemHandler) Version(w http.ResponseWriter, r *http.Request) {
-	version := h.systemService.CheckVersion()
-
-	response := VersionResponse{
-		VersionInfo: version,
+	version, err := h.systemService.CheckVersion()
+	if err != nil {
+		errorResponse := map[string]string{
+			"error":  "Failed to get version information",
+			"detail": err.Error(),
+		}
+		respondJSON(w, http.StatusInternalServerError, errorResponse)
+		return
 	}
+
+	response := VersionInfoResponse{
+		AppVersion:       version.AppVersion,
+		DbVersion:        version.DbVersion,
+		Features:         version.Features,
+		MigrationNeeded:  version.MigrationNeeded,
+		MigrationMessage: version.MigrationMessage,
+	}
+
 	respondJSON(w, http.StatusOK, response)
 }
