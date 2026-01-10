@@ -118,22 +118,8 @@ func (h *PortfolioHandler) PortfolioHistory(w http.ResponseWriter, r *http.Reque
 	var startDate, endDate time.Time
 	var err error
 
-	if r.URL.Query().Get("start_date") == "" && r.URL.Query().Get("end_date") == "" {
-
-		respondJSON(w, http.StatusBadRequest, "start_date and/or end_date are required")
-		return
-	}
-
 	if r.URL.Query().Get("start_date") == "" {
-		startDate, err = time.Parse("2006-01-02", "1970-01-01")
-		if err != nil {
-			errorResponse := map[string]string{
-				"error":  "Could not set empty start_date to 1970-01-01",
-				"detail": err.Error(),
-			}
-			respondJSON(w, http.StatusBadRequest, errorResponse)
-			return
-		}
+		startDate, _ = time.Parse("2006-01-02", "1970-01-01")
 	} else {
 		startDate, err = time.Parse("2006-01-02", r.URL.Query().Get("start_date"))
 		if err != nil {

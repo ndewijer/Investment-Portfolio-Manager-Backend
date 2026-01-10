@@ -33,14 +33,18 @@ func (s *DividendRepository) GetDividend(pfIDs []string, portfolioFundToPortfoli
 		dividend_per_share, total_amount, reinvestment_status, buy_order_date, reinvestment_transaction_id, created_at
 		FROM dividend
 		WHERE portfolio_fund_id IN (` + strings.Join(dividendPlaceholders, ",") + `)
-		AND ex_dividend_date >= '` + startDate.Format("2006-01-02") + `' and ex_dividend_date <= '` + endDate.Format("2006-01-02") + `'
+		AND ex_dividend_date >= ?
+		AND ex_dividend_date <= ?
 		ORDER BY ex_dividend_date ASC
 	`
 
-	dividendArgs := make([]any, len(pfIDs))
-	for i, id := range pfIDs {
-		dividendArgs[i] = id
+	// Build args: pfIDs first, then startDate, then endDate
+	dividendArgs := make([]any, 0, len(pfIDs)+2)
+	for _, id := range pfIDs {
+		dividendArgs = append(dividendArgs, id)
 	}
+	dividendArgs = append(dividendArgs, startDate.Format("2006-01-02"))
+	dividendArgs = append(dividendArgs, endDate.Format("2006-01-02"))
 
 	rows, err := s.db.Query(dividendQuery, dividendArgs...)
 	if err != nil {

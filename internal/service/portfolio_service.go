@@ -184,6 +184,9 @@ func (s *PortfolioService) GetPortfolioHistory(startDate, endDate time.Time) ([]
 	if oldestTransactionDate.After(startDate) {
 		startDate = oldestTransactionDate
 	}
+	if endDate.After(time.Now()) {
+		endDate = time.Now()
+	}
 
 	transactionsByPortfolio, err := s.loadTransactions(pfIDs, portfolioFundToPortfolio, startDate, endDate)
 	if err != nil {
@@ -327,11 +330,11 @@ func (s *PortfolioService) loadDividend(pfIDs []string, portfolioFundToPortfolio
 func (s *PortfolioService) loadAllFundPrices(fundIDs []string) (map[string][]model.FundPrice, error) {
 	startDate, _ := time.Parse("2006-01-02", "1970-01-01")
 	endDate := time.Now()
-	return s.fundRepo.GetFundPrice(fundIDs, startDate, endDate)
+	return s.fundRepo.GetFundPrice(fundIDs, startDate, endDate, "desc")
 }
 
 func (s *PortfolioService) loadFundPrices(fundIDs []string, startDate, endDate time.Time) (map[string][]model.FundPrice, error) {
-	return s.fundRepo.GetFundPrice(fundIDs, startDate, endDate)
+	return s.fundRepo.GetFundPrice(fundIDs, startDate, endDate, "asc")
 }
 
 func (s *PortfolioService) loadAllRealizedGainLoss(portfolio []model.Portfolio) (map[string][]model.RealizedGainLoss, error) {
@@ -408,6 +411,21 @@ func (s *PortfolioService) processDividendAmountForDate(dividend []model.Dividen
 	return totalDividend, nil
 }
 
+func (s *PortfolioService) getPriceForDate(prices []model.FundPrice, targetDate time.Time) float64 {
+	var latestPrice float64 = 0
+
+	// Prices are sorted ASC, so iterate forward
+	for _, price := range prices {
+		if price.Date.Before(targetDate) || price.Date.Equal(targetDate) {
+			latestPrice = price.Price // Keep updating with more recent prices
+		} else {
+			break // We've passed the target date, stop
+		}
+	}
+
+	return latestPrice
+}
+
 func (s *PortfolioService) processTransactionsForDate(transactionsMap map[string][]model.Transaction, dividendShares map[string]float64, fundMapping map[string]string, fundPriceByFund map[string][]model.FundPrice, date time.Time) (TransactionMetrics, error) {
 	if len(transactionsMap) == 0 {
 		return TransactionMetrics{}, nil
@@ -449,9 +467,11 @@ func (s *PortfolioService) processTransactionsForDate(transactionsMap map[string
 		prices := fundPriceByFund[fundID]
 
 		if len(prices) > 0 {
-			latestPrice := prices[0].Price
-			value = shares * latestPrice
-			totalValue += value
+			latestPrice := s.getPriceForDate(prices, date)
+			if latestPrice > 0 {
+				value = shares * latestPrice
+				totalValue += value
+			}
 		}
 
 		totalShares += shares

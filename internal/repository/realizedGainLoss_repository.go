@@ -33,14 +33,18 @@ func (s *RealizedGainLossRepository) GetRealizedGainLossByPortfolio(portfolio []
 		sale_proceeds, realized_gain_loss, created_at
 		FROM realized_gain_loss
 		WHERE portfolio_id IN (` + strings.Join(realizedGainLossPlaceholders, ",") + `)
-		AND transaction_date >= '` + startDate.Format("2006-01-02") + `' and transaction_date <= '` + endDate.Format("2006-01-02") + `'
+		AND transaction_date >= ?
+		AND transaction_date <= ?
 		ORDER BY created_at ASC
 	`
 
-	realizedGainLossdArgs := make([]any, len(portfolio))
-	for i, p := range portfolio {
-		realizedGainLossdArgs[i] = p.ID
+	// Build args: portfolio first, then startDate, then endDate
+	realizedGainLossdArgs := make([]any, 0, len(portfolio)+2)
+	for _, pf := range portfolio {
+		realizedGainLossdArgs = append(realizedGainLossdArgs, pf.ID)
 	}
+	realizedGainLossdArgs = append(realizedGainLossdArgs, startDate.Format("2006-01-02"))
+	realizedGainLossdArgs = append(realizedGainLossdArgs, endDate.Format("2006-01-02"))
 
 	rows, err := s.db.Query(realizedGainLossQuery, realizedGainLossdArgs...)
 	if err != nil {

@@ -32,14 +32,18 @@ func (s *TransactionRepository) GetTransactions(pfIDs []string, portfolioFundToP
 		SELECT id, portfolio_fund_id, date, type, shares, cost_per_share, created_at
 		FROM "transaction"
 		WHERE portfolio_fund_id IN (` + strings.Join(transactionPlaceholders, ",") + `)
-		AND date >= '` + startDate.Format("2006-01-02") + `' and date <= '` + endDate.Format("2006-01-02") + `'
+		AND date >= ?
+		AND date <= ?
 		ORDER BY date ASC
 	`
 
-	transactiondArgs := make([]any, len(pfIDs))
-	for i, id := range pfIDs {
-		transactiondArgs[i] = id
+	// Build args: pfIDs first, then startDate, then endDate
+	transactiondArgs := make([]any, 0, len(pfIDs)+2)
+	for _, id := range pfIDs {
+		transactiondArgs = append(transactiondArgs, id)
 	}
+	transactiondArgs = append(transactiondArgs, startDate.Format("2006-01-02"))
+	transactiondArgs = append(transactiondArgs, endDate.Format("2006-01-02"))
 
 	rows, err := s.db.Query(transactionQuery, transactiondArgs...)
 	if err != nil {
@@ -115,7 +119,6 @@ func (s *TransactionRepository) GetOldestTransaction(pfIDs []string) time.Time {
 
 	err := s.db.QueryRow(oldestTransactionQuery, oldestTransactionArgs...).Scan(&oldestDateStr)
 	if err != nil {
-		fmt.Println(err)
 		return time.Time{}
 	}
 
