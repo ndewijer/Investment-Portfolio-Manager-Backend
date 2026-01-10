@@ -9,14 +9,28 @@ import (
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 )
 
+// DividendRepository provides data access methods for the dividend table.
+// It handles retrieving dividend records and reinvestment information.
 type DividendRepository struct {
 	db *sql.DB
 }
 
+// NewDividendRepository creates a new DividendRepository with the provided database connection.
 func NewDividendRepository(db *sql.DB) *DividendRepository {
 	return &DividendRepository{db: db}
 }
 
+// GetDividend retrieves all dividends for the given portfolio_fund IDs within the specified date range.
+// Dividends are filtered by ex-dividend date and sorted in ascending order by that date.
+//
+// Parameters:
+//   - pfIDs: slice of portfolio_fund IDs to query
+//   - portfolioFundToPortfolio: map for translating portfolio_fund IDs to portfolio IDs
+//   - startDate: inclusive start date for the query (compared against ex_dividend_date)
+//   - endDate: inclusive end date for the query (compared against ex_dividend_date)
+//
+// Returns a map of portfolioID -> []Dividend. If pfIDs is empty, returns an empty map.
+// Handles nullable fields like buy_order_date and reinvestment_transaction_id appropriately.
 func (s *DividendRepository) GetDividend(pfIDs []string, portfolioFundToPortfolio map[string]string, startDate, endDate time.Time) (map[string][]model.Dividend, error) {
 	if len(pfIDs) == 0 {
 		return make(map[string][]model.Dividend), nil

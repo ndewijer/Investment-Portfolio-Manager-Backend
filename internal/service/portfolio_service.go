@@ -11,7 +11,10 @@ import (
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/repository"
 )
 
-// PortfolioService handles Portfolio-related operations
+// PortfolioService handles portfolio-related business logic operations.
+// It coordinates between multiple repositories to compute portfolio summaries,
+// historical valuations, and aggregate metrics across transactions, dividends,
+// fund prices, and realized gains/losses.
 type PortfolioService struct {
 	portfolioRepo        *repository.PortfolioRepository
 	transactionRepo      *repository.TransactionRepository
@@ -20,6 +23,8 @@ type PortfolioService struct {
 	realizedGainLossRepo *repository.RealizedGainLossRepository
 }
 
+// NewPortfolioService creates a new PortfolioService with the provided repository dependencies.
+// All repository parameters are required for proper portfolio calculations.
 func NewPortfolioService(
 	portfolioRepo *repository.PortfolioRepository,
 	transactionRepo *repository.TransactionRepository,
@@ -36,7 +41,8 @@ func NewPortfolioService(
 	}
 }
 
-// GetAllPortfolios retrieves all portfolios from the database (no filters)
+// GetAllPortfolios retrieves all portfolios from the database with no filters applied.
+// This includes both archived and excluded portfolios.
 func (s *PortfolioService) GetAllPortfolios() ([]model.Portfolio, error) {
 	return s.portfolioRepo.GetPortfolios(model.PortfolioFilter{
 		IncludeArchived: true,
@@ -44,33 +50,37 @@ func (s *PortfolioService) GetAllPortfolios() ([]model.Portfolio, error) {
 	})
 }
 
-// Struct for returning TransactionMetrics out off processTransactionsForDate()
+// TransactionMetrics aggregates calculated metrics from processing transactions for a specific date.
+// It is used internally by processTransactionsForDate to return all computed values in a single struct.
 type TransactionMetrics struct {
-	TotalShares    float64
-	TotalCost      float64
-	TotalValue     float64
-	TotalDividends float64
-	TotalFees      float64
+	TotalShares    float64 // Total number of shares held
+	TotalCost      float64 // Total cost basis
+	TotalValue     float64 // Total market value
+	TotalDividends float64 // Total dividend amounts
+	TotalFees      float64 // Total fees paid
 }
 
-// The struc that will be returned by GetPortfolioSummary
+// PortfolioSummary represents the current state of a portfolio as of now.
+// It includes valuation, cost basis, gains/losses (both realized and unrealized),
+// dividends, and sale information. All monetary values are rounded to two decimal places.
 type PortfolioSummary struct {
-	ID                      string
-	Name                    string
-	TotalValue              float64
-	TotalCost               float64
-	TotalDividends          float64
-	TotalUnrealizedGainLoss float64
-	TotalRealizedGainLoss   float64
-	TotalSaleProceeds       float64
-	TotalOriginalCost       float64
-	TotalGainLoss           float64
-	IsArchived              bool
+	ID                      string  // Portfolio unique identifier
+	Name                    string  // Portfolio display name
+	TotalValue              float64 // Current market value
+	TotalCost               float64 // Current cost basis
+	TotalDividends          float64 // Cumulative dividend amount
+	TotalUnrealizedGainLoss float64 // Unrealized gain/loss (value - cost)
+	TotalRealizedGainLoss   float64 // Realized gain/loss from sales
+	TotalSaleProceeds       float64 // Total proceeds from sales
+	TotalOriginalCost       float64 // Original cost of sold positions
+	TotalGainLoss           float64 // Combined realized + unrealized gain/loss
+	IsArchived              bool    // Whether portfolio is archived
 }
 
-// Gets portfolio summary from database
+// GetPortfolioSummary retrieves the current summary for all active portfolios.
+// It calculates current valuations, costs, dividends, and gains/losses as of the current time.
+// Only active (non-archived, non-excluded) portfolios are included in the results.
 func (s *PortfolioService) GetPortfolioSummary() ([]PortfolioSummary, error) {
-	// Load data
 	portfolios, err := s.loadActivePortfolios()
 	if err != nil {
 		return nil, err
@@ -153,20 +163,41 @@ func (s *PortfolioService) GetPortfolioSummary() ([]PortfolioSummary, error) {
 	return portfolioSummary, nil
 }
 
+// PortfolioHistory represents portfolio valuations for a single date.
+// It contains one entry per portfolio showing their state on that specific date.
 type PortfolioHistory struct {
-	Date       string
-	Portfolios []PortfolioHistoryPortfolio
+	Date       string                      // Date in YYYY-MM-DD format
+	Portfolios []PortfolioHistoryPortfolio // Portfolio states for this date
 }
 
+// PortfolioHistoryPortfolio represents a single portfolio's state on a specific date.
+// It includes valuation, cost basis, and both realized and unrealized gains.
 type PortfolioHistoryPortfolio struct {
-	ID             string
-	Name           string
-	Value          float64
-	Cost           float64
-	RealizedGain   float64
-	UnrealizedGain float64
+	ID             string  // Portfolio unique identifier
+	Name           string  // Portfolio display name
+	Value          float64 // Market value on this date
+	Cost           float64 // Cost basis on this date
+	RealizedGain   float64 // Realized gain/loss as of this date
+	UnrealizedGain float64 // Unrealized gain/loss on this date
 }
 
+// GetPortfolioHistory retrieves daily portfolio valuations for the requested date range.
+//
+// Data Loading Strategy:
+// To ensure accurate calculations, this method always loads the COMPLETE transaction history
+// from the oldest transaction to the present, regardless of the requested date range.
+// This is necessary because share counts and cost basis depend on all prior transactions.
+//
+// The requested date range is used only to filter which calculated results are returned,
+// not which data is loaded for calculations.
+//
+// Parameters:
+//   - requestedStartDate: First date to include in returned results
+//   - requestedEndDate: Last date to include in returned results
+//
+// The actual returned range will be clamped to:
+//   - Start: max(requestedStartDate, oldestTransactionDate)
+//   - End: min(requestedEndDate, today)
 func (s *PortfolioService) GetPortfolioHistory(requestedStartDate, requestedEndDate time.Time) ([]PortfolioHistory, error) {
 
 	portfolios, err := s.loadActivePortfolios()
@@ -203,7 +234,7 @@ func (s *PortfolioService) GetPortfolioHistory(requestedStartDate, requestedEndD
 		return nil, err
 	}
 
-	fundPriceByFund, err := s.loadFundPrices(fundIDs, dataStartDate, dataEndDate)
+	fundPriceByFund, err := s.loadFundPrices(fundIDs, dataStartDate, dataEndDate, "ASC")
 	if err != nil {
 		return nil, err
 	}
@@ -278,6 +309,7 @@ func (s *PortfolioService) GetPortfolioHistory(requestedStartDate, requestedEndD
 			portfolioHistoryPortfolio = append(portfolioHistoryPortfolio, php)
 
 		}
+
 		if (date.After(displayStartDate) || date.Equal(displayStartDate)) &&
 			(date.Before(displayEndDate) || date.Equal(displayEndDate)) {
 			ph := PortfolioHistory{
@@ -292,10 +324,15 @@ func (s *PortfolioService) GetPortfolioHistory(requestedStartDate, requestedEndD
 }
 
 //
-// SUPPORTING FUNCTIONS
+// DATA LOADING FUNCTIONS
+//
+// These functions load data from repositories for portfolio calculations.
+// Functions prefixed with "loadAll" retrieve complete historical datasets,
+// while others accept date range parameters.
 //
 
-// loadActivePortfolios retrieves only active, non-excluded portfolios
+// loadActivePortfolios retrieves only active, non-excluded portfolios.
+// Archived and excluded portfolios are filtered out.
 func (s *PortfolioService) loadActivePortfolios() ([]model.Portfolio, error) {
 	return s.portfolioRepo.GetPortfolios(model.PortfolioFilter{
 		IncludeArchived: false,
@@ -303,58 +340,93 @@ func (s *PortfolioService) loadActivePortfolios() ([]model.Portfolio, error) {
 	})
 }
 
+// getOldestTransaction returns the date of the earliest transaction across the given portfolio_fund IDs.
+// This is used to determine the earliest date for which portfolio calculations can be performed.
 func (s *PortfolioService) getOldestTransaction(pfIDs []string) time.Time {
 	return s.transactionRepo.GetOldestTransaction(pfIDs)
 }
 
-// loadPortfolioFunds retrieves all funds for the given portfolios
-// Returns: fundsByPortfolio map, portfolioFundToPortfolio map, pfIDs slice, error
+// loadAllPortfolioFunds retrieves all funds associated with the given portfolios.
+// Returns:
+//   - fundsByPortfolio: map[portfolioID][]Fund
+//   - portfolioFundToPortfolio: map[portfolioFundID]portfolioID
+//   - portfolioFundToFund: map[portfolioFundID]fundID
+//   - pfIDs: slice of all portfolio_fund IDs
+//   - fundIDs: slice of all unique fund IDs
+//   - error: any error encountered
 func (s *PortfolioService) loadAllPortfolioFunds(portfolios []model.Portfolio) (map[string][]model.Fund, map[string]string, map[string]string, []string, []string, error) {
 	return s.portfolioRepo.GetPortfolioFundsOnPortfolioID(portfolios)
 }
 
-// loadTransactions retrieves all transactions for the given portfolio_fund IDs
+// loadAllTransactions retrieves all transactions for the given portfolio_fund IDs from 1970 to now.
+// This loads the complete transaction history required for accurate portfolio calculations.
 func (s *PortfolioService) loadAllTransactions(pfIDs []string, portfolioFundToPortfolio map[string]string) (map[string][]model.Transaction, error) {
 	startDate, _ := time.Parse("2006-01-02", "1970-01-01")
 	endDate := time.Now()
 	return s.transactionRepo.GetTransactions(pfIDs, portfolioFundToPortfolio, startDate, endDate)
 }
 
+// loadTransactions retrieves transactions for the given portfolio_fund IDs within the specified date range.
+// Results are grouped by portfolio ID.
 func (s *PortfolioService) loadTransactions(pfIDs []string, portfolioFundToPortfolio map[string]string, startDate, endDate time.Time) (map[string][]model.Transaction, error) {
 	return s.transactionRepo.GetTransactions(pfIDs, portfolioFundToPortfolio, startDate, endDate)
 }
 
-// loadDividend retrieves all dividend for the given portfolio_fund IDs
+// loadAllDividend retrieves all dividends for the given portfolio_fund IDs from 1970 to now.
+// This loads the complete dividend history. Results are grouped by portfolio ID.
 func (s *PortfolioService) loadAllDividend(pfIDs []string, portfolioFundToPortfolio map[string]string) (map[string][]model.Dividend, error) {
 	startDate, _ := time.Parse("2006-01-02", "1970-01-01")
 	endDate := time.Now()
 	return s.dividendRepo.GetDividend(pfIDs, portfolioFundToPortfolio, startDate, endDate)
 }
+
+// loadDividend retrieves dividends for the given portfolio_fund IDs within the specified date range.
+// Results are grouped by portfolio ID.
 func (s *PortfolioService) loadDividend(pfIDs []string, portfolioFundToPortfolio map[string]string, startDate, endDate time.Time) (map[string][]model.Dividend, error) {
 	return s.dividendRepo.GetDividend(pfIDs, portfolioFundToPortfolio, startDate, endDate)
 }
 
-// loadDividend retrieves all dividend for the given portfolio_fund IDs
+// loadAllFundPrices retrieves all fund prices for the given fund IDs from 1970 to now.
+// Prices are sorted in DESC order (most recent first) for efficient latest-price lookups.
+// Results are grouped by fund ID.
 func (s *PortfolioService) loadAllFundPrices(fundIDs []string) (map[string][]model.FundPrice, error) {
 	startDate, _ := time.Parse("2006-01-02", "1970-01-01")
 	endDate := time.Now()
-	return s.fundRepo.GetFundPrice(fundIDs, startDate, endDate, "desc")
+	return s.fundRepo.GetFundPrice(fundIDs, startDate, endDate, "ASC")
 }
 
-func (s *PortfolioService) loadFundPrices(fundIDs []string, startDate, endDate time.Time) (map[string][]model.FundPrice, error) {
-	return s.fundRepo.GetFundPrice(fundIDs, startDate, endDate, "asc")
+// loadFundPrices retrieves fund prices for the given fund IDs within the specified date range.
+// Prices are sorted flexibility based on need. (ASC or DESC)
+// Results are grouped by fund ID.
+func (s *PortfolioService) loadFundPrices(fundIDs []string, startDate, endDate time.Time, sortOrder string) (map[string][]model.FundPrice, error) {
+	return s.fundRepo.GetFundPrice(fundIDs, startDate, endDate, sortOrder)
 }
 
+// loadAllRealizedGainLoss retrieves all realized gain/loss records for the given portfolios from 1970 to now.
+// This loads the complete sales history. Results are grouped by portfolio ID.
 func (s *PortfolioService) loadAllRealizedGainLoss(portfolio []model.Portfolio) (map[string][]model.RealizedGainLoss, error) {
 	startDate, _ := time.Parse("2006-01-02", "1970-01-01")
 	endDate := time.Now()
 	return s.realizedGainLossRepo.GetRealizedGainLossByPortfolio(portfolio, startDate, endDate)
 }
 
+// loadRealizedGainLoss retrieves realized gain/loss records for the given portfolios within the specified date range.
+// Results are grouped by portfolio ID.
 func (s *PortfolioService) loadRealizedGainLoss(portfolio []model.Portfolio, startDate, endDate time.Time) (map[string][]model.RealizedGainLoss, error) {
 	return s.realizedGainLossRepo.GetRealizedGainLossByPortfolio(portfolio, startDate, endDate)
 }
 
+//
+// CALCULATION FUNCTIONS
+//
+// These functions perform time-aware calculations on portfolio data.
+// All functions that accept a date parameter compute values AS OF that date,
+// including only records that occurred on or before the specified date.
+//
+
+// processRealizedGainLossForDate calculates cumulative realized gains/losses as of the specified date.
+// Only realized gains from sales that occurred on or before the target date are included.
+// Returns (totalRealizedGainLoss, totalSaleProceeds, totalCostBasis, error).
 func (s *PortfolioService) processRealizedGainLossForDate(realizedGainLoss []model.RealizedGainLoss, date time.Time) (float64, float64, float64, error) {
 	if len(realizedGainLoss) == 0 {
 		return 0.0, 0.0, 0.0, nil
@@ -374,6 +446,9 @@ func (s *PortfolioService) processRealizedGainLossForDate(realizedGainLoss []mod
 	return totalRealizedGainLoss, totalSaleProceeds, totalCostBasis, nil
 }
 
+// processDividendSharesForDate calculates shares acquired through dividend reinvestment as of the specified date.
+// Only dividends with ex-dividend dates on or before the target date are included.
+// Returns a map of portfolio_fund ID to total reinvested shares.
 func (s *PortfolioService) processDividendSharesForDate(dividendMap map[string][]model.Dividend, transactions []model.Transaction, date time.Time) (map[string]float64, error) {
 	totalDividendMap := make(map[string]float64)
 
@@ -401,6 +476,8 @@ func (s *PortfolioService) processDividendSharesForDate(dividendMap map[string][
 	return totalDividendMap, nil
 }
 
+// processDividendAmountForDate calculates the cumulative dividend amount as of the specified date.
+// Only dividends with ex-dividend dates on or before the target date are included.
 func (s *PortfolioService) processDividendAmountForDate(dividend []model.Dividend, date time.Time) (float64, error) {
 	if len(dividend) == 0 {
 		return 0.0, nil
@@ -419,6 +496,9 @@ func (s *PortfolioService) processDividendAmountForDate(dividend []model.Dividen
 	return totalDividend, nil
 }
 
+// getPriceForDate finds the most recent fund price on or before the target date.
+// Assumes prices are sorted in ASC order (oldest first).
+// Returns 0 if no price is found on or before the target date.
 func (s *PortfolioService) getPriceForDate(prices []model.FundPrice, targetDate time.Time) float64 {
 	var latestPrice float64 = 0
 
@@ -434,6 +514,21 @@ func (s *PortfolioService) getPriceForDate(prices []model.FundPrice, targetDate 
 	return latestPrice
 }
 
+// processTransactionsForDate calculates portfolio metrics as of the specified date.
+// It processes all transactions that occurred on or before the target date to compute:
+//   - Total shares held (including buy, sell, and dividend reinvestment transactions)
+//   - Total cost basis
+//   - Total market value (using the most recent price on or before the date)
+//   - Total dividends
+//   - Total fees
+//
+// Transaction Processing Logic:
+//   - "buy": Increases shares and cost
+//   - "sell": Decreases shares and adjusts cost basis proportionally
+//   - "dividend": Adds to dividend total
+//   - "fee": Adds to both cost and fees
+//
+// The function ensures all totals are non-negative before returning.
 func (s *PortfolioService) processTransactionsForDate(transactionsMap map[string][]model.Transaction, dividendShares map[string]float64, fundMapping map[string]string, fundPriceByFund map[string][]model.FundPrice, date time.Time) (TransactionMetrics, error) {
 	if len(transactionsMap) == 0 {
 		return TransactionMetrics{}, nil

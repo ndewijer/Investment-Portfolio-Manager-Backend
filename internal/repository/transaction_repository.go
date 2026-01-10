@@ -9,14 +9,28 @@ import (
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 )
 
+// TransactionRepository provides data access methods for the transaction table.
+// It handles retrieving and querying portfolio transactions within specified date ranges.
 type TransactionRepository struct {
 	db *sql.DB
 }
 
+// NewTransactionRepository creates a new TransactionRepository with the provided database connection.
 func NewTransactionRepository(db *sql.DB) *TransactionRepository {
 	return &TransactionRepository{db: db}
 }
 
+// GetTransactions retrieves all transactions for the given portfolio_fund IDs within the specified date range.
+// Transactions are sorted by date in ascending order and grouped by portfolio ID.
+//
+// Parameters:
+//   - pfIDs: slice of portfolio_fund IDs to query
+//   - portfolioFundToPortfolio: map for translating portfolio_fund IDs to portfolio IDs
+//   - startDate: inclusive start date for the query
+//   - endDate: inclusive end date for the query
+//
+// Returns a map of portfolioID -> []Transaction. If pfIDs is empty, returns an empty map.
+// The function will print a warning if it encounters a transaction with an unmapped portfolio_fund_id.
 func (s *TransactionRepository) GetTransactions(pfIDs []string, portfolioFundToPortfolio map[string]string, startDate, endDate time.Time) (map[string][]model.Transaction, error) {
 	if len(pfIDs) == 0 {
 		return make(map[string][]model.Transaction), nil
@@ -95,6 +109,14 @@ func (s *TransactionRepository) GetTransactions(pfIDs []string, portfolioFundToP
 	return transactionsByPortfolio, nil
 }
 
+// GetOldestTransaction finds and returns the date of the earliest transaction across the given portfolio_fund IDs.
+// This is used to determine the starting point for historical portfolio calculations.
+//
+// Returns time.Time{} (zero value) if:
+//   - pfIDs is empty
+//   - no transactions are found
+//   - database query fails
+//   - date parsing fails
 func (s *TransactionRepository) GetOldestTransaction(pfIDs []string) time.Time {
 	if len(pfIDs) == 0 {
 		return time.Time{}
