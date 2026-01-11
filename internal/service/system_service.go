@@ -71,15 +71,16 @@ func (s *SystemService) getDbVersion() (string, error) {
 
 func (s *SystemService) checkFeatureAvailability(dbVersion string) map[string]bool {
 	features := map[string]bool{
-		"basic_portfolio_management": true,
-		"realized_gain_loss":         true,
-		"ibkr_integration":           true,
+		"basic_portfolio_management":    true, // Introduced 1.1.1
+		"realized_gain_loss":            true, // Introduced 1.1.1
+		"ibkr_integration":              true, // Introduced 1.3.0
+		"materialized_view_performance": true, // Introduced 1.4.0
 	}
 
 	// Parse version and set features
 	// (version parsing logic here)
 	// Currently not yet needed as we're always going to be on the latest version
-	// due to the GO backend still being development.
+	// due to the GO backend still being in development.
 
 	// The original python code:
 	// # Parse version and check feature availability
@@ -105,6 +106,10 @@ func (s *SystemService) checkFeatureAvailability(dbVersion string) map[string]bo
 	// 		# Version 1.3.0+: IBKR integration
 	// 		if major > 1 or (major == 1 and minor >= 3):
 	// 			features["ibkr_integration"] = True
+
+	// 		# Version 1.4.0+: Materialized view performance optimization
+	// 		if major > 1 or (major == 1 and minor >= 4):
+	// 			features["materialized_view_performance"] = True
 
 	return features
 }
