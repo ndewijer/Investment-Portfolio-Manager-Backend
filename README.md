@@ -40,7 +40,7 @@ This backend aims to replicate all 73 endpoints from the Python backend. Below i
 │   ├── POST   /{id}/archive                    ⬜ Archive portfolio
 │   ├── POST   /{id}/unarchive                  ⬜ Unarchive portfolio
 │   ├── GET    /summary                         ✅ Portfolio summary
-│   ├── GET    /history                         ⬜ Portfolio history
+│   ├── GET    /history                         ✅ Portfolio history
 │   ├── GET    /{id}/fund-history               ⬜ Portfolio fund history
 │   ├── GET    /fund                           ⬜ Portfolio funds
 │   ├── POST   /fund                           ⬜ Add fund to portfolio
