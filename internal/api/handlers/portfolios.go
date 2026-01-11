@@ -130,9 +130,9 @@ type PortfolioHistoryResponse struct {
 type PortfolioHistoryPortfolioResponse struct {
 	ID             string  `json:"id"`
 	Name           string  `json:"name"`
-	Value          float64 `json:"value"`          // Market value on this date
-	Cost           float64 `json:"cost"`           // Cost basis on this date
-	RealizedGain   float64 `json:"realized_gain"`  // Realized gains/losses as of this date
+	Value          float64 `json:"value"`           // Market value on this date
+	Cost           float64 `json:"cost"`            // Cost basis on this date
+	RealizedGain   float64 `json:"realized_gain"`   // Realized gains/losses as of this date
 	UnrealizedGain float64 `json:"unrealized_gain"` // Unrealized gains/losses on this date
 }
 
@@ -140,9 +140,9 @@ type PortfolioHistoryPortfolioResponse struct {
 //
 // Query Parameters:
 //   - start_date (optional): First date to include (YYYY-MM-DD or RFC3339 format)
-//                            Defaults to 1970-01-01 if not provided
+//     Defaults to 1970-01-01 if not provided
 //   - end_date (optional): Last date to include (YYYY-MM-DD or RFC3339 format)
-//                          Defaults to current date if not provided
+//     Defaults to current date if not provided
 //
 // The endpoint returns daily portfolio valuations for the requested date range.
 // Only active portfolios are included, and the actual returned range may be
@@ -207,10 +207,10 @@ func (h *PortfolioHandler) PortfolioHistory(w http.ResponseWriter, r *http.Reque
 			subResponse[j] = PortfolioHistoryPortfolioResponse{
 				ID:             q.ID,
 				Name:           q.Name,
-				Value:          q.Value,
-				Cost:           q.Cost,
-				RealizedGain:   q.RealizedGain,
-				UnrealizedGain: q.UnrealizedGain,
+				Value:          q.TotalValue,
+				Cost:           q.TotalCost,
+				RealizedGain:   q.TotalRealizedGainLoss,
+				UnrealizedGain: q.TotalUnrealizedGainLoss,
 			}
 		}
 		response[i] = PortfolioHistoryResponse{

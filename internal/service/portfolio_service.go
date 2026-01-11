@@ -60,7 +60,14 @@ type TransactionMetrics struct {
 	TotalFees      float64 // Total fees paid
 }
 
-// PortfolioSummary represents the current state of a portfolio as of now.
+// PortfolioHistory represents portfolio valuations for a single date.
+// It contains one entry per portfolio showing their state on that specific date.
+type PortfolioHistory struct {
+	Date       string             // Date in YYYY-MM-DD format
+	Portfolios []PortfolioSummary // Portfolio states for this date
+}
+
+// PortfolioSummary represents the current state of a portfolio at x point.
 // It includes valuation, cost basis, gains/losses (both realized and unrealized),
 // dividends, and sale information. All monetary values are rounded to two decimal places.
 type PortfolioSummary struct {
@@ -78,107 +85,17 @@ type PortfolioSummary struct {
 }
 
 // GetPortfolioSummary retrieves the current summary for all active portfolios.
-// It calculates current valuations, costs, dividends, and gains/losses as of the current time.
-// Only active (non-archived, non-excluded) portfolios are included in the results.
+// This is implemented as a wrapper around GetPortfolioHistory for a single day (today),
+// ensuring consistency between summary and history calculations.
 func (s *PortfolioService) GetPortfolioSummary() ([]PortfolioSummary, error) {
-	portfolios, err := s.loadActivePortfolios()
+
+	today := time.Now()
+
+	history, err := s.GetPortfolioHistory(today, today)
 	if err != nil {
 		return nil, err
 	}
-
-	_, portfolioFundToPortfolio, portfolioFundToFund, pfIDs, fundIDs, err := s.loadAllPortfolioFunds(portfolios)
-	if err != nil {
-		return nil, err
-	}
-
-	transactionsByPortfolio, err := s.loadAllTransactions(pfIDs, portfolioFundToPortfolio)
-	if err != nil {
-		return nil, err
-	}
-
-	dividendByPortfolio, err := s.loadAllDividend(pfIDs, portfolioFundToPortfolio)
-	if err != nil {
-		return nil, err
-	}
-
-	fundPriceByFund, err := s.loadAllFundPrices(fundIDs)
-	if err != nil {
-		return nil, err
-	}
-
-	realizedGainLossByPortfolio, err := s.loadAllRealizedGainLoss(portfolios)
-	if err != nil {
-		return nil, err
-	}
-
-	portfolioSummary := []PortfolioSummary{}
-
-	for _, portfolio := range portfolios {
-
-		dividendsByPF := make(map[string][]model.Dividend)
-		for _, div := range dividendByPortfolio[portfolio.ID] {
-			dividendsByPF[div.PortfolioFundID] = append(dividendsByPF[div.PortfolioFundID], div)
-		}
-
-		transactionsByPF := make(map[string][]model.Transaction)
-		for _, tx := range transactionsByPortfolio[portfolio.ID] {
-			transactionsByPF[tx.PortfolioFundID] = append(transactionsByPF[tx.PortfolioFundID], tx)
-		}
-
-		totalDividendSharesPerPF, err := s.processDividendSharesForDate(dividendsByPF, transactionsByPortfolio[portfolio.ID], time.Now())
-		if err != nil {
-			return nil, err
-		}
-
-		transactionMetrics, err := s.processTransactionsForDate(transactionsByPF, totalDividendSharesPerPF, portfolioFundToFund, fundPriceByFund, time.Now())
-		if err != nil {
-			return nil, err
-		}
-		totalDividendAmount, err := s.processDividendAmountForDate(dividendByPortfolio[portfolio.ID], time.Now())
-		if err != nil {
-			return nil, err
-		}
-		totalRealizedGainLoss, totalSaleProceeds, totalCostBasis, err := s.processRealizedGainLossForDate(realizedGainLossByPortfolio[portfolio.ID], time.Now())
-		if err != nil {
-			return nil, err
-		}
-
-		p := PortfolioSummary{
-			ID:                      portfolio.ID,
-			Name:                    portfolio.Name,
-			TotalValue:              math.Round(transactionMetrics.TotalValue*RoundingPrecision) / RoundingPrecision,
-			TotalCost:               math.Round(transactionMetrics.TotalCost*RoundingPrecision) / RoundingPrecision,
-			TotalDividends:          math.Round(totalDividendAmount*RoundingPrecision) / RoundingPrecision,
-			TotalUnrealizedGainLoss: math.Round((transactionMetrics.TotalValue-transactionMetrics.TotalCost)*RoundingPrecision) / RoundingPrecision,
-			TotalRealizedGainLoss:   math.Round(totalRealizedGainLoss*RoundingPrecision) / RoundingPrecision,
-			TotalSaleProceeds:       math.Round(totalSaleProceeds*RoundingPrecision) / RoundingPrecision,
-			TotalOriginalCost:       math.Round(totalCostBasis*RoundingPrecision) / RoundingPrecision,
-			TotalGainLoss:           math.Round((totalRealizedGainLoss+(transactionMetrics.TotalValue-transactionMetrics.TotalCost))*RoundingPrecision) / RoundingPrecision,
-			IsArchived:              portfolio.IsArchived,
-		}
-
-		portfolioSummary = append(portfolioSummary, p)
-	}
-
-	return portfolioSummary, nil
-}
-
-// PortfolioHistory represents portfolio valuations for a single date.
-// It contains one entry per portfolio showing their state on that specific date.
-type PortfolioHistory struct {
-	Date       string                      // Date in YYYY-MM-DD format
-	Portfolios []PortfolioHistoryPortfolio // Portfolio states for this date
-}
-
-// PortfolioHistoryPortfolio represents a single portfolio's state on a specific date.
-// It includes valuation, cost basis, and both realized and unrealized gains.
-type PortfolioHistoryPortfolio struct {
-	ID             string  // Portfolio unique identifier
-	Name           string  // Portfolio display name
-	Value          float64 // Market value on this date
-	Cost           float64 // Cost basis on this date
-	RealizedGain   float64 // Realized gain/loss as of this date
-	UnrealizedGain float64 // Unrealized gain/loss on this date
+	return history[0].Portfolios, nil
 }
 
 // GetPortfolioHistory retrieves daily portfolio valuations for the requested date range.
@@ -263,7 +180,7 @@ func (s *PortfolioService) GetPortfolioHistory(requestedStartDate, requestedEndD
 	portfolioHistory := []PortfolioHistory{}
 	for date := dataStartDate; !date.After(dataEndDate); date = date.AddDate(0, 0, 1) {
 
-		portfolioHistoryPortfolio := []PortfolioHistoryPortfolio{}
+		portfolioSummary := []PortfolioSummary{}
 
 		for _, portfolio := range portfolios {
 
@@ -291,22 +208,30 @@ func (s *PortfolioService) GetPortfolioHistory(requestedStartDate, requestedEndD
 				return nil, err
 			}
 
-			totalRealizedGainLoss, _, _, err := s.processRealizedGainLossForDate(realizedGainLossByPortfolio[portfolio.ID], date)
+			totalDividendAmount, err := s.processDividendAmountForDate(dividendByPortfolio[portfolio.ID], date)
+			if err != nil {
+				return nil, err
+			}
+			totalRealizedGainLoss, totalSaleProceeds, totalCostBasis, err := s.processRealizedGainLossForDate(realizedGainLossByPortfolio[portfolio.ID], date)
 			if err != nil {
 				return nil, err
 			}
 
-			php := PortfolioHistoryPortfolio{
-
-				ID:             portfolio.ID,
-				Name:           portfolio.Name,
-				Value:          math.Round(transactionMetrics.TotalValue*RoundingPrecision) / RoundingPrecision,
-				Cost:           math.Round(transactionMetrics.TotalCost*RoundingPrecision) / RoundingPrecision,
-				RealizedGain:   math.Round(totalRealizedGainLoss*RoundingPrecision) / RoundingPrecision,
-				UnrealizedGain: math.Round((transactionMetrics.TotalValue-transactionMetrics.TotalCost)*RoundingPrecision) / RoundingPrecision,
+			ps := PortfolioSummary{
+				ID:                      portfolio.ID,
+				Name:                    portfolio.Name,
+				TotalValue:              math.Round(transactionMetrics.TotalValue*RoundingPrecision) / RoundingPrecision,
+				TotalCost:               math.Round(transactionMetrics.TotalCost*RoundingPrecision) / RoundingPrecision,
+				TotalDividends:          math.Round(totalDividendAmount*RoundingPrecision) / RoundingPrecision,
+				TotalUnrealizedGainLoss: math.Round((transactionMetrics.TotalValue-transactionMetrics.TotalCost)*RoundingPrecision) / RoundingPrecision,
+				TotalRealizedGainLoss:   math.Round(totalRealizedGainLoss*RoundingPrecision) / RoundingPrecision,
+				TotalSaleProceeds:       math.Round(totalSaleProceeds*RoundingPrecision) / RoundingPrecision,
+				TotalOriginalCost:       math.Round(totalCostBasis*RoundingPrecision) / RoundingPrecision,
+				TotalGainLoss:           math.Round((totalRealizedGainLoss+(transactionMetrics.TotalValue-transactionMetrics.TotalCost))*RoundingPrecision) / RoundingPrecision,
+				IsArchived:              portfolio.IsArchived,
 			}
 
-			portfolioHistoryPortfolio = append(portfolioHistoryPortfolio, php)
+			portfolioSummary = append(portfolioSummary, ps)
 
 		}
 
@@ -314,7 +239,7 @@ func (s *PortfolioService) GetPortfolioHistory(requestedStartDate, requestedEndD
 			(date.Before(displayEndDate) || date.Equal(displayEndDate)) {
 			ph := PortfolioHistory{
 				Date:       date.Format("2006-01-02"),
-				Portfolios: portfolioHistoryPortfolio,
+				Portfolios: portfolioSummary,
 			}
 			portfolioHistory = append(portfolioHistory, ph)
 		}
