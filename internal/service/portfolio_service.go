@@ -95,6 +95,11 @@ func (s *PortfolioService) GetPortfolioSummary() ([]PortfolioSummary, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	if len(history) != 1 {
+		return []PortfolioSummary{}, nil
+	}
+
 	return history[0].Portfolios, nil
 }
 
@@ -140,6 +145,10 @@ func (s *PortfolioService) GetPortfolioHistory(requestedStartDate, requestedEndD
 	if displayEndDate.After(dataEndDate) {
 		displayEndDate = dataEndDate
 	}
+
+	// Truncate to midnight in UTC to match loop dates (which come from DB as UTC)
+	displayStartDate = time.Date(displayStartDate.Year(), displayStartDate.Month(), displayStartDate.Day(), 0, 0, 0, 0, time.UTC)
+	displayEndDate = time.Date(displayEndDate.Year(), displayEndDate.Month(), displayEndDate.Day(), 0, 0, 0, 0, time.UTC)
 
 	transactionsByPortfolio, err := s.loadTransactions(pfIDs, portfolioFundToPortfolio, dataStartDate, dataEndDate)
 	if err != nil {
