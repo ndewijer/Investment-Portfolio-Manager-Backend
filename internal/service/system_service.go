@@ -77,6 +77,8 @@ func (s *SystemService) checkFeatureAvailability(dbVersion string) map[string]bo
 		"materialized_view_performance": true, // Introduced 1.4.0
 	}
 
+	_ = dbVersion
+
 	// Parse version and set features
 	// (version parsing logic here)
 	// Currently not yet needed as we're always going to be on the latest version
@@ -116,6 +118,8 @@ func (s *SystemService) checkFeatureAvailability(dbVersion string) map[string]bo
 
 func (s *SystemService) checkPendingMigrations(dbVersion, appVersion string) (bool, string) {
 
+	_ = dbVersion
+	_ = appVersion
 	// Function also not yet implemented. This will be required once we have a db schema upgrade method implemented.
 	// For Python we use Alembic but that's not going to be a thing yet.
 

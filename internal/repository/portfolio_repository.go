@@ -28,7 +28,7 @@ func (s *PortfolioRepository) GetPortfolios(filter model.PortfolioFilter) ([]mod
           FROM portfolio
           WHERE 1=1
       `
-	var args []interface{}
+	var args []any
 
 	if !filter.IncludeArchived {
 		query += " AND is_archived = ?"
@@ -70,6 +70,45 @@ func (s *PortfolioRepository) GetPortfolios(filter model.PortfolioFilter) ([]mod
 	}
 
 	return portfolios, nil
+}
+
+func (s *PortfolioRepository) GetPortfolioOnID(portfolioID string) (model.Portfolio, error) {
+	query := `
+          SELECT id, name, description, is_archived, exclude_from_overview
+          FROM portfolio
+          WHERE id = ?
+		  LIMIT 1
+      `
+	var args []any
+	args = append(args, portfolioID)
+
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return model.Portfolio{}, fmt.Errorf("failed to query portfolios table: %w", err)
+	}
+	defer rows.Close()
+
+	p := model.Portfolio{}
+
+	for rows.Next() {
+
+		err := rows.Scan(
+			&p.ID,
+			&p.Name,
+			&p.Description,
+			&p.IsArchived,
+			&p.ExcludeFromOverview,
+		)
+		if err != nil {
+			return model.Portfolio{}, fmt.Errorf("failed to scan portfolio table results: %w", err)
+		}
+	}
+
+	if err = rows.Err(); err != nil {
+		return model.Portfolio{}, fmt.Errorf("error iterating portfolios table: %w", err)
+	}
+
+	return p, nil
 }
 
 // GetPortfolioFundsOnPortfolioID retrieves all funds associated with the given portfolios.
