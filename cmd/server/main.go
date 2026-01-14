@@ -38,6 +38,7 @@ func main() {
 	fundRepo := repository.NewFundRepository(db)
 	dividendRepo := repository.NewDividendRepository(db)
 	realizedGainLossRepo := repository.NewRealizedGainLossRepository(db)
+	materializedRepo := repository.NewMaterializedRepository(db)
 
 	// Create services
 	systemService := service.NewSystemService(db)
@@ -47,6 +48,7 @@ func main() {
 		fundRepo,
 		dividendRepo,
 		realizedGainLossRepo,
+		materializedRepo,
 	)
 
 	// Create router

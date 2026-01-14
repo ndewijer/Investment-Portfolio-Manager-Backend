@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/service"
 )
 
@@ -19,16 +20,6 @@ func NewPortfolioHandler(portfolioService *service.PortfolioService) *PortfolioH
 	return &PortfolioHandler{
 		portfolioService: portfolioService,
 	}
-}
-
-// PortfoliosResponse represents the JSON response structure for the portfolios list endpoint.
-// It includes all basic portfolio metadata including archive and overview exclusion flags.
-type PortfoliosResponse struct {
-	ID                  string `json:"id"`
-	Name                string `json:"name"`
-	Description         string `json:"description"`
-	IsArchived          bool   `json:"is_archived"`
-	ExcludeFromOverview bool   `json:"exclude_from_overview"`
 }
 
 // Portfolios handles GET requests to retrieve all portfolios.
@@ -49,35 +40,41 @@ func (h *PortfolioHandler) Portfolios(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := make([]PortfoliosResponse, len(portfolios))
-	for i, p := range portfolios {
-		response[i] = PortfoliosResponse{
-			ID:                  p.ID,
-			Name:                p.Name,
-			Description:         p.Description,
-			IsArchived:          p.IsArchived,
-			ExcludeFromOverview: p.ExcludeFromOverview,
-		}
-	}
-
-	respondJSON(w, http.StatusOK, response)
+	respondJSON(w, http.StatusOK, portfolios)
 }
 
-// PortfolioSummaryResponse represents the JSON response structure for portfolio summary data.
-// It contains comprehensive portfolio metrics including valuations, costs, and gains/losses.
-// All monetary values are rounded to two decimal places by the service layer.
-type PortfolioSummaryResponse struct {
-	ID                      string  `json:"id"`
-	Name                    string  `json:"name"`
-	TotalValue              float64 `json:"totalValue"`              // Current market value
-	TotalCost               float64 `json:"totalCost"`               // Current cost basis
-	TotalDividends          float64 `json:"totalDividends"`          // Cumulative dividends
-	TotalUnrealizedGainLoss float64 `json:"totalUnrealizedGainLoss"` // Unrealized gain/loss
-	TotalRealizedGainLoss   float64 `json:"totalRealizedGainLoss"`   // Realized gain/loss from sales
-	TotalSaleProceeds       float64 `json:"totalSaleProceeds"`       // Total proceeds from sales
-	TotalOriginalCost       float64 `json:"totalOriginalCost"`       // Original cost of sold positions
-	TotalGainLoss           float64 `json:"totalGainLoss"`           // Combined realized + unrealized
-	IsArchived              bool    `json:"is_archived"`
+// GetPortfolio handles GET requests to retrieve a single portfolio with its current summary.
+// Returns the portfolio details along with current valuations (totalValue, totalCost, etc.).
+//
+// Endpoint: GET /api/portfolio/{portfolio_id}
+// Response: 200 OK with PortfolioSummary
+// Error: 500 Internal Server Error if retrieval or calculation fails
+func (h *PortfolioHandler) GetPortfolio(w http.ResponseWriter, r *http.Request) {
+
+	portfolioID := chi.URLParam(r, "portfolio_id")
+
+	summaries, err := h.portfolioService.GetPortfolioSummary(portfolioID)
+	if err != nil {
+		errorResponse := map[string]string{
+			"error":  "Failed to get portfolio summary",
+			"detail": err.Error(),
+		}
+		respondJSON(w, http.StatusInternalServerError, errorResponse)
+		return
+	}
+
+	// Should return exactly one portfolio
+	if len(summaries) == 0 {
+		errorResponse := map[string]string{
+			"error":  "Portfolio not found",
+			"detail": "No portfolio found with the given ID",
+		}
+		respondJSON(w, http.StatusNotFound, errorResponse)
+		return
+	}
+
+	// Return the single portfolio summary
+	respondJSON(w, http.StatusOK, summaries[0])
 }
 
 // PortfolioSummary handles GET requests to retrieve current portfolio summaries.
@@ -88,7 +85,7 @@ type PortfolioSummaryResponse struct {
 // Response: 200 OK with array of PortfolioSummaryResponse
 // Error: 500 Internal Server Error if calculation fails
 func (h *PortfolioHandler) PortfolioSummary(w http.ResponseWriter, r *http.Request) {
-	portfolioSummary, err := h.portfolioService.GetPortfolioSummary()
+	portfolioSummary, err := h.portfolioService.GetPortfolioSummary("")
 	if err != nil {
 		errorResponse := map[string]string{
 			"error":  "Failed to get portfolio summary",
@@ -98,42 +95,7 @@ func (h *PortfolioHandler) PortfolioSummary(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	response := make([]PortfolioSummaryResponse, len(portfolioSummary))
-	for i, p := range portfolioSummary {
-		response[i] = PortfolioSummaryResponse{
-			ID:                      p.ID,
-			Name:                    p.Name,
-			TotalValue:              p.TotalValue,
-			TotalCost:               p.TotalCost,
-			TotalDividends:          p.TotalDividends,
-			TotalUnrealizedGainLoss: p.TotalUnrealizedGainLoss,
-			TotalRealizedGainLoss:   p.TotalRealizedGainLoss,
-			TotalSaleProceeds:       p.TotalSaleProceeds,
-			TotalOriginalCost:       p.TotalOriginalCost,
-			TotalGainLoss:           p.TotalGainLoss,
-			IsArchived:              p.IsArchived,
-		}
-	}
-
-	respondJSON(w, http.StatusOK, response)
-}
-
-// PortfolioHistoryResponse represents the JSON response structure for a single date's portfolio data.
-// Each response contains the date and an array of portfolio states for that date.
-type PortfolioHistoryResponse struct {
-	Date       string                              `json:"date"` // Date in YYYY-MM-DD format
-	Portfolios []PortfolioHistoryPortfolioResponse `json:"portfolios"`
-}
-
-// PortfolioHistoryPortfolioResponse represents a single portfolio's state on a specific historical date.
-// It includes valuation, cost basis, and gain/loss information as of that date.
-type PortfolioHistoryPortfolioResponse struct {
-	ID             string  `json:"id"`
-	Name           string  `json:"name"`
-	Value          float64 `json:"value"`           // Market value on this date
-	Cost           float64 `json:"cost"`            // Cost basis on this date
-	RealizedGain   float64 `json:"realized_gain"`   // Realized gains/losses as of this date
-	UnrealizedGain float64 `json:"unrealized_gain"` // Unrealized gains/losses on this date
+	respondJSON(w, http.StatusOK, portfolioSummary)
 }
 
 // PortfolioHistory handles GET requests to retrieve historical portfolio valuations.
@@ -153,44 +115,16 @@ type PortfolioHistoryPortfolioResponse struct {
 // Error: 400 Bad Request if date parsing fails
 // Error: 500 Internal Server Error if calculation fails
 func (h *PortfolioHandler) PortfolioHistory(w http.ResponseWriter, r *http.Request) {
-	var startDate, endDate time.Time
-	var err error
-
-	if r.URL.Query().Get("start_date") == "" {
-		startDate, _ = time.Parse("2006-01-02", "1970-01-01")
-	} else {
-		startDate, err = time.Parse("2006-01-02", r.URL.Query().Get("start_date"))
-		if err != nil {
-			startDate, err = time.Parse(time.RFC3339, r.URL.Query().Get("start_date"))
-			if err != nil {
-				errorResponse := map[string]string{
-					"error":  "Failed to parse start_date into time.Time",
-					"detail": err.Error(),
-				}
-				respondJSON(w, http.StatusBadRequest, errorResponse)
-				return
-			}
-		}
+	startDate, endDate, err := parseDateParams(r)
+	if err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{
+			"error":  "Invalid date parameters",
+			"detail": err.Error(),
+		})
+		return
 	}
 
-	if r.URL.Query().Get("end_date") == "" {
-		endDate = time.Now()
-	} else {
-		endDate, err = time.Parse("2006-01-02", r.URL.Query().Get("end_date"))
-		if err != nil {
-			endDate, err = time.Parse(time.RFC3339, r.URL.Query().Get("end_date"))
-			if err != nil {
-				errorResponse := map[string]string{
-					"error":  "Failed to parse end_date into time.Time",
-					"detail": err.Error(),
-				}
-				respondJSON(w, http.StatusBadRequest, errorResponse)
-				return
-			}
-		}
-	}
-
-	portfolioHistory, err := h.portfolioService.GetPortfolioHistory(startDate, endDate)
+	portfolioHistory, err := h.portfolioService.GetPortfolioHistory(startDate, endDate, "")
 	if err != nil {
 		errorResponse := map[string]string{
 			"error":  "Failed to get portfolio history",
@@ -200,24 +134,31 @@ func (h *PortfolioHandler) PortfolioHistory(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	response := make([]PortfolioHistoryResponse, len(portfolioHistory))
-	for i, p := range portfolioHistory {
-		subResponse := make([]PortfolioHistoryPortfolioResponse, len(p.Portfolios))
-		for j, q := range p.Portfolios {
-			subResponse[j] = PortfolioHistoryPortfolioResponse{
-				ID:             q.ID,
-				Name:           q.Name,
-				Value:          q.TotalValue,
-				Cost:           q.TotalCost,
-				RealizedGain:   q.TotalRealizedGainLoss,
-				UnrealizedGain: q.TotalUnrealizedGainLoss,
-			}
-		}
-		response[i] = PortfolioHistoryResponse{
-			Date:       p.Date,
-			Portfolios: subResponse,
+	respondJSON(w, http.StatusOK, portfolioHistory)
+}
+
+// parseDateParams extracts and validates start_date and end_date from query parameters.
+func parseDateParams(r *http.Request) (time.Time, time.Time, error) {
+	var startDate, endDate time.Time
+	var err error
+
+	if r.URL.Query().Get("start_date") == "" {
+		startDate, _ = time.Parse("2006-01-02", "1970-01-01")
+	} else {
+		startDate, err = time.Parse("2006-01-02", r.URL.Query().Get("start_date"))
+		if err != nil {
+			return time.Time{}, time.Time{}, err
 		}
 	}
 
-	respondJSON(w, http.StatusOK, response)
+	if r.URL.Query().Get("end_date") == "" {
+		endDate = time.Now()
+	} else {
+		endDate, err = time.Parse("2006-01-02", r.URL.Query().Get("end_date"))
+		if err != nil {
+			return time.Time{}, time.Time{}, err
+		}
+	}
+
+	return startDate, endDate, nil
 }
