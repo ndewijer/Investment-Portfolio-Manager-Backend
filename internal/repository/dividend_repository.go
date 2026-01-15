@@ -25,13 +25,13 @@ func NewDividendRepository(db *sql.DB) *DividendRepository {
 //
 // Parameters:
 //   - pfIDs: slice of portfolio_fund IDs to query
-//   - portfolioFundToPortfolio: map for translating portfolio_fund IDs to portfolio IDs
 //   - startDate: inclusive start date for the query (compared against ex_dividend_date)
 //   - endDate: inclusive end date for the query (compared against ex_dividend_date)
 //
-// Returns a map of portfolioID -> []Dividend. If pfIDs is empty, returns an empty map.
+// Returns a map of portfolioFundID -> []Dividend. If pfIDs is empty, returns an empty map.
 // Handles nullable fields like buy_order_date and reinvestment_transaction_id appropriately.
-func (s *DividendRepository) GetDividend(pfIDs []string, portfolioFundToPortfolio map[string]string, startDate, endDate time.Time) (map[string][]model.Dividend, error) {
+// This grouping allows callers to decide how to aggregate (by portfolio, by fund, etc.) after retrieval.
+func (s *DividendRepository) GetDividend(pfIDs []string, startDate, endDate time.Time) (map[string][]model.Dividend, error) {
 	if len(pfIDs) == 0 {
 		return make(map[string][]model.Dividend), nil
 	}
@@ -43,7 +43,7 @@ func (s *DividendRepository) GetDividend(pfIDs []string, portfolioFundToPortfoli
 
 	// Retrieve all dividend based on returned portfolio_fund IDs
 	dividendQuery := `
-		SELECT id, fund_id, portfolio_fund_id, record_date, ex_dividend_date, shares_owned, 
+		SELECT id, fund_id, portfolio_fund_id, record_date, ex_dividend_date, shares_owned,
 		dividend_per_share, total_amount, reinvestment_status, buy_order_date, reinvestment_transaction_id, created_at
 		FROM dividend
 		WHERE portfolio_fund_id IN (` + strings.Join(dividendPlaceholders, ",") + `)
@@ -66,7 +66,7 @@ func (s *DividendRepository) GetDividend(pfIDs []string, portfolioFundToPortfoli
 	}
 	defer rows.Close()
 
-	dividendByPortfolio := make(map[string][]model.Dividend)
+	dividendByPortfolioFund := make(map[string][]model.Dividend)
 
 	for rows.Next() {
 		var recordDateStr, exDividendStr, createdAtStr string
@@ -119,13 +119,12 @@ func (s *DividendRepository) GetDividend(pfIDs []string, portfolioFundToPortfoli
 			return nil, fmt.Errorf("failed to parse date: %w", err)
 		}
 
-		portfolioID := portfolioFundToPortfolio[t.PortfolioFundID]
-		dividendByPortfolio[portfolioID] = append(dividendByPortfolio[portfolioID], t)
+		dividendByPortfolioFund[t.PortfolioFundID] = append(dividendByPortfolioFund[t.PortfolioFundID], t)
 
 	}
 	if err = rows.Err(); err != nil {
 		return nil, fmt.Errorf("error iterating dividend table: %w", err)
 	}
 
-	return dividendByPortfolio, nil
+	return dividendByPortfolioFund, nil
 }

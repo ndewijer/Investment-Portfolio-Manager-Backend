@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/service"
 )
 
@@ -13,19 +14,21 @@ import (
 // business logic to the PortfolioService.
 type PortfolioHandler struct {
 	portfolioService *service.PortfolioService
+	fundService      *service.FundService
 }
 
 // NewPortfolioHandler creates a new PortfolioHandler with the provided service dependency.
-func NewPortfolioHandler(portfolioService *service.PortfolioService) *PortfolioHandler {
+func NewPortfolioHandler(portfolioService *service.PortfolioService, fundService *service.FundService) *PortfolioHandler {
 	return &PortfolioHandler{
 		portfolioService: portfolioService,
+		fundService:      fundService,
 	}
 }
 
 // Portfolios handles GET requests to retrieve all portfolios.
 // This endpoint returns all portfolios including archived and excluded ones.
 //
-// Endpoint: GET /api/portfolios
+// Endpoint: GET /api/portfolio
 // Response: 200 OK with array of PortfoliosResponse
 // Error: 500 Internal Server Error if retrieval fails
 func (h *PortfolioHandler) Portfolios(w http.ResponseWriter, r *http.Request) {
@@ -46,14 +49,16 @@ func (h *PortfolioHandler) Portfolios(w http.ResponseWriter, r *http.Request) {
 // GetPortfolio handles GET requests to retrieve a single portfolio with its current summary.
 // Returns the portfolio details along with current valuations (totalValue, totalCost, etc.).
 //
-// Endpoint: GET /api/portfolio/{portfolio_id}
+// Endpoint: GET /api/portfolio/{portfolioId}
 // Response: 200 OK with PortfolioSummary
 // Error: 500 Internal Server Error if retrieval or calculation fails
 func (h *PortfolioHandler) GetPortfolio(w http.ResponseWriter, r *http.Request) {
 
-	portfolioID := chi.URLParam(r, "portfolio_id")
+	portfolioID := chi.URLParam(r, "portfolioId")
 
-	summaries, err := h.portfolioService.GetPortfolioSummary(portfolioID)
+	startDate, _ := time.Parse("2006-01-02", "1970-01-01")
+	endDate := time.Now()
+	history, err := h.portfolioService.GetPortfolioHistoryWithFallback(startDate, endDate, portfolioID)
 	if err != nil {
 		errorResponse := map[string]string{
 			"error":  "Failed to get portfolio summary",
@@ -64,7 +69,7 @@ func (h *PortfolioHandler) GetPortfolio(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Should return exactly one portfolio
-	if len(summaries) == 0 {
+	if len(history) == 0 || len(history[0].Portfolios) == 0 {
 		errorResponse := map[string]string{
 			"error":  "Portfolio not found",
 			"detail": "No portfolio found with the given ID",
@@ -74,7 +79,7 @@ func (h *PortfolioHandler) GetPortfolio(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Return the single portfolio summary
-	respondJSON(w, http.StatusOK, summaries[0])
+	respondJSON(w, http.StatusOK, history[len(history)-1].Portfolios[0])
 }
 
 // PortfolioSummary handles GET requests to retrieve current portfolio summaries.
@@ -85,7 +90,10 @@ func (h *PortfolioHandler) GetPortfolio(w http.ResponseWriter, r *http.Request) 
 // Response: 200 OK with array of PortfolioSummaryResponse
 // Error: 500 Internal Server Error if calculation fails
 func (h *PortfolioHandler) PortfolioSummary(w http.ResponseWriter, r *http.Request) {
-	portfolioSummary, err := h.portfolioService.GetPortfolioSummary("")
+
+	startDate, _ := time.Parse("2006-01-02", "1970-01-01")
+	endDate := time.Now()
+	portfolioSummary, err := h.portfolioService.GetPortfolioHistoryWithFallback(startDate, endDate, "")
 	if err != nil {
 		errorResponse := map[string]string{
 			"error":  "Failed to get portfolio summary",
@@ -94,8 +102,12 @@ func (h *PortfolioHandler) PortfolioSummary(w http.ResponseWriter, r *http.Reque
 		respondJSON(w, http.StatusInternalServerError, errorResponse)
 		return
 	}
+	if len(portfolioSummary) == 0 {
+		respondJSON(w, http.StatusOK, []model.PortfolioSummary{})
+		return
+	}
 
-	respondJSON(w, http.StatusOK, portfolioSummary)
+	respondJSON(w, http.StatusOK, portfolioSummary[len(portfolioSummary)-1].Portfolios)
 }
 
 // PortfolioHistory handles GET requests to retrieve historical portfolio valuations.
@@ -124,7 +136,7 @@ func (h *PortfolioHandler) PortfolioHistory(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	portfolioHistory, err := h.portfolioService.GetPortfolioHistory(startDate, endDate, "")
+	portfolioHistory, err := h.portfolioService.GetPortfolioHistoryWithFallback(startDate, endDate, "")
 	if err != nil {
 		errorResponse := map[string]string{
 			"error":  "Failed to get portfolio history",
@@ -161,4 +173,49 @@ func parseDateParams(r *http.Request) (time.Time, time.Time, error) {
 	}
 
 	return startDate, endDate, nil
+}
+
+// PortfolioFunds handles GET requests to retrieve all PortfolioFunds.
+// This endpoint returns all PortfolioFunds including archived and excluded ones.
+//
+// Endpoint: GET /api/portfolio
+// Response: 200 OK with array of PortfolioFundsResponse
+// Error: 500 Internal Server Error if retrieval fails
+func (h *PortfolioHandler) PortfolioFunds(w http.ResponseWriter, r *http.Request) {
+
+	PortfolioFunds, err := h.fundService.GetPortfolioFunds("")
+	if err != nil {
+		errorResponse := map[string]string{
+			"error":  "Failed to retreive PortfolioFunds",
+			"detail": err.Error(),
+		}
+		respondJSON(w, http.StatusInternalServerError, errorResponse)
+		return
+	}
+
+	respondJSON(w, http.StatusOK, PortfolioFunds)
+}
+
+// GetPortfolio handles GET requests to retrieve a single portfolio with its current summary.
+// Returns the portfolio details along with current valuations (totalValue, totalCost, etc.).
+//
+// Endpoint: GET /api/portfolio/{portfolio_id}
+// Response: 200 OK with PortfolioFundsummary
+// Error: 500 Internal Server Error if retrieval or calculation fails
+func (h *PortfolioHandler) GetPortfolioFunds(w http.ResponseWriter, r *http.Request) {
+
+	portfolioID := chi.URLParam(r, "portfolioId")
+
+	portfolioFunds, err := h.fundService.GetPortfolioFunds(portfolioID)
+	if err != nil {
+		errorResponse := map[string]string{
+			"error":  "Failed to get PortfolioFunds",
+			"detail": err.Error(),
+		}
+		respondJSON(w, http.StatusInternalServerError, errorResponse)
+		return
+	}
+
+	// Return the single portfolio summary
+	respondJSON(w, http.StatusOK, portfolioFunds)
 }
