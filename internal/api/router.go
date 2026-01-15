@@ -13,7 +13,7 @@ import (
 )
 
 // NewRouter creates and configures the HTTP router
-func NewRouter(systemService *service.SystemService, portfolioService *service.PortfolioService, cfg *config.Config) http.Handler {
+func NewRouter(systemService *service.SystemService, portfolioService *service.PortfolioService, fundService *service.FundService, transactionService *service.TransactionService, dividendService *service.DividendService, realizedGainLossService *service.RealizedGainLossService, cfg *config.Config) http.Handler {
 	r := chi.NewRouter()
 
 	// Global middleware
@@ -36,11 +36,18 @@ func NewRouter(systemService *service.SystemService, portfolioService *service.P
 		})
 
 		r.Route("/portfolio", func(r chi.Router) {
-			portfolioHandler := handlers.NewPortfolioHandler(portfolioService)
+			portfolioHandler := handlers.NewPortfolioHandler(portfolioService, fundService)
 			r.Get("/", portfolioHandler.Portfolios)
-			r.Get("/{portfolio_id}", portfolioHandler.GetPortfolio)
+			r.Get("/{portfolioId}", portfolioHandler.GetPortfolio)
 			r.Get("/summary", portfolioHandler.PortfolioSummary)
 			r.Get("/history", portfolioHandler.PortfolioHistory)
+			r.Get("/funds", portfolioHandler.PortfolioFunds)
+			r.Get("/funds/{portfolioId}", portfolioHandler.GetPortfolioFunds)
+		})
+
+		r.Route("/fund", func(r chi.Router) {
+			fundHandler := handlers.NewFundHandler(fundService)
+			r.Get("/", fundHandler.Funds)
 		})
 	})
 

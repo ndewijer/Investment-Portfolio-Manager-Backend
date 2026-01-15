@@ -20,6 +20,49 @@ func NewFundRepository(db *sql.DB) *FundRepository {
 	return &FundRepository{db: db}
 }
 
+// GetFunds retrieves all funds from the database.
+// Returns an empty slice if no funds are found.
+func (s *FundRepository) GetFunds() ([]model.Fund, error) {
+	query := `
+          SELECT id, name, isin, symbol, currency, exchange, investment_type, dividend_type
+      	  FROM fund
+      `
+
+	rows, err := s.db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query fund table: %w", err)
+	}
+	defer rows.Close()
+
+	funds := []model.Fund{}
+
+	for rows.Next() {
+		var f model.Fund
+
+		err := rows.Scan(
+
+			&f.ID,
+			&f.Name,
+			&f.Isin,
+			&f.Symbol,
+			&f.Currency,
+			&f.Exchange,
+			&f.InvestmentType,
+			&f.DividendType,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan fund table results: %w", err)
+		}
+		funds = append(funds, f)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating fund table: %w", err)
+	}
+
+	return funds, nil
+}
+
 // GetFund retrieves fund records for the given fund IDs.
 // Returns a slice of Fund objects containing metadata like name, ISIN, symbol, currency, etc.
 func (s *FundRepository) GetFund(fundIDs []string) ([]model.Fund, error) {
@@ -83,7 +126,7 @@ func (s *FundRepository) GetFund(fundIDs []string) ([]model.Fund, error) {
 //   - sortOrder: "ASC" or "DESC" for date ordering (defaults to "DESC" if invalid)
 //
 // The sortOrder parameter controls how prices are sorted by date within each fund group:
-//   - "ASC": oldest first - efficient for date-aware lookups (getPriceForDate)
+//   - "ASC": oldest first - efficient for date-aware lookups (GetPriceForDate)
 //   - "DESC": newest first - efficient for latest-price lookups
 //
 // Returns a map of fundID -> []FundPrice, grouped by fund and sorted by date according to sortOrder.
@@ -152,4 +195,57 @@ func (s *FundRepository) GetFundPrice(fundIDs []string, startDate, endDate time.
 	}
 
 	return fundPriceByFund, nil
+}
+
+// GetFund retrieves fund records for the given fund IDs.
+// Returns a slice of Fund objects containing metadata like name, ISIN, symbol, currency, etc.
+func (s *FundRepository) GetPortfolioFunds(PortfolioID string) ([]model.PortfolioFund, error) {
+
+	// Retrieve all funds based on returned portfolio_fund IDs
+	fundQuery := `
+		SELECT
+		portfolio_fund.id,
+		fund.id, fund.name, fund.investment_type, fund.dividend_type
+		FROM portfolio_fund
+		JOIN fund ON fund.id = portfolio_fund.fund_id
+		WHERE 1=1
+	`
+
+	var fundArgs []any
+
+	if PortfolioID != "" {
+		fundQuery += " AND portfolio_fund.portfolio_id = ?"
+		fundArgs = append(fundArgs, PortfolioID)
+	}
+
+	rows, err := s.db.Query(fundQuery, fundArgs...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve portfolio funds via portfolio_fund JOIN (portfolio_id=%s): %w", PortfolioID, err)
+	}
+	defer rows.Close()
+
+	var portfolioFunds []model.PortfolioFund
+
+	for rows.Next() {
+		var f model.PortfolioFund
+
+		err := rows.Scan(
+			&f.ID,
+			&f.FundId,
+			&f.FundName,
+			&f.InvestmentType,
+			&f.DividendType,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan fund or portfolio_fund table results: %w", err)
+		}
+
+		portfolioFunds = append(portfolioFunds, f)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating portfolio_fund JOIN results: %w", err)
+	}
+
+	return portfolioFunds, nil
 }

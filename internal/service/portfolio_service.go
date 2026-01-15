@@ -1,8 +1,6 @@
 package service
 
 import (
-	"errors"
-	"fmt"
 	"math"
 	"slices"
 	"time"
@@ -16,12 +14,14 @@ import (
 // historical valuations, and aggregate metrics across transactions, dividends,
 // fund prices, and realized gains/losses.
 type PortfolioService struct {
-	portfolioRepo        *repository.PortfolioRepository
-	transactionRepo      *repository.TransactionRepository
-	fundRepo             *repository.FundRepository
-	dividendRepo         *repository.DividendRepository
-	realizedGainLossRepo *repository.RealizedGainLossRepository
-	materializedRepo     *repository.MaterializedRepository
+	portfolioRepo           *repository.PortfolioRepository
+	transactionRepo         *repository.TransactionRepository
+	realizedGainLossRepo    *repository.RealizedGainLossRepository
+	materializedRepo        *repository.MaterializedRepository
+	transactionService      *TransactionService
+	fundService             *FundService
+	dividendService         *DividendService
+	realizedGainLossService *RealizedGainLossService
 }
 
 // NewPortfolioService creates a new PortfolioService with the provided repository dependencies.
@@ -29,18 +29,22 @@ type PortfolioService struct {
 func NewPortfolioService(
 	portfolioRepo *repository.PortfolioRepository,
 	transactionRepo *repository.TransactionRepository,
-	fundRepo *repository.FundRepository,
-	dividendRepo *repository.DividendRepository,
+	dividendService *DividendService,
 	realizedGainLossRepo *repository.RealizedGainLossRepository,
 	materializedRepo *repository.MaterializedRepository,
+	transactionService *TransactionService,
+	fundService *FundService,
+	realizedGainLossService *RealizedGainLossService,
 ) *PortfolioService {
 	return &PortfolioService{
-		portfolioRepo:        portfolioRepo,
-		transactionRepo:      transactionRepo,
-		fundRepo:             fundRepo,
-		dividendRepo:         dividendRepo,
-		realizedGainLossRepo: realizedGainLossRepo,
-		materializedRepo:     materializedRepo,
+		portfolioRepo:           portfolioRepo,
+		transactionRepo:         transactionRepo,
+		dividendService:         dividendService,
+		realizedGainLossRepo:    realizedGainLossRepo,
+		materializedRepo:        materializedRepo,
+		transactionService:      transactionService,
+		fundService:             fundService,
+		realizedGainLossService: realizedGainLossService,
 	}
 }
 
@@ -61,29 +65,6 @@ type TransactionMetrics struct {
 	TotalValue     float64 // Total market value
 	TotalDividends float64 // Total dividend amounts
 	TotalFees      float64 // Total fees paid
-}
-
-// GetPortfolioSummary retrieves the current summary for all active portfolios.
-// This is implemented as a wrapper around GetPortfolioHistory for a single day (today),
-// ensuring consistency between summary and history calculations.
-//
-// Parameters:
-//   - portfolioID: Optional portfolio ID. If empty, returns all active portfolios.
-//     If specified, returns only the specified portfolio.
-func (s *PortfolioService) GetPortfolioSummary(portfolioID string) ([]model.PortfolioSummary, error) {
-
-	today := time.Now()
-
-	history, err := s.GetPortfolioHistory(today, today, portfolioID)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(history) != 1 {
-		return []model.PortfolioSummary{}, nil
-	}
-
-	return history[0].Portfolios, nil
 }
 
 // GetPortfolioHistoryMaterialized retrieves daily portfolio valuations from the materialized view table.
@@ -233,12 +214,17 @@ func (s *PortfolioService) GetPortfolioHistory(requestedStartDate, requestedEndD
 		}
 	}
 
+	var portfolioUuids []string
+	for _, port := range portfolios {
+		portfolioUuids = append(portfolioUuids, port.ID)
+	}
+
 	_, portfolioFundToPortfolio, portfolioFundToFund, pfIDs, fundIDs, err := s.loadAllPortfolioFunds(portfolios)
 	if err != nil {
 		return nil, err
 	}
 
-	oldestTransactionDate := s.getOldestTransaction(pfIDs)
+	oldestTransactionDate := s.transactionService.getOldestTransaction(pfIDs)
 
 	dataStartDate := oldestTransactionDate
 	dataEndDate := time.Now()
@@ -256,40 +242,58 @@ func (s *PortfolioService) GetPortfolioHistory(requestedStartDate, requestedEndD
 	displayStartDate = time.Date(displayStartDate.Year(), displayStartDate.Month(), displayStartDate.Day(), 0, 0, 0, 0, time.UTC)
 	displayEndDate = time.Date(displayEndDate.Year(), displayEndDate.Month(), displayEndDate.Day(), 0, 0, 0, 0, time.UTC)
 
-	transactionsByPortfolio, err := s.loadTransactions(pfIDs, portfolioFundToPortfolio, dataStartDate, dataEndDate)
+	// Load transactions grouped by portfolio_fund
+	transactionsByPF, err := s.transactionService.loadTransactions(pfIDs, dataStartDate, dataEndDate)
 	if err != nil {
 		return nil, err
 	}
 
-	dividendByPortfolio, err := s.loadDividend(pfIDs, portfolioFundToPortfolio, dataStartDate, dataEndDate)
+	// Load dividends grouped by portfolio_fund
+	dividendsByPF, err := s.dividendService.loadDividend(pfIDs, dataStartDate, dataEndDate)
 	if err != nil {
 		return nil, err
 	}
 
-	fundPriceByFund, err := s.loadFundPrices(fundIDs, dataStartDate, dataEndDate, "ASC")
+	fundPriceByFund, err := s.fundService.loadFundPrices(fundIDs, dataStartDate, dataEndDate, "ASC")
 	if err != nil {
 		return nil, err
 	}
 
-	realizedGainLossByPortfolio, err := s.loadRealizedGainLoss(portfolios, dataStartDate, dataEndDate)
+	realizedGainLossByPortfolio, err := s.realizedGainLossService.loadRealizedGainLoss(portfolioUuids, dataStartDate, dataEndDate)
 	if err != nil {
 		return nil, err
 	}
 
-	dividendsByPFByPortfolio := make(map[string]map[string][]model.Dividend)
+	// Build both flat portfolio-level and nested PF-within-portfolio structures in one pass
+	transactionsByPortfolio := make(map[string][]model.Transaction)
 	transactionsByPFByPortfolio := make(map[string]map[string][]model.Transaction)
-	for _, portfolio := range portfolios {
-		dividendsByPF := make(map[string][]model.Dividend)
-		for _, div := range dividendByPortfolio[portfolio.ID] {
-			dividendsByPF[div.PortfolioFundID] = append(dividendsByPF[div.PortfolioFundID], div)
-		}
-		dividendsByPFByPortfolio[portfolio.ID] = dividendsByPF
+	dividendByPortfolio := make(map[string][]model.Dividend)
+	dividendsByPFByPortfolio := make(map[string]map[string][]model.Dividend)
 
-		transactionsByPF := make(map[string][]model.Transaction)
-		for _, tx := range transactionsByPortfolio[portfolio.ID] {
-			transactionsByPF[tx.PortfolioFundID] = append(transactionsByPF[tx.PortfolioFundID], tx)
+	for pfID, transactions := range transactionsByPF {
+		portfolioID := portfolioFundToPortfolio[pfID]
+
+		// Used for per-fund calculations
+		if transactionsByPFByPortfolio[portfolioID] == nil {
+			transactionsByPFByPortfolio[portfolioID] = make(map[string][]model.Transaction)
 		}
-		transactionsByPFByPortfolio[portfolio.ID] = transactionsByPF
+		transactionsByPFByPortfolio[portfolioID][pfID] = transactions
+
+		// Used for oldest transaction check
+		transactionsByPortfolio[portfolioID] = append(transactionsByPortfolio[portfolioID], transactions...)
+	}
+
+	for pfID, dividends := range dividendsByPF {
+		portfolioID := portfolioFundToPortfolio[pfID]
+
+		// Used for per-fund calculations
+		if dividendsByPFByPortfolio[portfolioID] == nil {
+			dividendsByPFByPortfolio[portfolioID] = make(map[string][]model.Dividend)
+		}
+		dividendsByPFByPortfolio[portfolioID][pfID] = dividends
+
+		// Used for dividend amount calculations
+		dividendByPortfolio[portfolioID] = append(dividendByPortfolio[portfolioID], dividends...)
 	}
 
 	portfolioHistory := []model.PortfolioHistory{}
@@ -313,7 +317,7 @@ func (s *PortfolioService) GetPortfolioHistory(requestedStartDate, requestedEndD
 			dividendsByPF := dividendsByPFByPortfolio[portfolio.ID]
 			transactionsByPF := transactionsByPFByPortfolio[portfolio.ID]
 
-			totalDividendSharesPerPF, err := s.processDividendSharesForDate(dividendsByPF, transactionsByPortfolio[portfolio.ID], date)
+			totalDividendSharesPerPF, err := s.dividendService.processDividendSharesForDate(dividendsByPF, transactionsByPortfolio[portfolio.ID], date)
 			if err != nil {
 				return nil, err
 			}
@@ -323,11 +327,11 @@ func (s *PortfolioService) GetPortfolioHistory(requestedStartDate, requestedEndD
 				return nil, err
 			}
 
-			totalDividendAmount, err := s.processDividendAmountForDate(dividendByPortfolio[portfolio.ID], date)
+			totalDividendAmount, err := s.dividendService.processDividendAmountForDate(dividendByPortfolio[portfolio.ID], date)
 			if err != nil {
 				return nil, err
 			}
-			totalRealizedGainLoss, totalSaleProceeds, totalCostBasis, err := s.processRealizedGainLossForDate(realizedGainLossByPortfolio[portfolio.ID], date)
+			totalRealizedGainLoss, totalSaleProceeds, totalCostBasis, err := s.realizedGainLossService.processRealizedGainLossForDate(realizedGainLossByPortfolio[portfolio.ID], date)
 			if err != nil {
 				return nil, err
 			}
@@ -364,6 +368,33 @@ func (s *PortfolioService) GetPortfolioHistory(requestedStartDate, requestedEndD
 	return portfolioHistory, nil
 }
 
+// GetPortfolioHistoryWithFallback tries to retrieve history from the materialized view,
+// falling back to on-demand calculation if the materialized data is incomplete or empty.
+//
+// This provides the best of both worlds:
+// - Fast materialized view when available (~3-10ms)
+// - Reliable on-demand calculation as fallback (~50ms)
+//
+// Since write operations trigger materialized view regeneration, the only check needed
+// is whether the result set is empty (table being rebuilt or never populated).
+func (s *PortfolioService) GetPortfolioHistoryWithFallback(
+	startDate, endDate time.Time,
+	portfolioID string,
+) ([]model.PortfolioHistory, error) {
+
+	// Step 1: Try materialized view first (fast path)
+	materialized, err := s.GetPortfolioHistoryMaterialized(startDate, endDate, portfolioID)
+
+	// If query succeeded and we got data, use it
+	if err == nil && len(materialized) > 0 {
+		return materialized, nil
+	}
+
+	// Step 2: Fallback to on-demand calculation
+	// (Materialized view is empty, being regenerated, or query failed)
+	return s.GetPortfolioHistory(startDate, endDate, portfolioID)
+}
+
 func (s *PortfolioService) GetPortfolio(portfolioID string) (model.Portfolio, error) {
 	result, err := s.portfolioRepo.GetPortfolioOnID(portfolioID)
 	if err != nil {
@@ -389,12 +420,6 @@ func (s *PortfolioService) loadActivePortfolios() ([]model.Portfolio, error) {
 	})
 }
 
-// getOldestTransaction returns the date of the earliest transaction across the given portfolio_fund IDs.
-// This is used to determine the earliest date for which portfolio calculations can be performed.
-func (s *PortfolioService) getOldestTransaction(pfIDs []string) time.Time {
-	return s.transactionRepo.GetOldestTransaction(pfIDs)
-}
-
 // loadAllPortfolioFunds retrieves all funds associated with the given portfolios.
 // Returns:
 //   - fundsByPortfolio: map[portfolioID][]Fund
@@ -407,31 +432,6 @@ func (s *PortfolioService) loadAllPortfolioFunds(portfolios []model.Portfolio) (
 	return s.portfolioRepo.GetPortfolioFundsOnPortfolioID(portfolios)
 }
 
-// loadTransactions retrieves transactions for the given portfolio_fund IDs within the specified date range.
-// Results are grouped by portfolio ID.
-func (s *PortfolioService) loadTransactions(pfIDs []string, portfolioFundToPortfolio map[string]string, startDate, endDate time.Time) (map[string][]model.Transaction, error) {
-	return s.transactionRepo.GetTransactions(pfIDs, portfolioFundToPortfolio, startDate, endDate)
-}
-
-// loadDividend retrieves dividends for the given portfolio_fund IDs within the specified date range.
-// Results are grouped by portfolio ID.
-func (s *PortfolioService) loadDividend(pfIDs []string, portfolioFundToPortfolio map[string]string, startDate, endDate time.Time) (map[string][]model.Dividend, error) {
-	return s.dividendRepo.GetDividend(pfIDs, portfolioFundToPortfolio, startDate, endDate)
-}
-
-// loadFundPrices retrieves fund prices for the given fund IDs within the specified date range.
-// Prices are sorted flexibility based on need. (ASC or DESC)
-// Results are grouped by fund ID.
-func (s *PortfolioService) loadFundPrices(fundIDs []string, startDate, endDate time.Time, sortOrder string) (map[string][]model.FundPrice, error) {
-	return s.fundRepo.GetFundPrice(fundIDs, startDate, endDate, sortOrder)
-}
-
-// loadRealizedGainLoss retrieves realized gain/loss records for the given portfolios within the specified date range.
-// Results are grouped by portfolio ID.
-func (s *PortfolioService) loadRealizedGainLoss(portfolio []model.Portfolio, startDate, endDate time.Time) (map[string][]model.RealizedGainLoss, error) {
-	return s.realizedGainLossRepo.GetRealizedGainLossByPortfolio(portfolio, startDate, endDate)
-}
-
 //
 // CALCULATION FUNCTIONS
 //
@@ -439,96 +439,6 @@ func (s *PortfolioService) loadRealizedGainLoss(portfolio []model.Portfolio, sta
 // All functions that accept a date parameter compute values AS OF that date,
 // including only records that occurred on or before the specified date.
 //
-
-// processRealizedGainLossForDate calculates cumulative realized gains/losses as of the specified date.
-// Only realized gains from sales that occurred on or before the target date are included.
-// Returns (totalRealizedGainLoss, totalSaleProceeds, totalCostBasis, error).
-func (s *PortfolioService) processRealizedGainLossForDate(realizedGainLoss []model.RealizedGainLoss, date time.Time) (float64, float64, float64, error) {
-	if len(realizedGainLoss) == 0 {
-		return 0.0, 0.0, 0.0, nil
-	}
-	var totalRealizedGainLoss, totalSaleProceeds, totalCostBasis float64
-
-	for _, r := range realizedGainLoss {
-		if r.TransactionDate.Before(date) || r.TransactionDate.Equal(date) {
-			totalRealizedGainLoss += r.RealizedGainLoss
-			totalSaleProceeds += r.SaleProceeds
-			totalCostBasis += r.CostBasis
-		} else {
-			break
-		}
-	}
-
-	return totalRealizedGainLoss, totalSaleProceeds, totalCostBasis, nil
-}
-
-// processDividendSharesForDate calculates shares acquired through dividend reinvestment as of the specified date.
-// Only dividends with ex-dividend dates on or before the target date are included.
-// Returns a map of portfolio_fund ID to total reinvested shares.
-func (s *PortfolioService) processDividendSharesForDate(dividendMap map[string][]model.Dividend, transactions []model.Transaction, date time.Time) (map[string]float64, error) {
-	totalDividendMap := make(map[string]float64)
-
-	for pfID, dividend := range dividendMap {
-		var dividendShares float64
-
-		for _, div := range dividend {
-			if div.ExDividendDate.Before(date) || div.ExDividendDate.Equal(date) {
-				if div.ReinvestmentTransactionId != "" {
-					// Find the transaction with this ID
-					for _, transaction := range transactions {
-						if transaction.ID == div.ReinvestmentTransactionId {
-							dividendShares += transaction.Shares
-							break
-						}
-					}
-				}
-			} else {
-				break
-			}
-		}
-		totalDividendMap[pfID] = dividendShares
-	}
-
-	return totalDividendMap, nil
-}
-
-// processDividendAmountForDate calculates the cumulative dividend amount as of the specified date.
-// Only dividends with ex-dividend dates on or before the target date are included.
-func (s *PortfolioService) processDividendAmountForDate(dividend []model.Dividend, date time.Time) (float64, error) {
-	if len(dividend) == 0 {
-		return 0.0, nil
-	}
-	var totalDividend float64
-
-	for _, d := range dividend {
-
-		if d.ExDividendDate.Before(date) || d.ExDividendDate.Equal(date) {
-			totalDividend += d.TotalAmount
-		} else {
-			break
-		}
-	}
-
-	return totalDividend, nil
-}
-
-// getPriceForDate finds the most recent fund price on or before the target date.
-// Assumes prices are sorted in ASC order (oldest first).
-// Returns 0 if no price is found on or before the target date.
-func (s *PortfolioService) getPriceForDate(prices []model.FundPrice, targetDate time.Time) float64 {
-	var latestPrice float64 = 0
-
-	// Prices are sorted ASC, so iterate forward
-	for _, price := range prices {
-		if price.Date.Before(targetDate) || price.Date.Equal(targetDate) {
-			latestPrice = price.Price // Keep updating with more recent prices
-		} else {
-			break // We've passed the target date, stop
-		}
-	}
-
-	return latestPrice
-}
 
 // processTransactionsForDate calculates portfolio metrics as of the specified date.
 // It processes all transactions that occurred on or before the target date to compute:
@@ -551,52 +461,20 @@ func (s *PortfolioService) processTransactionsForDate(transactionsMap map[string
 	}
 	var totalShares, totalCost, totalValue, totalDividends, totalFees float64
 	for pfID, transactions := range transactionsMap {
-		var shares, cost, dividends, value, fees float64
-		shares = dividendShares[pfID]
-
-		for _, transaction := range transactions {
-
-			if transaction.Date.Before(date) || transaction.Date.Equal(date) {
-
-				switch transaction.Type {
-				case "buy":
-					shares += transaction.Shares
-					cost += transaction.Shares * transaction.CostPerShare
-				case "dividend":
-					dividends += transaction.Shares * transaction.CostPerShare
-				case "sell":
-					shares -= transaction.Shares
-					if shares > 0.0 {
-						cost = (cost / (shares + transaction.Shares)) * shares
-					} else {
-						cost = 0.0
-					}
-				case "fee":
-					cost += transaction.CostPerShare
-					fees += transaction.CostPerShare
-				default:
-					err := errors.New("Unknown transaction type.")
-					return TransactionMetrics{}, fmt.Errorf(": %w", err)
-				}
-			} else {
-				break
-			}
-		}
 		fundID := fundMapping[pfID]
 		prices := fundPriceByFund[fundID]
 
-		if len(prices) > 0 {
-			latestPrice := s.getPriceForDate(prices, date)
-			if latestPrice > 0 {
-				value = shares * latestPrice
-				totalValue += value
-			}
+		fundMetrics, err := s.fundService.calculateFundMetrics(
+			pfID, fundID, date, transactions, dividendShares[pfID], prices, false)
+
+		if err != nil {
+			return TransactionMetrics{}, err
 		}
 
-		totalShares += shares
-		totalCost += cost
-		totalDividends += dividends
-		totalFees += fees
+		totalShares += fundMetrics.Shares
+		totalCost += fundMetrics.Cost
+		totalDividends += fundMetrics.Dividend
+		totalFees += fundMetrics.Fees
 	}
 
 	totalShares = max(0, totalShares)

@@ -31,7 +31,7 @@ func NewRealizedGainLossRepository(db *sql.DB) *RealizedGainLossRepository {
 // Returns a map of portfolioID -> []RealizedGainLoss. If portfolio is empty, returns an empty map.
 // Each record contains details about a sell transaction including shares sold, cost basis,
 // sale proceeds, and the calculated realized gain or loss.
-func (s *RealizedGainLossRepository) GetRealizedGainLossByPortfolio(portfolio []model.Portfolio, startDate, endDate time.Time) (map[string][]model.RealizedGainLoss, error) {
+func (s *RealizedGainLossRepository) GetRealizedGainLossByPortfolio(portfolio []string, startDate, endDate time.Time) (map[string][]model.RealizedGainLoss, error) {
 	if len(portfolio) == 0 {
 		return make(map[string][]model.RealizedGainLoss), nil
 	}
@@ -54,8 +54,8 @@ func (s *RealizedGainLossRepository) GetRealizedGainLossByPortfolio(portfolio []
 
 	// Build args: portfolio first, then startDate, then endDate
 	realizedGainLossdArgs := make([]any, 0, len(portfolio)+2)
-	for _, pf := range portfolio {
-		realizedGainLossdArgs = append(realizedGainLossdArgs, pf.ID)
+	for _, id := range portfolio {
+		realizedGainLossdArgs = append(realizedGainLossdArgs, id)
 	}
 	realizedGainLossdArgs = append(realizedGainLossdArgs, startDate.Format("2006-01-02"))
 	realizedGainLossdArgs = append(realizedGainLossdArgs, endDate.Format("2006-01-02"))
