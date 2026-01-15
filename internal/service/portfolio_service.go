@@ -395,6 +395,9 @@ func (s *PortfolioService) GetPortfolioHistoryWithFallback(
 	return s.GetPortfolioHistory(startDate, endDate, portfolioID)
 }
 
+// GetPortfolio retrieves a single portfolio by its ID.
+// Returns the portfolio metadata including name, description, and archive status.
+// This is a simple wrapper around the repository layer for portfolio lookup.
 func (s *PortfolioService) GetPortfolio(portfolioID string) (model.Portfolio, error) {
 	result, err := s.portfolioRepo.GetPortfolioOnID(portfolioID)
 	if err != nil {

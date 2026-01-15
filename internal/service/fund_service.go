@@ -33,16 +33,18 @@ func NewFundService(
 	}
 }
 
+// FundMetrics represents calculated metrics for a single fund at a point in time.
+// This structure is returned by calculateFundMetrics and contains all per-fund valuations.
 type FundMetrics struct {
-	PortfolioFundID string
-	FundID          string
-	Shares          float64
-	Cost            float64
-	LatestPrice     float64
-	Dividend        float64
-	Value           float64
-	UnrealizedGain  float64
-	Fees            float64
+	PortfolioFundID string  // Portfolio fund unique identifier
+	FundID          string  // Fund identifier for price lookup
+	Shares          float64 // Total number of shares held (including reinvested dividends)
+	Cost            float64 // Total cost basis (weighted average cost method)
+	LatestPrice     float64 // Most recent price used for valuation
+	Dividend        float64 // Total dividend amounts received (not reinvested)
+	Value           float64 // Current market value (shares × latestPrice)
+	UnrealizedGain  float64 // Unrealized gain/loss (value - cost)
+	Fees            float64 // Total fees paid
 }
 
 // GetAllPortfolios retrieves all portfolios from the database with no filters applied.
@@ -51,6 +53,23 @@ func (s *FundService) GetAlFunds() ([]model.Fund, error) {
 	return s.fundRepo.GetFunds()
 }
 
+// GetPortfolioFunds retrieves detailed fund metrics for all funds in a portfolio.
+// Returns per-fund breakdowns including shares, cost, value, gains/losses, dividends, and fees.
+//
+// This method calculates current valuations by:
+//   - Loading all historical transactions and dividends from inception to present
+//   - Processing dividend reinvestments
+//   - Calculating share counts, cost basis, and market value using latest available prices
+//   - Computing realized gains from sale transactions
+//   - Aggregating dividend payments
+//
+// Parameters:
+//   - portfolioID: The portfolio ID to retrieve funds for. If empty, returns all portfolio funds.
+//
+// Returns:
+// A slice of PortfolioFund structs with populated metrics including totalShares, currentValue,
+// unrealizedGainLoss, realizedGainLoss, totalDividends, and totalFees.
+// All monetary values are rounded to two decimal places.
 func (s *FundService) GetPortfolioFunds(portfolioID string) ([]model.PortfolioFund, error) {
 
 	portfolioFunds, err := s.fundRepo.GetPortfolioFunds(portfolioID)
@@ -148,10 +167,6 @@ func (s *FundService) GetPortfolioFunds(portfolioID string) ([]model.PortfolioFu
 	return portfolioFunds, nil
 }
 
-func (s *FundService) GetPortfolioFundMetrics() {
-
-}
-
 // LoadFundPrices retrieves fund prices for the given fund IDs within the specified date range.
 // Prices are sorted flexibility based on need. (ASC or DESC)
 // Results are grouped by fund ID.
@@ -159,6 +174,39 @@ func (s *FundService) loadFundPrices(fundIDs []string, startDate, endDate time.T
 	return s.fundRepo.GetFundPrice(fundIDs, startDate, endDate, sortOrder)
 }
 
+// calculateFundMetrics calculates detailed metrics for a single fund as of a specific date.
+// This is the core calculation engine used by both per-fund endpoints and portfolio aggregation.
+//
+// The calculation processes all transactions up to the specified date to compute:
+//   - Total shares held (buy transactions increase, sell transactions decrease)
+//   - Cost basis (weighted average cost, adjusted on sales)
+//   - Market value (shares × price)
+//   - Unrealized gain/loss (value - cost)
+//   - Dividends received
+//   - Fees paid
+//
+// Transaction Processing Logic:
+//   - "buy": Increases shares and cost
+//   - "sell": Decreases shares and adjusts cost basis proportionally
+//   - "dividend": Adds to dividend total (reinvestment shares come via dividendShares parameter)
+//   - "fee": Adds to both cost and fees
+//
+// Price Strategy:
+// The useLatestPrice parameter controls price selection:
+//   - true: Uses the most recent available price regardless of date (for current valuations)
+//   - false: Uses the price on or before the target date (for historical calculations)
+//
+// Parameters:
+//   - pfID: Portfolio fund ID for identification
+//   - fundID: Fund ID for price lookup
+//   - date: Target date for calculation (only transactions on or before this date are included)
+//   - transactions: All transactions for this fund, sorted by date
+//   - dividendShares: Shares acquired through dividend reinvestment
+//   - fundPrices: Historical price data for the fund, sorted ascending
+//   - useLatestPrice: If true, uses latest available price; if false, uses price as of date
+//
+// Returns:
+// FundMetrics struct containing all calculated values including shares, cost, value, gains, dividends, and fees.
 func (s *FundService) calculateFundMetrics(
 	pfID string,
 	fundID string,

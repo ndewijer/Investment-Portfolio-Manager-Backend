@@ -36,7 +36,7 @@ func (h *PortfolioHandler) Portfolios(w http.ResponseWriter, r *http.Request) {
 	portfolios, err := h.portfolioService.GetAllPortfolios()
 	if err != nil {
 		errorResponse := map[string]string{
-			"error":  "Failed to retreive portfolios",
+			"error":  "Failed to retrieve portfolios",
 			"detail": err.Error(),
 		}
 		respondJSON(w, http.StatusInternalServerError, errorResponse)
@@ -175,18 +175,18 @@ func parseDateParams(r *http.Request) (time.Time, time.Time, error) {
 	return startDate, endDate, nil
 }
 
-// PortfolioFunds handles GET requests to retrieve all PortfolioFunds.
-// This endpoint returns all PortfolioFunds including archived and excluded ones.
+// PortfolioFunds handles GET requests to retrieve all portfolio funds across all portfolios.
+// Returns detailed fund metrics including shares, cost, value, gains/losses, dividends, and fees.
 //
-// Endpoint: GET /api/portfolio
-// Response: 200 OK with array of PortfolioFundsResponse
+// Endpoint: GET /api/portfolio/funds
+// Response: 200 OK with array of PortfolioFund
 // Error: 500 Internal Server Error if retrieval fails
 func (h *PortfolioHandler) PortfolioFunds(w http.ResponseWriter, r *http.Request) {
 
 	PortfolioFunds, err := h.fundService.GetPortfolioFunds("")
 	if err != nil {
 		errorResponse := map[string]string{
-			"error":  "Failed to retreive PortfolioFunds",
+			"error":  "Failed to retrieve portfolio funds",
 			"detail": err.Error(),
 		}
 		respondJSON(w, http.StatusInternalServerError, errorResponse)
@@ -196,11 +196,12 @@ func (h *PortfolioHandler) PortfolioFunds(w http.ResponseWriter, r *http.Request
 	respondJSON(w, http.StatusOK, PortfolioFunds)
 }
 
-// GetPortfolio handles GET requests to retrieve a single portfolio with its current summary.
-// Returns the portfolio details along with current valuations (totalValue, totalCost, etc.).
+// GetPortfolioFunds handles GET requests to retrieve all funds for a specific portfolio.
+// Returns detailed fund metrics including shares, cost, value, gains/losses, dividends, and fees
+// for each fund held in the specified portfolio.
 //
-// Endpoint: GET /api/portfolio/{portfolio_id}
-// Response: 200 OK with PortfolioFundsummary
+// Endpoint: GET /api/portfolio/funds/{portfolioId}
+// Response: 200 OK with array of PortfolioFund
 // Error: 500 Internal Server Error if retrieval or calculation fails
 func (h *PortfolioHandler) GetPortfolioFunds(w http.ResponseWriter, r *http.Request) {
 
@@ -209,13 +210,12 @@ func (h *PortfolioHandler) GetPortfolioFunds(w http.ResponseWriter, r *http.Requ
 	portfolioFunds, err := h.fundService.GetPortfolioFunds(portfolioID)
 	if err != nil {
 		errorResponse := map[string]string{
-			"error":  "Failed to get PortfolioFunds",
+			"error":  "Failed to get portfolio funds",
 			"detail": err.Error(),
 		}
 		respondJSON(w, http.StatusInternalServerError, errorResponse)
 		return
 	}
 
-	// Return the single portfolio summary
 	respondJSON(w, http.StatusOK, portfolioFunds)
 }
