@@ -59,9 +59,7 @@ func main() {
 	)
 	portfolioService := service.NewPortfolioService(
 		portfolioRepo,
-		transactionRepo,
 		dividendService,
-		realizedGainLossRepo,
 		materializedRepo,
 		transactionService,
 		fundService,

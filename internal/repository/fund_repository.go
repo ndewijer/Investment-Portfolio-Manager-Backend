@@ -132,6 +132,11 @@ func (s *FundRepository) GetFund(fundIDs []string) ([]model.Fund, error) {
 // Returns a map of fundID -> []FundPrice, grouped by fund and sorted by date according to sortOrder.
 func (s *FundRepository) GetFundPrice(fundIDs []string, startDate, endDate time.Time, sortOrder string) (map[string][]model.FundPrice, error) {
 
+	if startDate.After(endDate) {
+		return nil, fmt.Errorf("startDate (%s) must be before or equal to endDate (%s)",
+			startDate.Format("2006-01-02"), endDate.Format("2006-01-02"))
+	}
+
 	fundPricePlaceholders := make([]string, len(fundIDs))
 	for i := range fundPricePlaceholders {
 		fundPricePlaceholders[i] = "?"

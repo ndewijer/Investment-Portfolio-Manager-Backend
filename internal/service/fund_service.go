@@ -49,7 +49,7 @@ type FundMetrics struct {
 
 // GetAllPortfolios retrieves all portfolios from the database with no filters applied.
 // This includes both archived and excluded portfolios.
-func (s *FundService) GetAlFunds() ([]model.Fund, error) {
+func (s *FundService) GetAllFunds() ([]model.Fund, error) {
 	return s.fundRepo.GetFunds()
 }
 

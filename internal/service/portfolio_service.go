@@ -15,8 +15,6 @@ import (
 // fund prices, and realized gains/losses.
 type PortfolioService struct {
 	portfolioRepo           *repository.PortfolioRepository
-	transactionRepo         *repository.TransactionRepository
-	realizedGainLossRepo    *repository.RealizedGainLossRepository
 	materializedRepo        *repository.MaterializedRepository
 	transactionService      *TransactionService
 	fundService             *FundService
@@ -28,9 +26,7 @@ type PortfolioService struct {
 // All repository parameters are required for proper portfolio calculations.
 func NewPortfolioService(
 	portfolioRepo *repository.PortfolioRepository,
-	transactionRepo *repository.TransactionRepository,
 	dividendService *DividendService,
-	realizedGainLossRepo *repository.RealizedGainLossRepository,
 	materializedRepo *repository.MaterializedRepository,
 	transactionService *TransactionService,
 	fundService *FundService,
@@ -38,9 +34,7 @@ func NewPortfolioService(
 ) *PortfolioService {
 	return &PortfolioService{
 		portfolioRepo:           portfolioRepo,
-		transactionRepo:         transactionRepo,
 		dividendService:         dividendService,
-		realizedGainLossRepo:    realizedGainLossRepo,
 		materializedRepo:        materializedRepo,
 		transactionService:      transactionService,
 		fundService:             fundService,
