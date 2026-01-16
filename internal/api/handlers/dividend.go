@@ -42,6 +42,13 @@ func NewDividendHandler(dividendService *service.DividendService) *DividendHandl
 // 	respondJSON(w, http.StatusOK, dividends)
 // }
 
+// DividendPerPortfolio handles GET requests to retrieve all dividends for a specific portfolio.
+// Returns dividend details including fund information, amounts, dates, and reinvestment status
+// for all funds held in the specified portfolio.
+//
+// Endpoint: GET /api/dividend/portfolio/{portfolioId}
+// Response: 200 OK with array of DividendFund
+// Error: 500 Internal Server Error if retrieval fails
 func (h *DividendHandler) DividendPerPortfolio(w http.ResponseWriter, r *http.Request) {
 
 	portfolioID := chi.URLParam(r, "portfolioId")

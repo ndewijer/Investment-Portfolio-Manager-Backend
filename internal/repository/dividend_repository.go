@@ -129,12 +129,19 @@ func (s *DividendRepository) GetDividend(pfIDs []string, startDate, endDate time
 	return dividendByPortfolioFund, nil
 }
 
+// GetDividendPerPortfolioFund retrieves all dividend records for funds in a specific portfolio.
+// This method performs a JOIN across dividend, portfolio_fund, and fund tables to return
+// enriched dividend data including fund names and dividend types.
+//
+// Parameters:
+//   - portfolioID: The portfolio ID to retrieve dividends for. Returns empty slice if empty string.
+//
+// Returns a slice of DividendFund containing all historical dividend payments for the portfolio.
+// The results include both reinvested and distributed dividends across all funds held in the portfolio.
 func (s *DividendRepository) GetDividendPerPortfolioFund(portfolioID string) ([]model.DividendFund, error) {
 	if portfolioID == "" {
 		return []model.DividendFund{}, nil
 	}
-
-	// Retrieve all dividend based on returned portfolio_fund IDs
 
 	query := `
 	SELECT
@@ -191,10 +198,11 @@ func (s *DividendRepository) GetDividendPerPortfolioFund(portfolioID string) ([]
 
 		// BuyOrderDate is nullable
 		if buyOrderStr.Valid {
-			t.BuyOrderDate, err = ParseTime(buyOrderStr.String)
-			if err != nil || t.BuyOrderDate.IsZero() {
+			buyDate, err := ParseTime(buyOrderStr.String)
+			if err != nil || buyDate.IsZero() {
 				return nil, fmt.Errorf("failed to parse buy_order_date: %w", err)
 			}
+			t.BuyOrderDate = &buyDate // Assign pointer for nullable field
 		}
 
 		// ReinvestmentTransactionId is nullable
