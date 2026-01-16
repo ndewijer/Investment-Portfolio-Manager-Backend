@@ -17,3 +17,20 @@ type Dividend struct {
 	ReinvestmentTransactionId string
 	CreatedAt                 time.Time
 }
+
+// The expected result on the dividend/portfolio API
+type DividendFund struct {
+	ID                        string
+	FundID                    string
+	FundName                  string
+	PortfolioFundID           string
+	RecordDate                time.Time
+	ExDividendDate            time.Time
+	SharesOwned               float64
+	DividendPerShare          float64
+	TotalAmount               float64
+	ReinvestmentStatus        string
+	BuyOrderDate              time.Time
+	ReinvestmentTransactionId string
+	DividendType              string
+}
