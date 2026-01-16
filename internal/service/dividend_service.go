@@ -21,10 +21,24 @@ func NewDividendService(
 	}
 }
 
+func (s *DividendService) GetDividendFund(portfolioID string) ([]model.DividendFund, error) {
+	dividendFund, err := s.loadDividendPerPortfolioFund(portfolioID)
+	if err != nil {
+		return nil, err
+	}
+	return dividendFund, nil
+}
+
 // LoadDividend retrieves dividends for the given portfolio_fund IDs within the specified date range.
 // Results are grouped by portfolio_fund ID, allowing callers to decide how to aggregate.
 func (s *DividendService) loadDividend(pfIDs []string, startDate, endDate time.Time) (map[string][]model.Dividend, error) {
 	return s.dividendRepo.GetDividend(pfIDs, startDate, endDate)
+}
+
+// LoadDividend retrieves dividends for the given portfolio_fund IDs within the specified date range.
+// Results are grouped by portfolio_fund ID, allowing callers to decide how to aggregate.
+func (s *DividendService) loadDividendPerPortfolioFund(portfolioID string) ([]model.DividendFund, error) {
+	return s.dividendRepo.GetDividendPerPortfolioFund(portfolioID)
 }
 
 // ProcessDividendSharesForDate calculates shares acquired through dividend reinvestment as of the specified date.

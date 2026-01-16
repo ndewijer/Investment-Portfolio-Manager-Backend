@@ -128,3 +128,86 @@ func (s *DividendRepository) GetDividend(pfIDs []string, startDate, endDate time
 
 	return dividendByPortfolioFund, nil
 }
+
+func (s *DividendRepository) GetDividendPerPortfolioFund(portfolioID string) ([]model.DividendFund, error) {
+	if portfolioID == "" {
+		return []model.DividendFund{}, nil
+	}
+
+	// Retrieve all dividend based on returned portfolio_fund IDs
+
+	query := `
+	SELECT
+		d.id, d.fund_id, f.name, d.portfolio_fund_id, d.record_date, d.ex_dividend_date,
+		d.shares_owned, d.dividend_per_share, d.total_amount, d.reinvestment_status,
+		d.buy_order_date, d.reinvestment_transaction_id, f.dividend_type
+	FROM dividend d
+	INNER JOIN portfolio_fund pf ON d.portfolio_fund_id = pf.id
+	INNER JOIN fund f ON pf.fund_id = f.id
+	WHERE pf.portfolio_id = ?
+	`
+
+	rows, err := s.db.Query(query, portfolioID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query dividend table: %w", err)
+	}
+	defer rows.Close()
+
+	var dividendFund []model.DividendFund
+
+	for rows.Next() {
+		var recordDateStr, exDividendStr string
+		var buyOrderStr, reinvestmentTxID sql.NullString
+		var t model.DividendFund
+
+		err := rows.Scan(
+			&t.ID,
+			&t.FundID,
+			&t.FundName,
+			&t.PortfolioFundID,
+			&recordDateStr,
+			&exDividendStr,
+			&t.SharesOwned,
+			&t.DividendPerShare,
+			&t.TotalAmount,
+			&t.ReinvestmentStatus,
+			&buyOrderStr,
+			&reinvestmentTxID,
+			&t.DividendType,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan dividend table results: %w", err)
+		}
+
+		t.RecordDate, err = ParseTime(recordDateStr)
+		if err != nil || t.RecordDate.IsZero() {
+			return nil, fmt.Errorf("failed to parse date: %w", err)
+		}
+
+		t.ExDividendDate, err = ParseTime(exDividendStr)
+		if err != nil || t.ExDividendDate.IsZero() {
+			return nil, fmt.Errorf("failed to parse date: %w", err)
+		}
+
+		// BuyOrderDate is nullable
+		if buyOrderStr.Valid {
+			t.BuyOrderDate, err = ParseTime(buyOrderStr.String)
+			if err != nil || t.BuyOrderDate.IsZero() {
+				return nil, fmt.Errorf("failed to parse buy_order_date: %w", err)
+			}
+		}
+
+		// ReinvestmentTransactionId is nullable
+		if reinvestmentTxID.Valid {
+			t.ReinvestmentTransactionId = reinvestmentTxID.String
+		}
+
+		dividendFund = append(dividendFund, t)
+
+	}
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating dividend table: %w", err)
+	}
+
+	return dividendFund, nil
+}
