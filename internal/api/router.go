@@ -40,9 +40,9 @@ func NewRouter(systemService *service.SystemService, portfolioService *service.P
 			r.Get("/", portfolioHandler.Portfolios)
 			r.Get("/summary", portfolioHandler.PortfolioSummary)
 			r.Get("/history", portfolioHandler.PortfolioHistory)
-			r.Get("/{portfolioId}", portfolioHandler.GetPortfolio)
 			r.Get("/funds", portfolioHandler.PortfolioFunds)
 			r.Get("/funds/{portfolioId}", portfolioHandler.GetPortfolioFunds)
+			r.Get("/{portfolioId}", portfolioHandler.GetPortfolio)
 		})
 
 		r.Route("/fund", func(r chi.Router) {

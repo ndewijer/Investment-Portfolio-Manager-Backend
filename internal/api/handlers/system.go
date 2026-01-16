@@ -58,7 +58,7 @@ func (h *SystemHandler) Version(w http.ResponseWriter, r *http.Request) {
 	version, err := h.systemService.CheckVersion()
 	if err != nil {
 		errorResponse := map[string]string{
-			"error":  "Failed to get version information",
+			"error":  "failed to get version information",
 			"detail": err.Error(),
 		}
 		respondJSON(w, http.StatusInternalServerError, errorResponse)

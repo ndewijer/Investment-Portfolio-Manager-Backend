@@ -47,8 +47,8 @@ type FundMetrics struct {
 	Fees            float64 // Total fees paid
 }
 
-// GetAllPortfolios retrieves all portfolios from the database with no filters applied.
-// This includes both archived and excluded portfolios.
+// GetAllFunds retrieves all funds from the database with no filters applied.
+// Returns a complete list of all available funds that can be held in portfolios.
 func (s *FundService) GetAllFunds() ([]model.Fund, error) {
 	return s.fundRepo.GetFunds()
 }
