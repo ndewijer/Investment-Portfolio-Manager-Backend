@@ -38,9 +38,9 @@ func NewRouter(systemService *service.SystemService, portfolioService *service.P
 		r.Route("/portfolio", func(r chi.Router) {
 			portfolioHandler := handlers.NewPortfolioHandler(portfolioService, fundService)
 			r.Get("/", portfolioHandler.Portfolios)
-			r.Get("/{portfolioId}", portfolioHandler.GetPortfolio)
 			r.Get("/summary", portfolioHandler.PortfolioSummary)
 			r.Get("/history", portfolioHandler.PortfolioHistory)
+			r.Get("/{portfolioId}", portfolioHandler.GetPortfolio)
 			r.Get("/funds", portfolioHandler.PortfolioFunds)
 			r.Get("/funds/{portfolioId}", portfolioHandler.GetPortfolioFunds)
 		})

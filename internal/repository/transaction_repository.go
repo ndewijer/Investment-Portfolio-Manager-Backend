@@ -51,14 +51,14 @@ func (s *TransactionRepository) GetTransactions(pfIDs []string, startDate, endDa
 	`
 
 	// Build args: pfIDs first, then startDate, then endDate
-	transactiondArgs := make([]any, 0, len(pfIDs)+2)
+	transactionArgs := make([]any, 0, len(pfIDs)+2)
 	for _, id := range pfIDs {
-		transactiondArgs = append(transactiondArgs, id)
+		transactionArgs = append(transactionArgs, id)
 	}
-	transactiondArgs = append(transactiondArgs, startDate.Format("2006-01-02"))
-	transactiondArgs = append(transactiondArgs, endDate.Format("2006-01-02"))
+	transactionArgs = append(transactionArgs, startDate.Format("2006-01-02"))
+	transactionArgs = append(transactionArgs, endDate.Format("2006-01-02"))
 
-	rows, err := s.db.Query(transactionQuery, transactiondArgs...)
+	rows, err := s.db.Query(transactionQuery, transactionArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query transaction table: %w", err)
 	}
@@ -97,7 +97,6 @@ func (s *TransactionRepository) GetTransactions(pfIDs []string, startDate, endDa
 	}
 
 	if err = rows.Err(); err != nil {
-		fmt.Printf("ERROR during iteration: %v\n", err)
 		return nil, fmt.Errorf("error iterating transaction table: %w", err)
 	}
 
@@ -116,7 +115,7 @@ func (s *TransactionRepository) GetOldestTransaction(pfIDs []string) time.Time {
 	if len(pfIDs) == 0 {
 		return time.Time{}
 	}
-	var oldestDateStr string
+	var oldestDateStr sql.NullString
 
 	oldestTransactionPlaceholders := make([]string, len(pfIDs))
 	for i := range oldestTransactionPlaceholders {
@@ -135,11 +134,10 @@ func (s *TransactionRepository) GetOldestTransaction(pfIDs []string) time.Time {
 	}
 
 	err := s.db.QueryRow(oldestTransactionQuery, oldestTransactionArgs...).Scan(&oldestDateStr)
-	if err != nil {
+	if err != nil || !oldestDateStr.Valid {
 		return time.Time{}
 	}
-
-	oldestDate, err := time.Parse("2006-01-02", oldestDateStr)
+	oldestDate, err := time.Parse("2006-01-02", oldestDateStr.String)
 	if err != nil {
 		return time.Time{}
 	}
