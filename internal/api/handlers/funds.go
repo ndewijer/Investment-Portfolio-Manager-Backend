@@ -31,7 +31,7 @@ func (h *FundHandler) Funds(w http.ResponseWriter, r *http.Request) {
 	funds, err := h.fundService.GetAllFunds()
 	if err != nil {
 		errorResponse := map[string]string{
-			"error":  "Failed to retrieve funds",
+			"error":  "failed to retrieve funds",
 			"detail": err.Error(),
 		}
 		respondJSON(w, http.StatusInternalServerError, errorResponse)

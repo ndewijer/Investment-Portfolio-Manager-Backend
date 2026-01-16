@@ -36,7 +36,7 @@ func (h *PortfolioHandler) Portfolios(w http.ResponseWriter, r *http.Request) {
 	portfolios, err := h.portfolioService.GetAllPortfolios()
 	if err != nil {
 		errorResponse := map[string]string{
-			"error":  "Failed to retrieve portfolios",
+			"error":  "failed to retrieve portfolios",
 			"detail": err.Error(),
 		}
 		respondJSON(w, http.StatusInternalServerError, errorResponse)
@@ -61,7 +61,7 @@ func (h *PortfolioHandler) GetPortfolio(w http.ResponseWriter, r *http.Request) 
 	history, err := h.portfolioService.GetPortfolioHistoryWithFallback(startDate, endDate, portfolioID)
 	if err != nil {
 		errorResponse := map[string]string{
-			"error":  "Failed to get portfolio summary",
+			"error":  "failed to get portfolio summary",
 			"detail": err.Error(),
 		}
 		respondJSON(w, http.StatusInternalServerError, errorResponse)
@@ -96,7 +96,7 @@ func (h *PortfolioHandler) PortfolioSummary(w http.ResponseWriter, r *http.Reque
 	portfolioSummary, err := h.portfolioService.GetPortfolioHistoryWithFallback(startDate, endDate, "")
 	if err != nil {
 		errorResponse := map[string]string{
-			"error":  "Failed to get portfolio summary",
+			"error":  "failed to get portfolio summary",
 			"detail": err.Error(),
 		}
 		respondJSON(w, http.StatusInternalServerError, errorResponse)
@@ -139,7 +139,7 @@ func (h *PortfolioHandler) PortfolioHistory(w http.ResponseWriter, r *http.Reque
 	portfolioHistory, err := h.portfolioService.GetPortfolioHistoryWithFallback(startDate, endDate, "")
 	if err != nil {
 		errorResponse := map[string]string{
-			"error":  "Failed to get portfolio history",
+			"error":  "failed to get portfolio history",
 			"detail": err.Error(),
 		}
 		respondJSON(w, http.StatusInternalServerError, errorResponse)
@@ -186,7 +186,7 @@ func (h *PortfolioHandler) PortfolioFunds(w http.ResponseWriter, r *http.Request
 	PortfolioFunds, err := h.fundService.GetPortfolioFunds("")
 	if err != nil {
 		errorResponse := map[string]string{
-			"error":  "Failed to retrieve portfolio funds",
+			"error":  "failed to retrieve portfolio funds",
 			"detail": err.Error(),
 		}
 		respondJSON(w, http.StatusInternalServerError, errorResponse)
@@ -210,7 +210,7 @@ func (h *PortfolioHandler) GetPortfolioFunds(w http.ResponseWriter, r *http.Requ
 	portfolioFunds, err := h.fundService.GetPortfolioFunds(portfolioID)
 	if err != nil {
 		errorResponse := map[string]string{
-			"error":  "Failed to get portfolio funds",
+			"error":  "failed to get portfolio funds",
 			"detail": err.Error(),
 		}
 		respondJSON(w, http.StatusInternalServerError, errorResponse)
