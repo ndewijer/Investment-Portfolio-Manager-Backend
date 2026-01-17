@@ -123,14 +123,14 @@ func (s *FundRepository) GetFund(fundIDs []string) ([]model.Fund, error) {
 //   - fundIDs: slice of fund IDs to query
 //   - startDate: inclusive start date for the query
 //   - endDate: inclusive end date for the query
-//   - sortOrder: "ASC" or "DESC" for date ordering (defaults to "DESC" if invalid)
+//   - ascending: if true, sort by date ASC (oldest first); if false, DESC (newest first)
 //
 // The sortOrder parameter controls how prices are sorted by date within each fund group:
 //   - "ASC": oldest first - efficient for date-aware lookups (GetPriceForDate)
 //   - "DESC": newest first - efficient for latest-price lookups
 //
 // Returns a map of fundID -> []FundPrice, grouped by fund and sorted by date according to sortOrder.
-func (s *FundRepository) GetFundPrice(fundIDs []string, startDate, endDate time.Time, sortOrder string) (map[string][]model.FundPrice, error) {
+func (s *FundRepository) GetFundPrice(fundIDs []string, startDate, endDate time.Time, ascending bool) (map[string][]model.FundPrice, error) {
 
 	if startDate.After(endDate) {
 		return nil, fmt.Errorf("startDate (%s) must be before or equal to endDate (%s)",
@@ -142,8 +142,10 @@ func (s *FundRepository) GetFundPrice(fundIDs []string, startDate, endDate time.
 		fundPricePlaceholders[i] = "?"
 	}
 
-	// Validate and sanitize sortOrder (can't be parameterized)
-	if strings.ToUpper(sortOrder) != "ASC" && strings.ToUpper(sortOrder) != "DESC" {
+	var sortOrder string
+	if ascending {
+		sortOrder = "ASC"
+	} else {
 		sortOrder = "DESC"
 	}
 

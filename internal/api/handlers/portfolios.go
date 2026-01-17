@@ -7,6 +7,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/service"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/validation"
 )
 
 // PortfolioHandler handles HTTP requests for portfolio endpoints.
@@ -55,6 +56,21 @@ func (h *PortfolioHandler) Portfolios(w http.ResponseWriter, r *http.Request) {
 func (h *PortfolioHandler) GetPortfolio(w http.ResponseWriter, r *http.Request) {
 
 	portfolioID := chi.URLParam(r, "portfolioId")
+
+	if portfolioID == "" {
+		respondJSON(w, http.StatusBadRequest, map[string]string{
+			"error": "portfolio ID is required",
+		})
+		return
+	}
+
+	if err := validation.ValidateUUID(portfolioID); err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{
+			"error":  "invalid portfolio ID format",
+			"detail": err.Error(),
+		})
+		return
+	}
 
 	startDate, _ := time.Parse("2006-01-02", "1970-01-01")
 	endDate := time.Now()
@@ -206,6 +222,20 @@ func (h *PortfolioHandler) PortfolioFunds(w http.ResponseWriter, r *http.Request
 func (h *PortfolioHandler) GetPortfolioFunds(w http.ResponseWriter, r *http.Request) {
 
 	portfolioID := chi.URLParam(r, "portfolioId")
+	if portfolioID == "" {
+		respondJSON(w, http.StatusBadRequest, map[string]string{
+			"error": "portfolio ID is required",
+		})
+		return
+	}
+
+	if err := validation.ValidateUUID(portfolioID); err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{
+			"error":  "invalid portfolio ID format",
+			"detail": err.Error(),
+		})
+		return
+	}
 
 	portfolioFunds, err := h.fundService.GetPortfolioFunds(portfolioID)
 	if err != nil {

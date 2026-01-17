@@ -243,12 +243,12 @@ func (s *PortfolioService) GetPortfolioHistory(requestedStartDate, requestedEndD
 	}
 
 	// Load dividends grouped by portfolio_fund
-	dividendsByPF, err := s.dividendService.loadDividend(pfIDs, dataStartDate, dataEndDate)
+	dividendsByPF, err := s.dividendService.loadDividendPerPF(pfIDs, dataStartDate, dataEndDate)
 	if err != nil {
 		return nil, err
 	}
 
-	fundPriceByFund, err := s.fundService.loadFundPrices(fundIDs, dataStartDate, dataEndDate, "ASC")
+	fundPriceByFund, err := s.fundService.loadFundPrices(fundIDs, dataStartDate, dataEndDate, true) //ASC
 	if err != nil {
 		return nil, err
 	}

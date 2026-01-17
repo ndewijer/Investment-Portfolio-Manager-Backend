@@ -21,10 +21,37 @@ func NewDividendService(
 	}
 }
 
-// LoadDividend retrieves dividends for the given portfolio_fund IDs within the specified date range.
+func (s *DividendService) GetAllDividends() ([]model.Dividend, error) {
+	return s.dividendRepo.GetDividend()
+}
+
+// GetDividendFund retrieves all dividend records for a specific portfolio with enriched fund information.
+// This is the public service method that returns complete dividend details including fund names,
+// dividend types, and reinvestment status for all funds held in the portfolio.
+//
+// Parameters:
+//   - portfolioID: The portfolio ID to retrieve dividends for
+//
+// Returns a slice of DividendFund containing all historical dividend payments.
+func (s *DividendService) GetDividendFund(portfolioID string) ([]model.DividendFund, error) {
+	dividendFund, err := s.loadDividendPerPortfolioFund(portfolioID)
+	if err != nil {
+		return nil, err
+	}
+	return dividendFund, nil
+}
+
+// loadDividend retrieves dividends for the given portfolio_fund IDs within the specified date range.
 // Results are grouped by portfolio_fund ID, allowing callers to decide how to aggregate.
-func (s *DividendService) loadDividend(pfIDs []string, startDate, endDate time.Time) (map[string][]model.Dividend, error) {
-	return s.dividendRepo.GetDividend(pfIDs, startDate, endDate)
+func (s *DividendService) loadDividendPerPF(pfIDs []string, startDate, endDate time.Time) (map[string][]model.Dividend, error) {
+	return s.dividendRepo.GetDividendPerPF(pfIDs, startDate, endDate)
+}
+
+// loadDividendPerPortfolioFund retrieves enriched dividend records for a portfolio.
+// This is a private helper method that delegates to the repository layer.
+// Returns dividend data joined with fund information for display purposes.
+func (s *DividendService) loadDividendPerPortfolioFund(portfolioID string) ([]model.DividendFund, error) {
+	return s.dividendRepo.GetDividendPerPortfolioFund(portfolioID)
 }
 
 // ProcessDividendSharesForDate calculates shares acquired through dividend reinvestment as of the specified date.
