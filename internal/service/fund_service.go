@@ -93,12 +93,12 @@ func (s *FundService) GetPortfolioFunds(portfolioID string) ([]model.PortfolioFu
 		return nil, err
 	}
 
-	dividendsByPF, err := s.dividendService.loadDividend(pfIDs, oldestTransactionDate, today)
+	dividendsByPF, err := s.dividendService.loadDividendPerPF(pfIDs, oldestTransactionDate, today)
 	if err != nil {
 		return nil, err
 	}
 
-	fundPriceByFund, err := s.loadFundPrices(fundIDs, oldestTransactionDate, today, "ASC")
+	fundPriceByFund, err := s.loadFundPrices(fundIDs, oldestTransactionDate, today, true) //ASC
 	if err != nil {
 		return nil, err
 	}
@@ -168,10 +168,10 @@ func (s *FundService) GetPortfolioFunds(portfolioID string) ([]model.PortfolioFu
 }
 
 // LoadFundPrices retrieves fund prices for the given fund IDs within the specified date range.
-// Prices are sorted flexibility based on need. (ASC or DESC)
+// Prices are sorted by date based on the ascending parameter (true=ASC, false=DESC).
 // Results are grouped by fund ID.
-func (s *FundService) loadFundPrices(fundIDs []string, startDate, endDate time.Time, sortOrder string) (map[string][]model.FundPrice, error) {
-	return s.fundRepo.GetFundPrice(fundIDs, startDate, endDate, sortOrder)
+func (s *FundService) loadFundPrices(fundIDs []string, startDate, endDate time.Time, filter bool) (map[string][]model.FundPrice, error) {
+	return s.fundRepo.GetFundPrice(fundIDs, startDate, endDate, filter)
 }
 
 // calculateFundMetrics calculates detailed metrics for a single fund as of a specific date.

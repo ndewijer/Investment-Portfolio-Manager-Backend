@@ -31,10 +31,10 @@ This backend aims to replicate all 73 endpoints from the Python backend. Below i
 │   ├── GET    /health                          ✅ Health check
 │   └── GET    /version                         ✅ Version information
 │
-├── /portfolio (1/13 endpoints) 🚧
+├── /portfolio (5/14 endpoints) 🚧
 │   ├── GET    /                                ✅ List all portfolios
 │   ├── POST   /                                ⬜ Create portfolio
-│   ├── GET    /{id}                            ⬜ Get portfolio by ID
+│   ├── GET    /{id}                            ✅ Get portfolio by ID
 │   ├── PUT    /{id}                            ⬜ Update portfolio
 │   ├── DELETE /{id}                            ⬜ Delete portfolio
 │   ├── POST   /{id}/archive                    ⬜ Archive portfolio
@@ -42,12 +42,12 @@ This backend aims to replicate all 73 endpoints from the Python backend. Below i
 │   ├── GET    /summary                         ✅ Portfolio summary
 │   ├── GET    /history                         ✅ Portfolio history
 │   ├── GET    /{id}/fund-history               ⬜ Portfolio fund history
-│   ├── GET    /fund                           ⬜ Portfolio funds
+│   ├── GET    /fund/{portfolioID}              ✅ Portfolio funds per ID
 │   ├── POST   /fund                           ⬜ Add fund to portfolio
 │   └── DELETE /fund/{id}                      ⬜ Remove fund from portfolio
 │
-├── /fund (0/13 endpoints) ⬜
-│   ├── GET    /                                ⬜ List all funds
+├── /fund (1/13 endpoints) ⬜
+│   ├── GET    /                                ✅ List all funds
 │   ├── POST   /                                ⬜ Create fund
 │   ├── GET    /{id}                            ⬜ Get fund by ID
 │   ├── PUT    /{id}                            ⬜ Update fund
@@ -68,10 +68,11 @@ This backend aims to replicate all 73 endpoints from the Python backend. Below i
 │   ├── PUT    /{id}                            ⬜ Update transaction
 │   └── DELETE /{id}                            ⬜ Delete transaction
 │
-├── /dividend (0/6 endpoints) ⬜
-│   ├── GET    /                                ⬜ List all dividends
+├── /dividend (2/7 endpoints) ⬜
+│   ├── GET    /                                ✅ List all dividends
 │   ├── POST   /                                ⬜ Create dividend
 │   ├── GET    /{id}                            ⬜ Get dividend by ID
+|   |── GET    /portfolio/{portfolioId}         ✅ Get dividends per portfolioID
 │   ├── PUT    /{id}                            ⬜ Update dividend
 │   ├── DELETE /{id}                            ⬜ Delete dividend
 │   └── POST   /{id}/process-reinvestment       ⬜ Process dividend reinvestment

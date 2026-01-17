@@ -21,6 +21,10 @@ func NewDividendService(
 	}
 }
 
+func (s *DividendService) GetAllDividends() ([]model.Dividend, error) {
+	return s.dividendRepo.GetDividend()
+}
+
 // GetDividendFund retrieves all dividend records for a specific portfolio with enriched fund information.
 // This is the public service method that returns complete dividend details including fund names,
 // dividend types, and reinvestment status for all funds held in the portfolio.
@@ -39,8 +43,8 @@ func (s *DividendService) GetDividendFund(portfolioID string) ([]model.DividendF
 
 // loadDividend retrieves dividends for the given portfolio_fund IDs within the specified date range.
 // Results are grouped by portfolio_fund ID, allowing callers to decide how to aggregate.
-func (s *DividendService) loadDividend(pfIDs []string, startDate, endDate time.Time) (map[string][]model.Dividend, error) {
-	return s.dividendRepo.GetDividend(pfIDs, startDate, endDate)
+func (s *DividendService) loadDividendPerPF(pfIDs []string, startDate, endDate time.Time) (map[string][]model.Dividend, error) {
+	return s.dividendRepo.GetDividendPerPF(pfIDs, startDate, endDate)
 }
 
 // loadDividendPerPortfolioFund retrieves enriched dividend records for a portfolio.
