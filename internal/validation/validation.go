@@ -6,14 +6,29 @@ import (
 	"github.com/google/uuid"
 )
 
-// Common validation errors
+// Common validation errors returned by validation functions.
+// These can be used with errors.Is() for error type checking.
 var (
 	ErrInvalidUUID      = fmt.Errorf("invalid UUID format")
 	ErrInvalidDateRange = fmt.Errorf("invalid date range")
 	ErrEmptySlice       = fmt.Errorf("slice cannot be empty")
 )
 
-// ValidateUUID checks if a string is a valid UUID
+// ValidateUUID checks if a string is a valid UUID (RFC 4122 format).
+// Returns ErrInvalidUUID wrapped with the invalid ID if validation fails.
+//
+// Parameters:
+//   - id: The string to validate as a UUID
+//
+// Returns:
+//   - nil if the UUID is valid
+//   - wrapped ErrInvalidUUID if the format is invalid
+//
+// Example:
+//
+//	if err := validation.ValidateUUID(portfolioID); err != nil {
+//	    // Handle invalid UUID
+//	}
 func ValidateUUID(id string) error {
 	if _, err := uuid.Parse(id); err != nil {
 		return fmt.Errorf("%w: %s", ErrInvalidUUID, id)
@@ -21,7 +36,22 @@ func ValidateUUID(id string) error {
 	return nil
 }
 
-// ValidateUUIDs validates a slice of UUIDs
+// ValidateUUIDs validates a slice of UUID strings.
+// Returns an error on the first invalid UUID encountered.
+//
+// Parameters:
+//   - ids: Slice of strings to validate as UUIDs
+//
+// Returns:
+//   - ErrEmptySlice if the input slice is empty
+//   - wrapped ErrInvalidUUID if any UUID in the slice is invalid
+//   - nil if all UUIDs are valid
+//
+// Example:
+//
+//	if err := validation.ValidateUUIDs(fundIDs); err != nil {
+//	    // Handle validation error
+//	}
 func ValidateUUIDs(ids []string) error {
 	if len(ids) == 0 {
 		return ErrEmptySlice

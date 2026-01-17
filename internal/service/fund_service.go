@@ -167,11 +167,21 @@ func (s *FundService) GetPortfolioFunds(portfolioID string) ([]model.PortfolioFu
 	return portfolioFunds, nil
 }
 
-// LoadFundPrices retrieves fund prices for the given fund IDs within the specified date range.
+// loadFundPrices retrieves fund prices for the given fund IDs within the specified date range.
 // Prices are sorted by date based on the ascending parameter (true=ASC, false=DESC).
-// Results are grouped by fund ID.
-func (s *FundService) loadFundPrices(fundIDs []string, startDate, endDate time.Time, filter bool) (map[string][]model.FundPrice, error) {
-	return s.fundRepo.GetFundPrice(fundIDs, startDate, endDate, filter)
+// Results are grouped by fund ID, allowing per-fund price lookups.
+//
+// Parameters:
+//   - fundIDs: Slice of fund IDs to retrieve prices for
+//   - startDate: Inclusive start date for the price range
+//   - endDate: Inclusive end date for the price range
+//   - ascending: If true, sort prices oldest-first (ASC); if false, newest-first (DESC)
+//
+// Returns a map of fundID -> []FundPrice, where prices are sorted according to the ascending parameter.
+// ASC order is typically used for date-aware price lookups (getPriceForDate),
+// while DESC order is efficient for latest-price queries.
+func (s *FundService) loadFundPrices(fundIDs []string, startDate, endDate time.Time, ascending bool) (map[string][]model.FundPrice, error) {
+	return s.fundRepo.GetFundPrice(fundIDs, startDate, endDate, ascending)
 }
 
 // calculateFundMetrics calculates detailed metrics for a single fund as of a specific date.

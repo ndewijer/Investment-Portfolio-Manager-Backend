@@ -116,7 +116,7 @@ This backend aims to replicate all 73 endpoints from the Python backend. Below i
     └── GET    /system-info                     ⬜ Get system information
 
 Legend: ✅ Implemented | 🚧 In Progress | ⬜ Planned
-Overall Progress: 3/73 endpoints (4%)
+Overall Progress: 10/73 endpoints (14%)
 ```
 
 ## Quick Start
