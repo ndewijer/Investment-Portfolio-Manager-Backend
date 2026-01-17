@@ -52,6 +52,7 @@ func NewRouter(systemService *service.SystemService, portfolioService *service.P
 
 		r.Route("/dividend", func(r chi.Router) {
 			dividendHandler := handlers.NewDividendHandler(dividendService)
+			r.Get("/", dividendHandler.GetAllDividends)
 			r.Get("/portfolio/{portfolioId}", dividendHandler.DividendPerPortfolio)
 		})
 	})
