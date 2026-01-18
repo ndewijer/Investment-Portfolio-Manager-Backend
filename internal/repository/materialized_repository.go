@@ -9,7 +9,7 @@ import (
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 )
 
-// MaterializedRepository provides data access methods for the portfolio_history_materialized table.
+// MaterializedRepository provides data access methods for the fund_history_materialized table.
 type MaterializedRepository struct {
 	db *sql.DB
 }
@@ -19,17 +19,20 @@ func NewMaterializedRepository(db *sql.DB) *MaterializedRepository {
 	return &MaterializedRepository{db: db}
 }
 
-// GetMaterializedHistory retrieves pre-calculated portfolio history records from the materialized view table.
+// GetMaterializedHistory retrieves aggregated portfolio history by querying fund_history_materialized.
 // This method streams results using a callback pattern to minimize memory usage.
 //
-// The materialized view contains daily snapshots of portfolio valuations that have been
-// pre-calculated and stored, eliminating the need to recompute historical data on each request.
+// The query aggregates fund-level data from fund_history_materialized using GROUP BY,
+// and uses correlated subqueries to fetch:
+//   - realized_gain, total_sale_proceeds, total_original_cost from realized_gain_loss table
+//   - total_dividends from dividend table
+//   - is_archived from portfolio table
 //
 // Parameters:
 //   - portfolioIDs: Slice of portfolio IDs to retrieve history for
 //   - startDate: First date to include in results (inclusive)
 //   - endDate: Last date to include in results (inclusive)
-//   - callback: Function called for each record found, receives the record and should return error if processing fails
+//   - callback: Function called for each aggregated record, receives the record and should return error if processing fails
 //
 // The callback pattern allows the caller to process records one at a time without loading
 // the entire result set into memory, which is efficient for large date ranges.
@@ -51,15 +54,50 @@ func (r *MaterializedRepository) GetMaterializedHistory(
 	}
 
 	query := `
-		SELECT id, portfolio_id, date, value, cost, realized_gain, unrealized_gain,
-		       total_dividends, total_sale_proceeds, total_original_cost,
-		       total_gain_loss, is_archived, calculated_at
-		FROM portfolio_history_materialized
-		WHERE portfolio_id IN (` + strings.Join(placeholders, ",") + `)
-		AND date >= ?
-		AND date <= ?
-		ORDER BY date ASC
-	`
+	SELECT
+		'' as id,
+		pf.portfolio_id,
+		fh.date,
+		SUM(fh.value) as value,
+		SUM(fh.cost) as cost,
+		COALESCE((
+			SELECT SUM(realized_gain_loss)
+			FROM realized_gain_loss rgl
+			WHERE rgl.portfolio_id = pf.portfolio_id
+			AND date(rgl.transaction_date) <= fh.date
+		), 0) as realized_gain,
+		SUM(fh.unrealized_gain) as unrealized_gain,
+		COALESCE((
+			SELECT SUM(d.total_amount)
+			FROM dividend d
+			JOIN portfolio_fund pf2 ON d.portfolio_fund_id = pf2.id
+			WHERE pf2.portfolio_id = pf.portfolio_id
+			AND date(d.ex_dividend_date) <= fh.date
+		), 0) as total_dividends,
+		COALESCE((
+			SELECT SUM(sale_proceeds)
+			FROM realized_gain_loss rgl
+			WHERE rgl.portfolio_id = pf.portfolio_id
+			AND date(rgl.transaction_date) <= fh.date
+		), 0) as total_sale_proceeds,
+		COALESCE((
+			SELECT SUM(cost_basis)
+			FROM realized_gain_loss rgl
+			WHERE rgl.portfolio_id = pf.portfolio_id
+			AND date(rgl.transaction_date) <= fh.date
+		), 0) as total_original_cost,
+		SUM(fh.total_gain_loss) as total_gain_loss,
+		p.is_archived,
+		strftime('%Y-%m-%dT%H:%M:%SZ', 'now') as calculated_at
+	FROM fund_history_materialized fh
+	JOIN portfolio_fund pf ON fh.portfolio_fund_id = pf.id
+	JOIN portfolio p ON pf.portfolio_id = p.id
+	WHERE pf.portfolio_id IN (` + strings.Join(placeholders, ",") + `)
+	AND fh.date >= ?
+	AND fh.date <= ?
+	GROUP BY fh.date, pf.portfolio_id, p.is_archived
+	ORDER BY fh.date ASC
+`
 
 	args := make([]any, 0, len(portfolioIDs)+2)
 	for _, id := range portfolioIDs {
@@ -70,8 +108,9 @@ func (r *MaterializedRepository) GetMaterializedHistory(
 
 	rows, err := r.db.Query(query, args...)
 	if err != nil {
-		return fmt.Errorf("failed to query portfolio_history_materialized: %w", err)
+		return fmt.Errorf("failed to query fund_history_materialized: %w", err)
 	}
+
 	defer rows.Close()
 
 	for rows.Next() {
@@ -114,6 +153,95 @@ func (r *MaterializedRepository) GetMaterializedHistory(
 
 	if err = rows.Err(); err != nil {
 		return fmt.Errorf("error iterating rows: %w", err)
+	}
+	return nil
+}
+
+// GetFundHistoryMaterialized retrieves historical fund data from the materialized view.
+// This method streams results using a callback pattern to minimize memory usage.
+//
+// The callback pattern allows the caller to process records one at a time without loading
+// the entire result set into memory, which is efficient for large date ranges.
+//
+// Parameters:
+//   - portfolioID: The portfolio ID to retrieve fund history for
+//   - startDate: Inclusive start date for the query
+//   - endDate: Inclusive end date for the query
+//   - callback: Function called for each record found, receives the record and should return error if processing fails
+//
+// Returns an error if the query fails or if the callback returns an error during processing.
+func (r *MaterializedRepository) GetFundHistoryMaterialized(
+	portfolioID string,
+	startDate, endDate time.Time,
+	callback func(entry model.FundHistoryEntry) error,
+) error {
+	query := `
+		SELECT
+			fh.id,
+			fh.portfolio_fund_id,
+			fh.fund_id,
+			f.name as fund_name,
+			fh.date,
+			fh.shares,
+			fh.price,
+			fh.value,
+			fh.cost,
+			fh.realized_gain,
+			fh.unrealized_gain,
+			fh.total_gain_loss,
+			fh.dividends,
+			fh.fees
+		FROM fund_history_materialized fh
+		JOIN portfolio_fund pf ON fh.portfolio_fund_id = pf.id
+		JOIN fund f ON fh.fund_id = f.id
+		WHERE pf.portfolio_id = ?
+		  AND fh.date >= ?
+		  AND fh.date <= ?
+		ORDER BY fh.date ASC, f.name ASC
+	`
+
+	rows, err := r.db.Query(query, portfolioID, startDate.Format("2006-01-02"), endDate.Format("2006-01-02"))
+	if err != nil {
+		return fmt.Errorf("failed to query fund_history_materialized: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var entry model.FundHistoryEntry
+		var dateStr string
+
+		err := rows.Scan(
+			&entry.ID,
+			&entry.PortfolioFundID,
+			&entry.FundID,
+			&entry.FundName,
+			&dateStr,
+			&entry.Shares,
+			&entry.Price,
+			&entry.Value,
+			&entry.Cost,
+			&entry.RealizedGain,
+			&entry.UnrealizedGain,
+			&entry.TotalGainLoss,
+			&entry.Dividends,
+			&entry.Fees,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to scan fund_history_materialized results: %w", err)
+		}
+
+		entry.Date, err = ParseTime(dateStr)
+		if err != nil || entry.Date.IsZero() {
+			return fmt.Errorf("failed to parse date: %w", err)
+		}
+
+		if err := callback(entry); err != nil {
+			return err
+		}
+	}
+
+	if err = rows.Err(); err != nil {
+		return fmt.Errorf("error iterating fund_history_materialized: %w", err)
 	}
 
 	return nil

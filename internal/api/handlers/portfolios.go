@@ -191,15 +191,14 @@ func parseDateParams(r *http.Request) (time.Time, time.Time, error) {
 	return startDate, endDate, nil
 }
 
-// PortfolioFunds handles GET requests to retrieve all portfolio funds across all portfolios.
-// Returns detailed fund metrics including shares, cost, value, gains/losses, dividends, and fees.
+// PortfolioFunds handles GET requests to retrieve all portfolio-fund relationships.
+// Returns a listing of all funds across all portfolios with basic metadata.
 //
 // Endpoint: GET /api/portfolio/funds
-// Response: 200 OK with array of PortfolioFund
+// Response: 200 OK with array of PortfolioFundListing
 // Error: 500 Internal Server Error if retrieval fails
 func (h *PortfolioHandler) PortfolioFunds(w http.ResponseWriter, r *http.Request) {
-
-	PortfolioFunds, err := h.fundService.GetPortfolioFunds("")
+	listings, err := h.fundService.GetAllPortfolioFundListings()
 	if err != nil {
 		errorResponse := map[string]string{
 			"error":  "failed to retrieve portfolio funds",
@@ -209,7 +208,11 @@ func (h *PortfolioHandler) PortfolioFunds(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	respondJSON(w, http.StatusOK, PortfolioFunds)
+	if listings == nil {
+		listings = []model.PortfolioFundListing{}
+	}
+
+	respondJSON(w, http.StatusOK, listings)
 }
 
 // GetPortfolioFunds handles GET requests to retrieve all funds for a specific portfolio.

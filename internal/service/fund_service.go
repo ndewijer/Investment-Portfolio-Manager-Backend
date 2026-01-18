@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sort"
 	"time"
 
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
@@ -13,6 +14,7 @@ import (
 // FundService handles fund-related business logic operations.
 type FundService struct {
 	fundRepo                *repository.FundRepository
+	materializedRepo        *repository.MaterializedRepository
 	transactionService      *TransactionService
 	dividendService         *DividendService
 	realizedGainLossService *RealizedGainLossService
@@ -21,12 +23,14 @@ type FundService struct {
 // NewFundService creates a new FundService with the provided repository dependencies.
 func NewFundService(
 	fundRepo *repository.FundRepository,
+	materializedRepo *repository.MaterializedRepository,
 	transactionService *TransactionService,
 	dividendService *DividendService,
 	realizedGainLossService *RealizedGainLossService,
 ) *FundService {
 	return &FundService{
 		fundRepo:                fundRepo,
+		materializedRepo:        materializedRepo,
 		transactionService:      transactionService,
 		dividendService:         dividendService,
 		realizedGainLossService: realizedGainLossService,
@@ -51,6 +55,234 @@ type FundMetrics struct {
 // Returns a complete list of all available funds that can be held in portfolios.
 func (s *FundService) GetAllFunds() ([]model.Fund, error) {
 	return s.fundRepo.GetFunds()
+}
+
+// GetAllPortfolioFundListings retrieves all portfolio-fund relationships with basic metadata.
+// Returns a listing of funds across all portfolios (non-archived) with portfolio and fund names.
+// Used for the GET /api/portfolio/funds endpoint.
+func (s *FundService) GetAllPortfolioFundListings() ([]model.PortfolioFundListing, error) {
+	return s.fundRepo.GetAllPortfolioFundListings()
+}
+
+// GetFundHistoryMaterialized retrieves historical fund data from the materialized view.
+// Returns time-series data showing individual fund values within a portfolio over time.
+//
+// This method queries the fund_history_materialized table (populated by Python backend)
+// and streams results using a callback pattern for memory efficiency.
+//
+// Parameters:
+//   - portfolioID: The portfolio ID to retrieve fund history for
+//   - startDate: Inclusive start date for the query
+//   - endDate: Inclusive end date for the query
+//
+// Returns a slice of FundHistoryResponse, one entry per date with all funds for that date.
+// Returns empty slice if no data found (caller should handle fallback if needed).
+func (s *FundService) GetFundHistoryMaterialized(portfolioID string, startDate, endDate time.Time) ([]model.FundHistoryResponse, error) {
+	fundHistoryByDate := make(map[string][]model.FundHistoryEntry)
+
+	err := s.materializedRepo.GetFundHistoryMaterialized(
+		portfolioID,
+		startDate,
+		endDate,
+		func(entry model.FundHistoryEntry) error {
+			dateKey := entry.Date.Format("2006-01-02")
+			fundHistoryByDate[dateKey] = append(fundHistoryByDate[dateKey], entry)
+			return nil
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// If we got data from materialized view, format it
+	if len(fundHistoryByDate) > 0 {
+		return s.formatFundHistoryFromMaterialized(fundHistoryByDate), nil
+	}
+
+	// Return empty if no data
+	return []model.FundHistoryResponse{}, nil
+}
+
+// formatFundHistoryFromMaterialized converts the map structure to response format.
+func (s *FundService) formatFundHistoryFromMaterialized(fundHistoryByDate map[string][]model.FundHistoryEntry) []model.FundHistoryResponse {
+	// Get sorted date keys
+	dates := make([]string, 0, len(fundHistoryByDate))
+	for date := range fundHistoryByDate {
+		dates = append(dates, date)
+	}
+	sort.Strings(dates)
+
+	// Build response
+	var response []model.FundHistoryResponse
+	for _, dateStr := range dates {
+		funds := fundHistoryByDate[dateStr]
+		if len(funds) > 0 {
+			response = append(response, model.FundHistoryResponse{
+				Date:  funds[0].Date, // All entries have same date
+				Funds: funds,
+			})
+		}
+	}
+
+	return response
+}
+
+// calculateFundHistoryOnFly calculates fund history when materialized view is unavailable.
+// This is the fallback mechanism that uses the same logic as GetPortfolioFunds but iterates over dates.
+func (s *FundService) calculateFundHistoryOnFly(portfolioID string, startDate, endDate time.Time) ([]model.FundHistoryResponse, error) {
+	// Get portfolio funds
+	portfolioFunds, err := s.fundRepo.GetPortfolioFunds(portfolioID)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(portfolioFunds) == 0 {
+		return []model.FundHistoryResponse{}, nil
+	}
+
+	// Collect IDs
+	var pfIDs, fundIDs []string
+	for _, fund := range portfolioFunds {
+		pfIDs = append(pfIDs, fund.ID)
+		fundIDs = append(fundIDs, fund.FundId)
+	}
+
+	// Get oldest transaction to determine data start
+	oldestTxDate := s.transactionService.getOldestTransaction(pfIDs)
+	if oldestTxDate.After(endDate) {
+		return []model.FundHistoryResponse{}, nil
+	}
+
+	// Adjust start date if needed
+	dataStartDate := startDate
+	if dataStartDate.Before(oldestTxDate) {
+		dataStartDate = oldestTxDate
+	}
+
+	// Load all data once (batch loading for efficiency)
+	transactionsByPF, err := s.transactionService.loadTransactions(pfIDs, oldestTxDate, endDate)
+	if err != nil {
+		return nil, err
+	}
+
+	dividendsByPF, err := s.dividendService.loadDividendPerPF(pfIDs, oldestTxDate, endDate)
+	if err != nil {
+		return nil, err
+	}
+
+	fundPriceByFund, err := s.loadFundPrices(fundIDs, oldestTxDate, endDate, true)
+	if err != nil {
+		return nil, err
+	}
+
+	realizedGainsByPortfolio, err := s.realizedGainLossService.loadRealizedGainLoss([]string{portfolioID}, oldestTxDate, endDate)
+	if err != nil {
+		return nil, err
+	}
+
+	// Build map of realized gains by portfolio fund
+	realizedGainsByPF := make(map[string][]model.RealizedGainLoss)
+	for _, entry := range realizedGainsByPortfolio[portfolioID] {
+		for _, pf := range portfolioFunds {
+			if entry.FundID == pf.FundId {
+				realizedGainsByPF[pf.ID] = append(realizedGainsByPF[pf.ID], entry)
+			}
+		}
+	}
+
+	// Iterate through each date
+	var response []model.FundHistoryResponse
+
+	for currentDate := dataStartDate; !currentDate.After(endDate); currentDate = currentDate.AddDate(0, 0, 1) {
+		var fundsForDate []model.FundHistoryEntry
+
+		for _, pf := range portfolioFunds {
+			// Calculate dividend shares as of this date
+			dividendSharesMap, err := s.dividendService.processDividendSharesForDate(dividendsByPF, transactionsByPF[pf.ID], currentDate)
+			if err != nil {
+				return nil, err
+			}
+
+			// Calculate metrics for this fund on this date
+			fundMetrics, err := s.calculateFundMetrics(
+				pf.ID,
+				pf.FundId,
+				currentDate,
+				transactionsByPF[pf.ID],
+				dividendSharesMap[pf.ID],
+				fundPriceByFund[pf.FundId],
+				false, // Use price as of date, not latest
+			)
+			if err != nil {
+				return nil, err
+			}
+
+			// Calculate dividend amount
+			dividendAmount, err := s.dividendService.processDividendAmountForDate(dividendsByPF[pf.ID], currentDate)
+			if err != nil {
+				return nil, err
+			}
+
+			// Calculate realized gains
+			realizedGain, _, _, err := s.realizedGainLossService.processRealizedGainLossForDate(realizedGainsByPF[pf.ID], currentDate)
+			if err != nil {
+				return nil, err
+			}
+
+			// Build entry
+			fundsForDate = append(fundsForDate, model.FundHistoryEntry{
+				PortfolioFundID: pf.ID,
+				FundID:          pf.FundId,
+				FundName:        pf.FundName,
+				Shares:          math.Round(fundMetrics.Shares*RoundingPrecision) / RoundingPrecision,
+				Price:           math.Round(fundMetrics.LatestPrice*RoundingPrecision) / RoundingPrecision,
+				Value:           math.Round(fundMetrics.Value*RoundingPrecision) / RoundingPrecision,
+				Cost:            math.Round(fundMetrics.Cost*RoundingPrecision) / RoundingPrecision,
+				RealizedGain:    math.Round(realizedGain*RoundingPrecision) / RoundingPrecision,
+				UnrealizedGain:  math.Round(fundMetrics.UnrealizedGain*RoundingPrecision) / RoundingPrecision,
+				TotalGainLoss:   math.Round((fundMetrics.UnrealizedGain+realizedGain)*RoundingPrecision) / RoundingPrecision,
+				Dividends:       math.Round(dividendAmount*RoundingPrecision) / RoundingPrecision,
+				Fees:            math.Round(fundMetrics.Fees*RoundingPrecision) / RoundingPrecision,
+			})
+		}
+
+		if len(fundsForDate) > 0 {
+			response = append(response, model.FundHistoryResponse{
+				Date:  currentDate,
+				Funds: fundsForDate,
+			})
+		}
+	}
+
+	return response, nil
+}
+
+// GetFundHistoryWithFallback tries to retrieve history from the materialized view,
+// falling back to on-demand calculation if the materialized data is incomplete or empty.
+//
+// This provides the best of both worlds:
+// - Fast materialized view when available (~3-10ms)
+// - Reliable on-demand calculation as fallback (~50ms)
+//
+// Since write operations trigger materialized view regeneration, the only check needed
+// is whether the result set is empty (table being rebuilt or never populated).
+func (s *FundService) GetFundHistoryWithFallback(
+	portfolioID string,
+	startDate, endDate time.Time,
+) ([]model.FundHistoryResponse, error) {
+
+	// Step 1: Try materialized view first (fast path)
+	materialized, err := s.GetFundHistoryMaterialized(portfolioID, startDate, endDate)
+
+	// If query succeeded and we got data, use it
+	if err == nil && len(materialized) > 0 {
+		fmt.Println(err)
+		return materialized, nil
+	}
+
+	// Step 2: Fallback to on-demand calculation
+	// (Materialized view is empty, being regenerated, or query failed)
+	return s.calculateFundHistoryOnFly(portfolioID, startDate, endDate)
 }
 
 // GetPortfolioFunds retrieves detailed fund metrics for all funds in a portfolio.

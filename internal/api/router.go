@@ -48,6 +48,7 @@ func NewRouter(systemService *service.SystemService, portfolioService *service.P
 		r.Route("/fund", func(r chi.Router) {
 			fundHandler := handlers.NewFundHandler(fundService)
 			r.Get("/", fundHandler.Funds)
+			r.Get("/history/{portfolioId}", fundHandler.GetFundHistory)
 		})
 
 		r.Route("/dividend", func(r chi.Router) {

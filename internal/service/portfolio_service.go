@@ -110,7 +110,6 @@ func (s *PortfolioService) GetPortfolioHistoryMaterialized(requestedStartDate, r
 			return nil, err
 		}
 	}
-
 	portfolioIDs := make([]string, len(portfolios))
 	portfolioNames := make(map[string]string)
 	portfolioDescription := make(map[string]string)
@@ -131,6 +130,7 @@ func (s *PortfolioService) GetPortfolioHistoryMaterialized(requestedStartDate, r
 			return nil
 		},
 	)
+
 	if err != nil {
 		return nil, err
 	}
@@ -378,12 +378,10 @@ func (s *PortfolioService) GetPortfolioHistoryWithFallback(
 
 	// Step 1: Try materialized view first (fast path)
 	materialized, err := s.GetPortfolioHistoryMaterialized(startDate, endDate, portfolioID)
-
 	// If query succeeded and we got data, use it
 	if err == nil && len(materialized) > 0 {
 		return materialized, nil
 	}
-
 	// Step 2: Fallback to on-demand calculation
 	// (Materialized view is empty, being regenerated, or query failed)
 	return s.GetPortfolioHistory(startDate, endDate, portfolioID)
@@ -468,6 +466,7 @@ func (s *PortfolioService) processTransactionsForDate(transactionsMap map[string
 			return TransactionMetrics{}, err
 		}
 
+		totalValue += fundMetrics.Value
 		totalShares += fundMetrics.Shares
 		totalCost += fundMetrics.Cost
 		totalDividends += fundMetrics.Dividend
