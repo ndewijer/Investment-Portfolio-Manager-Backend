@@ -53,6 +53,7 @@ func main() {
 	)
 	fundService := service.NewFundService(
 		fundRepo,
+		materializedRepo,
 		transactionService,
 		dividendService,
 		realizedGainLossService,

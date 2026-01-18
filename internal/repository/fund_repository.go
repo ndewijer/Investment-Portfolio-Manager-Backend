@@ -256,3 +256,53 @@ func (s *FundRepository) GetPortfolioFunds(PortfolioID string) ([]model.Portfoli
 
 	return portfolioFunds, nil
 }
+
+// GetAllPortfolioFundListings retrieves all portfolio-fund relationships with metadata.
+// Returns a listing of all funds across all portfolios with basic information.
+// Used for the GET /api/portfolio/funds endpoint.
+func (s *FundRepository) GetAllPortfolioFundListings() ([]model.PortfolioFundListing, error) {
+	query := `
+		SELECT
+			pf.id,
+			pf.portfolio_id,
+			f.id as fund_id,
+			p.name as portfolio_name,
+			f.name as fund_name,
+			f.dividend_type
+		FROM portfolio_fund pf
+		JOIN portfolio p ON pf.portfolio_id = p.id
+		JOIN fund f ON pf.fund_id = f.id
+		WHERE p.is_archived = 0
+		ORDER BY p.name ASC, f.name ASC
+	`
+
+	rows, err := s.db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query portfolio_fund listings: %w", err)
+	}
+	defer rows.Close()
+
+	var listings []model.PortfolioFundListing
+
+	for rows.Next() {
+		var l model.PortfolioFundListing
+		err := rows.Scan(
+			&l.ID,
+			&l.PortfolioID,
+			&l.FundID,
+			&l.PortfolioName,
+			&l.FundName,
+			&l.DividendType,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan portfolio_fund listing: %w", err)
+		}
+		listings = append(listings, l)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating portfolio_fund listings: %w", err)
+	}
+
+	return listings, nil
+}

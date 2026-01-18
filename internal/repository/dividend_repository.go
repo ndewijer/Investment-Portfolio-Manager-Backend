@@ -237,7 +237,7 @@ func (s *DividendRepository) GetDividendPerPortfolioFund(portfolioID string) ([]
 	INNER JOIN portfolio_fund pf ON d.portfolio_fund_id = pf.id
 	INNER JOIN fund f ON pf.fund_id = f.id
 	WHERE pf.portfolio_id = ?
-	ORDER BY d.ex_dividend_date DESC
+	ORDER BY d.ex_dividend_date ASC
 	`
 
 	rows, err := s.db.Query(query, portfolioID)
