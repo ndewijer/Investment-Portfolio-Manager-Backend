@@ -75,6 +75,7 @@ func (s *SystemService) checkFeatureAvailability(dbVersion string) map[string]bo
 		"realized_gain_loss":            true, // Introduced 1.1.1
 		"ibkr_integration":              true, // Introduced 1.3.0
 		"materialized_view_performance": true, // Introduced 1.4.0
+		"fund_level_materialized_view":  true, // Introduced 1.5.0
 	}
 
 	_ = dbVersion
