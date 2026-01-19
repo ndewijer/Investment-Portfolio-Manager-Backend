@@ -42,7 +42,7 @@ func (s *DividendRepository) GetDividend() ([]model.Dividend, error) {
 	}
 	defer rows.Close()
 
-	var dividend []model.Dividend
+	dividend := []model.Dividend{}
 
 	for rows.Next() {
 		var recordDateStr, exDividendStr, createdAtStr string
@@ -246,7 +246,7 @@ func (s *DividendRepository) GetDividendPerPortfolioFund(portfolioID string) ([]
 	}
 	defer rows.Close()
 
-	var dividendFund []model.DividendFund
+	dividendFund := []model.DividendFund{}
 
 	for rows.Next() {
 		var recordDateStr, exDividendStr string

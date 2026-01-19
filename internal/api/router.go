@@ -18,6 +18,7 @@ func NewRouter(
 	portfolioService *service.PortfolioService,
 	fundService *service.FundService,
 	materializedService *service.MaterializedService,
+	transactionService *service.TransactionService,
 	cfg *config.Config,
 ) http.Handler {
 	r := chi.NewRouter()
@@ -47,20 +48,26 @@ func NewRouter(
 			r.Get("/summary", portfolioHandler.PortfolioSummary)
 			r.Get("/history", portfolioHandler.PortfolioHistory)
 			r.Get("/funds", portfolioHandler.PortfolioFunds)
-			r.Get("/funds/{portfolioId}", portfolioHandler.GetPortfolioFunds)
-			r.Get("/{portfolioId}", portfolioHandler.GetPortfolio)
+			r.Get("/funds/{portfolioId:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", portfolioHandler.GetPortfolioFunds)
+			r.Get("/{portfolioId:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", portfolioHandler.GetPortfolio)
 		})
 
 		r.Route("/fund", func(r chi.Router) {
 			fundHandler := handlers.NewFundHandler(fundService, materializedService)
 			r.Get("/", fundHandler.Funds)
-			r.Get("/history/{portfolioId}", fundHandler.GetFundHistory)
+			r.Get("/history/{portfolioId:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", fundHandler.GetFundHistory)
 		})
 
 		r.Route("/dividend", func(r chi.Router) {
 			dividendHandler := handlers.NewDividendHandler(materializedService.DividendService())
 			r.Get("/", dividendHandler.GetAllDividends)
-			r.Get("/portfolio/{portfolioId}", dividendHandler.DividendPerPortfolio)
+			r.Get("/portfolio/{portfolioId:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", dividendHandler.DividendPerPortfolio)
+		})
+
+		r.Route("/transaction", func(r chi.Router) {
+			transactionHandler := handlers.NewTransactionHandler(transactionService)
+			r.Get("/", transactionHandler.AllTransactions)
+			r.Get("/portfolio/{portfolioId:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", transactionHandler.TransactionPerPortfolio)
 		})
 	})
 

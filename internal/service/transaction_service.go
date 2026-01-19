@@ -32,3 +32,7 @@ func (s *TransactionService) getOldestTransaction(pfIDs []string) time.Time {
 func (s *TransactionService) loadTransactions(pfIDs []string, startDate, endDate time.Time) (map[string][]model.Transaction, error) {
 	return s.transactionRepo.GetTransactions(pfIDs, startDate, endDate)
 }
+
+func (s *TransactionService) GetTransactionsperPortfolio(portfolioId string) ([]model.TransactionResponse, error) {
+	return s.transactionRepo.GetTransactionsPerPortfolio(portfolioId)
+}

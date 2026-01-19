@@ -144,3 +144,80 @@ func (s *TransactionRepository) GetOldestTransaction(pfIDs []string) time.Time {
 
 	return oldestDate
 }
+
+func (s *TransactionRepository) GetTransactionsPerPortfolio(portfolioId string) ([]model.TransactionResponse, error) {
+	if portfolioId == "" {
+		return []model.TransactionResponse{}, nil
+	}
+
+	// Retrieve all transactions based on returned portfolio_fund IDs
+	transactionQuery := `
+		SELECT 
+			t.id, 
+			t.portfolio_fund_id, 
+			f.name, 
+			t.date, 
+			t.type, 
+			t.shares, 
+			t.cost_per_share, 
+			ita.ibkr_transaction_id,
+			CASE 
+				WHEN ita.ibkr_transaction_id IS NOT NULL THEN 1 
+				ELSE 0 
+			END AS ibkr_linked
+		FROM "transaction" t
+		JOIN portfolio_fund pf ON t.portfolio_fund_id = pf.id
+		JOIN portfolio p ON pf.portfolio_id = p.id
+		JOIN fund f ON pf.fund_id = f.id
+		LEFT JOIN ibkr_transaction_allocation ita ON t.id = ita.transaction_id
+		WHERE pf.portfolio_id = ?
+		ORDER BY t.date ASC
+	`
+
+	rows, err := s.db.Query(transactionQuery, portfolioId)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query transaction table: %w", err)
+	}
+	defer rows.Close()
+
+	transactionResponse := []model.TransactionResponse{}
+
+	for rows.Next() {
+
+		var dateStr string
+		var ibkrTransactionIdStr sql.NullString
+		var t model.TransactionResponse
+
+		err := rows.Scan(
+			&t.Id,
+			&t.PortfolioFundId,
+			&t.FundName,
+			&dateStr,
+			&t.Type,
+			&t.Shares,
+			&t.CostPerShare,
+			&ibkrTransactionIdStr,
+			&t.IbkrLinked,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan transaction table results: %w", err)
+		}
+		t.Date, err = ParseTime(dateStr)
+		if err != nil || t.Date.IsZero() {
+			return nil, fmt.Errorf("failed to parse date: %w", err)
+		}
+
+		// IbkrTransactionId is nullable
+		if ibkrTransactionIdStr.Valid {
+			t.IbkrTransactionId = ibkrTransactionIdStr.String
+		}
+
+		transactionResponse = append(transactionResponse, t)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating transaction table: %w", err)
+	}
+
+	return transactionResponse, nil
+}
