@@ -11,3 +11,14 @@ type Transaction struct {
 	CostPerShare    float64
 	CreatedAt       time.Time
 }
+type TransactionResponse struct {
+	Id                string    `json:"id"`
+	PortfolioFundId   string    `json:"portfolioFundId"`
+	FundName          string    `json:"fundName"`
+	Date              time.Time `json:"date"`
+	Type              string    `json:"type"`
+	Shares            float64   `json:"shares"`
+	CostPerShare      float64   `json:"costPerShare"`
+	IbkrTransactionId string    `json:"ibkrTransactionId,omitempty"`
+	IbkrLinked        bool      `json:"ibkrLinked"`
+}

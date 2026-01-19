@@ -34,7 +34,7 @@ func (s *DividendService) GetAllDividends() ([]model.Dividend, error) {
 //
 // Returns a slice of DividendFund containing all historical dividend payments.
 func (s *DividendService) GetDividendFund(portfolioID string) ([]model.DividendFund, error) {
-	dividendFund, err := s.loadDividendPerPortfolioFund(portfolioID)
+	dividendFund, err := s.dividendRepo.GetDividendPerPortfolioFund(portfolioID)
 	if err != nil {
 		return nil, err
 	}
@@ -45,13 +45,6 @@ func (s *DividendService) GetDividendFund(portfolioID string) ([]model.DividendF
 // Results are grouped by portfolio_fund ID, allowing callers to decide how to aggregate.
 func (s *DividendService) loadDividendPerPF(pfIDs []string, startDate, endDate time.Time) (map[string][]model.Dividend, error) {
 	return s.dividendRepo.GetDividendPerPF(pfIDs, startDate, endDate)
-}
-
-// loadDividendPerPortfolioFund retrieves enriched dividend records for a portfolio.
-// This is a private helper method that delegates to the repository layer.
-// Returns dividend data joined with fund information for display purposes.
-func (s *DividendService) loadDividendPerPortfolioFund(portfolioID string) ([]model.DividendFund, error) {
-	return s.dividendRepo.GetDividendPerPortfolioFund(portfolioID)
 }
 
 // ProcessDividendSharesForDate calculates shares acquired through dividend reinvestment as of the specified date.

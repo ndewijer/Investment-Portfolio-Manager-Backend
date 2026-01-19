@@ -89,7 +89,7 @@ func (s *FundRepository) GetFund(fundIDs []string) ([]model.Fund, error) {
 	}
 	defer rows.Close()
 
-	var fundsByPortfolio []model.Fund
+	fundsByPortfolio := []model.Fund{}
 
 	for rows.Next() {
 		var f model.Fund
@@ -231,7 +231,7 @@ func (s *FundRepository) GetPortfolioFunds(PortfolioID string) ([]model.Portfoli
 	}
 	defer rows.Close()
 
-	var portfolioFunds []model.PortfolioFund
+	portfolioFunds := []model.PortfolioFund{}
 
 	for rows.Next() {
 		var f model.PortfolioFund
@@ -282,7 +282,7 @@ func (s *FundRepository) GetAllPortfolioFundListings() ([]model.PortfolioFundLis
 	}
 	defer rows.Close()
 
-	var listings []model.PortfolioFundListing
+	listings := []model.PortfolioFundListing{}
 
 	for rows.Next() {
 		var l model.PortfolioFundListing
