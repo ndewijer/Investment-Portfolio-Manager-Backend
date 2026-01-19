@@ -13,7 +13,13 @@ import (
 )
 
 // NewRouter creates and configures the HTTP router
-func NewRouter(systemService *service.SystemService, portfolioService *service.PortfolioService, fundService *service.FundService, transactionService *service.TransactionService, dividendService *service.DividendService, realizedGainLossService *service.RealizedGainLossService, cfg *config.Config) http.Handler {
+func NewRouter(
+	systemService *service.SystemService,
+	portfolioService *service.PortfolioService,
+	fundService *service.FundService,
+	materializedService *service.MaterializedService,
+	cfg *config.Config,
+) http.Handler {
 	r := chi.NewRouter()
 
 	// Global middleware
@@ -36,7 +42,7 @@ func NewRouter(systemService *service.SystemService, portfolioService *service.P
 		})
 
 		r.Route("/portfolio", func(r chi.Router) {
-			portfolioHandler := handlers.NewPortfolioHandler(portfolioService, fundService)
+			portfolioHandler := handlers.NewPortfolioHandler(portfolioService, fundService, materializedService)
 			r.Get("/", portfolioHandler.Portfolios)
 			r.Get("/summary", portfolioHandler.PortfolioSummary)
 			r.Get("/history", portfolioHandler.PortfolioHistory)
@@ -46,13 +52,13 @@ func NewRouter(systemService *service.SystemService, portfolioService *service.P
 		})
 
 		r.Route("/fund", func(r chi.Router) {
-			fundHandler := handlers.NewFundHandler(fundService)
+			fundHandler := handlers.NewFundHandler(fundService, materializedService)
 			r.Get("/", fundHandler.Funds)
 			r.Get("/history/{portfolioId}", fundHandler.GetFundHistory)
 		})
 
 		r.Route("/dividend", func(r chi.Router) {
-			dividendHandler := handlers.NewDividendHandler(dividendService)
+			dividendHandler := handlers.NewDividendHandler(materializedService.DividendService())
 			r.Get("/", dividendHandler.GetAllDividends)
 			r.Get("/portfolio/{portfolioId}", dividendHandler.DividendPerPortfolio)
 		})

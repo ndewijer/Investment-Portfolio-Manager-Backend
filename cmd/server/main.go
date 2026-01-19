@@ -40,8 +40,9 @@ func main() {
 	realizedGainLossRepo := repository.NewRealizedGainLossRepository(db)
 	materializedRepo := repository.NewMaterializedRepository(db)
 
-	systemService := service.NewSystemService(db)
 	// Create services
+	systemService := service.NewSystemService(db)
+
 	realizedGainLossService := service.NewRealizedGainLossService(
 		realizedGainLossRepo,
 	)
@@ -53,22 +54,31 @@ func main() {
 	)
 	fundService := service.NewFundService(
 		fundRepo,
-		materializedRepo,
 		transactionService,
 		dividendService,
 		realizedGainLossService,
 	)
 	portfolioService := service.NewPortfolioService(
 		portfolioRepo,
-		dividendService,
+	)
+	materializedService := service.NewMaterializedService(
 		materializedRepo,
+		portfolioRepo,
+		fundRepo,
 		transactionService,
 		fundService,
+		dividendService,
 		realizedGainLossService,
 	)
 
 	// Create router
-	router := api.NewRouter(systemService, portfolioService, fundService, transactionService, dividendService, realizedGainLossService, cfg)
+	router := api.NewRouter(
+		systemService,
+		portfolioService,
+		fundService,
+		materializedService,
+		cfg,
+	)
 
 	// Create HTTP server
 	server := &http.Server{

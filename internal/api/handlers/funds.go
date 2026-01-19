@@ -12,13 +12,15 @@ import (
 // It serves as the HTTP layer adapter, parsing requests and delegating
 // business logic to the fundService.
 type FundHandler struct {
-	fundService *service.FundService
+	fundService         *service.FundService
+	materializedService *service.MaterializedService
 }
 
 // NewFundHandler creates a new FundHandler with the provided service dependency.
-func NewFundHandler(fundService *service.FundService) *FundHandler {
+func NewFundHandler(fundService *service.FundService, materializedService *service.MaterializedService) *FundHandler {
 	return &FundHandler{
-		fundService: fundService,
+		fundService:         fundService,
+		materializedService: materializedService,
 	}
 }
 
@@ -82,7 +84,7 @@ func (h *FundHandler) GetFundHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fundHistory, err := h.fundService.GetFundHistoryWithFallback(portfolioID, startDate, endDate)
+	fundHistory, err := h.materializedService.GetFundHistoryWithFallback(portfolioID, startDate, endDate)
 	if err != nil {
 		errorResponse := map[string]string{
 			"error":  "failed to retrieve fund history",

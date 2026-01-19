@@ -14,15 +14,17 @@ import (
 // It serves as the HTTP layer adapter, parsing requests and delegating
 // business logic to the PortfolioService.
 type PortfolioHandler struct {
-	portfolioService *service.PortfolioService
-	fundService      *service.FundService
+	portfolioService    *service.PortfolioService
+	fundService         *service.FundService
+	materializedService *service.MaterializedService
 }
 
 // NewPortfolioHandler creates a new PortfolioHandler with the provided service dependency.
-func NewPortfolioHandler(portfolioService *service.PortfolioService, fundService *service.FundService) *PortfolioHandler {
+func NewPortfolioHandler(portfolioService *service.PortfolioService, fundService *service.FundService, materializedService *service.MaterializedService) *PortfolioHandler {
 	return &PortfolioHandler{
-		portfolioService: portfolioService,
-		fundService:      fundService,
+		portfolioService:    portfolioService,
+		fundService:         fundService,
+		materializedService: materializedService,
 	}
 }
 
@@ -74,7 +76,7 @@ func (h *PortfolioHandler) GetPortfolio(w http.ResponseWriter, r *http.Request) 
 
 	startDate, _ := time.Parse("2006-01-02", "1970-01-01")
 	endDate := time.Now()
-	history, err := h.portfolioService.GetPortfolioHistoryWithFallback(startDate, endDate, portfolioID)
+	history, err := h.materializedService.GetPortfolioHistoryWithFallback(startDate, endDate, portfolioID)
 	if err != nil {
 		errorResponse := map[string]string{
 			"error":  "failed to get portfolio summary",
@@ -109,7 +111,7 @@ func (h *PortfolioHandler) PortfolioSummary(w http.ResponseWriter, r *http.Reque
 
 	startDate, _ := time.Parse("2006-01-02", "1970-01-01")
 	endDate := time.Now()
-	portfolioSummary, err := h.portfolioService.GetPortfolioHistoryWithFallback(startDate, endDate, "")
+	portfolioSummary, err := h.materializedService.GetPortfolioHistoryWithFallback(startDate, endDate, "")
 	if err != nil {
 		errorResponse := map[string]string{
 			"error":  "failed to get portfolio summary",
@@ -152,7 +154,7 @@ func (h *PortfolioHandler) PortfolioHistory(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	portfolioHistory, err := h.portfolioService.GetPortfolioHistoryWithFallback(startDate, endDate, "")
+	portfolioHistory, err := h.materializedService.GetPortfolioHistoryWithFallback(startDate, endDate, "")
 	if err != nil {
 		errorResponse := map[string]string{
 			"error":  "failed to get portfolio history",
