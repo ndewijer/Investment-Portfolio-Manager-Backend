@@ -77,6 +77,7 @@ func main() {
 		portfolioService,
 		fundService,
 		materializedService,
+		transactionService,
 		cfg,
 	)
 
