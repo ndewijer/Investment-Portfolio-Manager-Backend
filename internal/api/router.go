@@ -19,6 +19,7 @@ func NewRouter(
 	fundService *service.FundService,
 	materializedService *service.MaterializedService,
 	transactionService *service.TransactionService,
+	ibkrService *service.IbkrService,
 	cfg *config.Config,
 ) http.Handler {
 	r := chi.NewRouter()
@@ -71,6 +72,11 @@ func NewRouter(
 			transactionHandler := handlers.NewTransactionHandler(transactionService)
 			r.Get("/", transactionHandler.AllTransactions)
 			r.Get("/portfolio/{portfolioId:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", transactionHandler.TransactionPerPortfolio)
+		})
+
+		r.Route("/ibkr", func(r chi.Router) {
+			ibkrHandler := handlers.NewIbkrHandler(ibkrService)
+			r.Get("/config", ibkrHandler.GetConfig)
 		})
 	})
 
