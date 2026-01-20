@@ -39,10 +39,14 @@ func main() {
 	dividendRepo := repository.NewDividendRepository(db)
 	realizedGainLossRepo := repository.NewRealizedGainLossRepository(db)
 	materializedRepo := repository.NewMaterializedRepository(db)
+	ibkrRepo := repository.NewIbkrRepository(db)
 
 	// Create services
 	systemService := service.NewSystemService(db)
 
+	ibkrService := service.NewIbkrService(
+		ibkrRepo,
+	)
 	realizedGainLossService := service.NewRealizedGainLossService(
 		realizedGainLossRepo,
 	)
@@ -78,6 +82,7 @@ func main() {
 		fundService,
 		materializedService,
 		transactionService,
+		ibkrService,
 		cfg,
 	)
 
