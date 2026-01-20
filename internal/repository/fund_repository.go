@@ -20,15 +20,27 @@ func NewFundRepository(db *sql.DB) *FundRepository {
 	return &FundRepository{db: db}
 }
 
-// GetFunds retrieves all funds from the database.
+// GetFund retrieves all funds from the database.
 // Returns an empty slice if no funds are found.
-func (s *FundRepository) GetFunds() ([]model.Fund, error) {
+func (s *FundRepository) GetFund(fundId string) ([]model.Fund, error) {
 	query := `
-          SELECT id, name, isin, symbol, currency, exchange, investment_type, dividend_type
-      	  FROM fund
+        SELECT f.id, f.name, f.isin, f.symbol, f.currency, f.exchange, f.investment_type, f.dividend_type, fp.price
+		FROM fund f
+		INNER JOIN fund_price fp ON f.id = fp.fund_id
+		INNER JOIN (
+			SELECT fund_id, MAX(date) as latest_date
+			FROM fund_price
+			GROUP BY fund_id
+		) latest ON fp.fund_id = latest.fund_id AND fp.date = latest.latest_date
       `
 
-	rows, err := s.db.Query(query)
+	if fundId != "" {
+		query += `
+		WHERE f.id = ?
+		`
+	}
+
+	rows, err := s.db.Query(query, fundId)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query fund table: %w", err)
 	}
@@ -49,6 +61,7 @@ func (s *FundRepository) GetFunds() ([]model.Fund, error) {
 			&f.Exchange,
 			&f.InvestmentType,
 			&f.DividendType,
+			&f.LatestPrice,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan fund table results: %w", err)
@@ -63,9 +76,9 @@ func (s *FundRepository) GetFunds() ([]model.Fund, error) {
 	return funds, nil
 }
 
-// GetFund retrieves fund records for the given fund IDs.
+// GetFunds retrieves fund records for the given fund IDs.
 // Returns a slice of Fund objects containing metadata like name, ISIN, symbol, currency, etc.
-func (s *FundRepository) GetFund(fundIDs []string) ([]model.Fund, error) {
+func (s *FundRepository) GetFunds(fundIDs []string) ([]model.Fund, error) {
 	fundPlaceholders := make([]string, len(fundIDs))
 	for i := range fundPlaceholders {
 		fundPlaceholders[i] = "?"
@@ -305,4 +318,55 @@ func (s *FundRepository) GetAllPortfolioFundListings() ([]model.PortfolioFundLis
 	}
 
 	return listings, nil
+}
+
+func (s *FundRepository) GetSymbol(symbol string) (*model.Symbol, error) {
+	if symbol == "" {
+		return &model.Symbol{}, nil
+	}
+
+	query := `
+        SELECT s.id, s.symbol, s.name, s.exchange, s.currency, s.isin, s.last_updated, s.data_source, s.is_valid
+		FROM symbol_info s
+		WHERE s.symbol = ?
+      `
+
+	var sb model.Symbol
+	var exchangeStr, currencyStr, isinStr, dataSource, lastUpdatedStr sql.NullString
+	err := s.db.QueryRow(query, symbol).Scan(
+		&sb.ID,
+		&sb.Symbol,
+		&sb.Name,
+		&exchangeStr,
+		&currencyStr,
+		&isinStr,
+		&lastUpdatedStr,
+		&dataSource,
+		&sb.IsValid,
+	)
+	if err == sql.ErrNoRows {
+		return &model.Symbol{}, err
+	}
+
+	if lastUpdatedStr.Valid {
+		sb.LastUpdated, err = ParseTime(lastUpdatedStr.String)
+		if err != nil || sb.LastUpdated.IsZero() {
+			return nil, fmt.Errorf("failed to parse date: %w", err)
+		}
+	}
+
+	if exchangeStr.Valid {
+		sb.Exchange = exchangeStr.String
+	}
+	if currencyStr.Valid {
+		sb.Currency = currencyStr.String
+	}
+	if isinStr.Valid {
+		sb.Isin = isinStr.String
+	}
+	if dataSource.Valid {
+		sb.DataSource = dataSource.String
+	}
+
+	return &sb, err
 }
