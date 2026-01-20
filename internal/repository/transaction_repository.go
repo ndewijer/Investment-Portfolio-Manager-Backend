@@ -146,9 +146,6 @@ func (s *TransactionRepository) GetOldestTransaction(pfIDs []string) time.Time {
 }
 
 func (s *TransactionRepository) GetTransactionsPerPortfolio(portfolioId string) ([]model.TransactionResponse, error) {
-	if portfolioId == "" {
-		return []model.TransactionResponse{}, nil
-	}
 
 	// Retrieve all transactions based on returned portfolio_fund IDs
 	transactionQuery := `
@@ -170,9 +167,18 @@ func (s *TransactionRepository) GetTransactionsPerPortfolio(portfolioId string) 
 		JOIN portfolio p ON pf.portfolio_id = p.id
 		JOIN fund f ON pf.fund_id = f.id
 		LEFT JOIN ibkr_transaction_allocation ita ON t.id = ita.transaction_id
+	`
+
+	if portfolioId == "" {
+		transactionQuery += `
+		ORDER BY t.date ASC
+		`
+	} else {
+		transactionQuery += `
 		WHERE pf.portfolio_id = ?
 		ORDER BY t.date ASC
-	`
+		`
+	}
 
 	rows, err := s.db.Query(transactionQuery, portfolioId)
 	if err != nil {

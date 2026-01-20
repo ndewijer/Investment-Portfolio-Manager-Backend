@@ -53,9 +53,12 @@ func NewRouter(
 		})
 
 		r.Route("/fund", func(r chi.Router) {
-			fundHandler := handlers.NewFundHandler(fundService, materializedService)
-			r.Get("/", fundHandler.Funds)
+			fundHandler := handlers.NewFundHandler(fundService, portfolioService, materializedService)
+			r.Get("/", fundHandler.GetAllFunds)
+			r.Get("/fund-prices/{FundId:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", fundHandler.GetFundPrices)
+			r.Get("/symbol/{Symbol}", fundHandler.GetSymbol)
 			r.Get("/history/{portfolioId:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", fundHandler.GetFundHistory)
+			r.Get("/{FundId:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", fundHandler.GetFund)
 		})
 
 		r.Route("/dividend", func(r chi.Router) {

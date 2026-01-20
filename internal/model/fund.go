@@ -4,21 +4,22 @@ import "time"
 
 // Fund represents a fund from the database
 type Fund struct {
-	ID             string `json:"id"`
-	Name           string `json:"name"`
-	Isin           string `json:"isin"`
-	Symbol         string `json:"symbol"`
-	Currency       string `json:"currency"`
-	Exchange       string `json:"exchange"`
-	InvestmentType string `json:"investmentType"`
-	DividendType   string `json:"dividendType"`
+	ID             string  `json:"id"`
+	Name           string  `json:"name"`
+	Isin           string  `json:"isin"`
+	Symbol         string  `json:"symbol"`
+	Currency       string  `json:"currency"`
+	Exchange       string  `json:"exchange"`
+	InvestmentType string  `json:"investmentType"`
+	DividendType   string  `json:"dividendType"`
+	LatestPrice    float64 `json:"latest_price"`
 }
 
 type FundPrice struct {
-	ID     string
-	FundID string
-	Date   time.Time
-	Price  float64
+	ID     string    `json:"id"`
+	FundID string    `json:"fundId"`
+	Date   time.Time `json:"date"`
+	Price  float64   `json:"price"`
 }
 
 type PortfolioFund struct {
@@ -74,4 +75,16 @@ type FundHistoryEntry struct {
 type FundHistoryResponse struct {
 	Date  time.Time          `json:"date"`  // Date of this snapshot
 	Funds []FundHistoryEntry `json:"funds"` // All funds in portfolio on this date
+}
+
+type Symbol struct {
+	ID          string    `json:"id"`
+	Symbol      string    `json:"symbol"`
+	Name        string    `json:"name"`
+	Exchange    string    `json:"exchange,omitempty"`
+	Currency    string    `json:"currency,omitempty"`
+	Isin        string    `json:"isin,omitempty"`
+	LastUpdated time.Time `json:"lastUpdated"`
+	DataSource  string    `json:"dataSource"`
+	IsValid     bool      `json:"isValid"`
 }
