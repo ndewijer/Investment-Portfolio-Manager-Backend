@@ -223,7 +223,7 @@ func (s *MaterializedService) GetPortfolioHistory(requestedStartDate, requestedE
 		return nil, err
 	}
 
-	fundPriceByFund, err := s.fundService.loadFundPrices(fundIDs, dataStartDate, dataEndDate, true) //ASC
+	fundPriceByFund, err := s.fundService.LoadFundPrices(fundIDs, dataStartDate, dataEndDate, true) //ASC
 	if err != nil {
 		return nil, err
 	}
@@ -465,7 +465,7 @@ func (s *MaterializedService) calculateFundHistoryOnFly(portfolioID string, star
 		return nil, err
 	}
 
-	fundPriceByFund, err := s.fundService.loadFundPrices(fundIDs, oldestTxDate, endDate, true)
+	fundPriceByFund, err := s.fundService.LoadFundPrices(fundIDs, oldestTxDate, endDate, true)
 	if err != nil {
 		return nil, err
 	}

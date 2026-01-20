@@ -33,8 +33,12 @@ func NewFundService(
 
 // GetAllFunds retrieves all funds from the database with no filters applied.
 // Returns a complete list of all available funds that can be held in portfolios.
-func (s *FundService) GetAllFunds() ([]model.Fund, error) {
-	return s.fundRepo.GetFunds()
+func (s *FundService) GetFund(fundId string) ([]model.Fund, error) {
+	return s.fundRepo.GetFund(fundId)
+}
+
+func (s *FundService) GetSymbol(symbol string) (*model.Symbol, error) {
+	return s.fundRepo.GetSymbol(symbol)
 }
 
 // GetAllPortfolioFundListings retrieves all portfolio-fund relationships with basic metadata.
@@ -89,7 +93,7 @@ func (s *FundService) GetPortfolioFunds(portfolioID string) ([]model.PortfolioFu
 		return nil, err
 	}
 
-	fundPriceByFund, err := s.loadFundPrices(fundIDs, oldestTransactionDate, today, true) //ASC
+	fundPriceByFund, err := s.LoadFundPrices(fundIDs, oldestTransactionDate, today, true) //ASC
 	if err != nil {
 		return nil, err
 	}
@@ -171,6 +175,6 @@ func (s *FundService) GetPortfolioFunds(portfolioID string) ([]model.PortfolioFu
 // Returns a map of fundID -> []FundPrice, where prices are sorted according to the ascending parameter.
 // ASC order is typically used for date-aware price lookups (getPriceForDate),
 // while DESC order is efficient for latest-price queries.
-func (s *FundService) loadFundPrices(fundIDs []string, startDate, endDate time.Time, ascending bool) (map[string][]model.FundPrice, error) {
+func (s *FundService) LoadFundPrices(fundIDs []string, startDate, endDate time.Time, ascending bool) (map[string][]model.FundPrice, error) {
 	return s.fundRepo.GetFundPrice(fundIDs, startDate, endDate, ascending)
 }
