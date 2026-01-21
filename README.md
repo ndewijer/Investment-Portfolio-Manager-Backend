@@ -49,12 +49,12 @@ This backend aims to replicate all 73 endpoints from the Python backend. Below i
 ├── /fund (1/13 endpoints) ⬜
 │   ├── GET    /                                ✅ List all funds
 │   ├── POST   /                                ⬜ Create fund
-│   ├── GET    /{id}                            ⬜ Get fund by ID
+│   ├── GET    /{id}                            ✅ Get fund by ID
 │   ├── PUT    /{id}                            ⬜ Update fund
 │   ├── DELETE /{id}                            ⬜ Delete fund
 │   ├── GET    /history/{portfolioID}           ✅ Portfolio-fund history
-│   ├── GET    /isin/{isin}                     ⬜ Get fund by ISIN
-│   ├── GET    /{id}/prices                     ⬜ Get fund prices
+│   ├── GET    /symbol/{symbol}                 ✅ Get fund by Symbol
+│   ├── GET    /fund-prices/{id}                ✅ Get fund prices
 │   ├── POST   /{id}/prices                     ⬜ Add fund price
 │   ├── PUT    /{id}/prices/{price_id}          ⬜ Update fund price
 │   ├── DELETE /{id}/prices/{price_id}          ⬜ Delete fund price
@@ -80,28 +80,28 @@ This backend aims to replicate all 73 endpoints from the Python backend. Below i
 │   └── POST   /{id}/process-reinvestment       ⬜ Process dividend reinvestment
 │
 ├── /ibkr (0/19 endpoints) ⬜
-│   ├── GET    /tokens                          ⬜ List IBKR tokens
-│   ├── POST   /tokens                          ⬜ Create IBKR token
-│   ├── GET    /tokens/{id}                     ⬜ Get IBKR token
-│   ├── PUT    /tokens/{id}                     ⬜ Update IBKR token
-│   ├── DELETE /tokens/{id}                     ⬜ Delete IBKR token
-│   ├── GET    /queries                         ⬜ List flex queries
-│   ├── POST   /queries                         ⬜ Create flex query
-│   ├── GET    /queries/{id}                    ⬜ Get flex query
-│   ├── PUT    /queries/{id}                    ⬜ Update flex query
-│   ├── DELETE /queries/{id}                    ⬜ Delete flex query
-│   ├── POST   /queries/{id}/execute            ⬜ Execute flex query
-│   ├── GET    /imports                         ⬜ List imports
-│   ├── POST   /imports                         ⬜ Create import
-│   ├── GET    /imports/{id}                    ⬜ Get import
-│   ├── DELETE /imports/{id}                    ⬜ Delete import
-│   ├── POST   /imports/{id}/process            ⬜ Process import
-│   ├── GET    /imports/{id}/preview            ⬜ Preview import
-│   ├── POST   /test-connection                 ⬜ Test IBKR connection
-│   └── GET    /mapping-suggestions             ⬜ Get mapping suggestions
+│   ├── POST    /config                                    ⬜ Create or update IBKR configuration
+│   ├── GET     /config                                    ✅ Get IBKR configuration status
+│   ├── DELETE  /config                                    ⬜ Delete IBKR configuration
+│   ├── POST    /config/test                               ⬜ Test IBKR connection with provided credentials
+│   ├── GET     /dividend/pending                          ⬜ Get pending dividend records for matching
+│   ├── POST    /import                                    ⬜ Trigger IBKR import mechanism
+│   ├── GET     /inbox                                     ⬜ List IBKR imported transactions
+│   ├── POST    /inbox/bulk-allocate                       ⬜ Allocate multiple IBKR transactions with same allocations
+│   ├── GET     /inbox/count                               ⬜ Get count of IBKR transactions
+│   ├── GET     /inbox/{transactionId}                     ⬜ Get IBKR transaction details
+│   ├── DELETE  /inbox/{transactionId}                     ⬜ Delete IBKR transaction
+│   ├── POST    /inbox/{transactionId}/allocate            ⬜ Allocate IBKR transaction to portfolios
+│   ├── GET     /inbox/{transactionId}/allocations         ⬜ Get allocation details for a processed IBKR transaction
+│   ├── PUT     /inbox/{transactionId}/allocations         ⬜ Modify allocation percentages for a processed IBKR transaction
+│   ├── GET     /inbox/{transactionId}/eligible-portfolios ⬜ Get eligible portfolios for allocating this transaction
+│   ├── POST    /inbox/{transactionId}/ignore              ⬜ Mark IBKR transaction as ignored
+│   ├── POST    /inbox/{transactionId}/match-dividend      ⬜ Match IBKR dividend transaction to existing dividend records
+│   ├── POST    /inbox/{transactionId}/unallocate          ⬜ Unallocate a processed IBKR transaction
+│   └── GET     /portfolios                                ✅ Get available portfolios for transaction allocation
 │
 └── /developer (0/15 endpoints) ⬜
-    ├── GET    /logs                            ⬜ List logs
+    ├── GET    /logs                            🚧 List logs
     ├── DELETE /logs                            ⬜ Clear logs
     ├── GET    /logs/export                     ⬜ Export logs
     ├── GET    /database/backup                 ⬜ Backup database
@@ -111,11 +111,11 @@ This backend aims to replicate all 73 endpoints from the Python backend. Below i
     ├── POST   /database/import                 ⬜ Import database
     ├── POST   /seed-sample-data                ⬜ Seed sample data
     ├── DELETE /clear-all-data                  ⬜ Clear all data
-    ├── GET    /stats                           ⬜ Get statistics
+    ├── GET    /stats                           🚧 Get statistics
     ├── POST   /calculate-portfolio-values      ⬜ Calculate portfolio values
     ├── POST   /recalculate-all-metrics         ⬜ Recalculate all metrics
     ├── POST   /fix-data-inconsistencies        ⬜ Fix data inconsistencies
-    └── GET    /system-info                     ⬜ Get system information
+    └── GET    /system-info                     🚧 Get system information
 
 Legend: ✅ Implemented | 🚧 In Progress | ⬜ Planned
 Overall Progress: 10/73 endpoints (14%)
