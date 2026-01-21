@@ -44,9 +44,6 @@ func main() {
 	// Create services
 	systemService := service.NewSystemService(db)
 
-	ibkrService := service.NewIbkrService(
-		ibkrRepo,
-	)
 	realizedGainLossService := service.NewRealizedGainLossService(
 		realizedGainLossRepo,
 	)
@@ -63,6 +60,10 @@ func main() {
 		realizedGainLossService,
 	)
 	portfolioService := service.NewPortfolioService(
+		portfolioRepo,
+	)
+	ibkrService := service.NewIbkrService(
+		ibkrRepo,
 		portfolioRepo,
 	)
 	materializedService := service.NewMaterializedService(
