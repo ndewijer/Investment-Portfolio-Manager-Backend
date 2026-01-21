@@ -19,6 +19,7 @@ func NewRouter(
 	fundService *service.FundService,
 	materializedService *service.MaterializedService,
 	transactionService *service.TransactionService,
+	ibkrService *service.IbkrService,
 	cfg *config.Config,
 ) http.Handler {
 	r := chi.NewRouter()
@@ -53,12 +54,12 @@ func NewRouter(
 		})
 
 		r.Route("/fund", func(r chi.Router) {
-			fundHandler := handlers.NewFundHandler(fundService, portfolioService, materializedService)
+			fundHandler := handlers.NewFundHandler(fundService, materializedService)
 			r.Get("/", fundHandler.GetAllFunds)
-			r.Get("/fund-prices/{FundId:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", fundHandler.GetFundPrices)
-			r.Get("/symbol/{Symbol}", fundHandler.GetSymbol)
+			r.Get("/fund-prices/{fundId:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", fundHandler.GetFundPrices)
+			r.Get("/symbol/{symbol}", fundHandler.GetSymbol)
 			r.Get("/history/{portfolioId:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", fundHandler.GetFundHistory)
-			r.Get("/{FundId:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", fundHandler.GetFund)
+			r.Get("/{fundId:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", fundHandler.GetFund)
 		})
 
 		r.Route("/dividend", func(r chi.Router) {
@@ -71,6 +72,12 @@ func NewRouter(
 			transactionHandler := handlers.NewTransactionHandler(transactionService)
 			r.Get("/", transactionHandler.AllTransactions)
 			r.Get("/portfolio/{portfolioId:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", transactionHandler.TransactionPerPortfolio)
+		})
+
+		r.Route("/ibkr", func(r chi.Router) {
+			ibkrHandler := handlers.NewIbkrHandler(ibkrService)
+			r.Get("/config", ibkrHandler.GetConfig)
+			r.Get("/portfolios", ibkrHandler.GetActivePortfolios)
 		})
 	})
 
