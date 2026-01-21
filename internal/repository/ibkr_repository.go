@@ -27,7 +27,6 @@ func (r *IbkrRepository) GetIbkrConfig() (*model.IbkrConfig, error) {
       `
 
 	var ic model.IbkrConfig
-	// var tokenWarning string
 	var tokenExpiresStr, lastImportStr, defaultAllocationStr sql.NullString
 	err := r.db.QueryRow(query).Scan(
 		&ic.FlexQueryId,
@@ -53,23 +52,25 @@ func (r *IbkrRepository) GetIbkrConfig() (*model.IbkrConfig, error) {
 	if tokenExpiresStr.Valid {
 		ic.TokenExpiresAt, err = ParseTime(tokenExpiresStr.String)
 		if err != nil || ic.TokenExpiresAt.IsZero() {
-			return &model.IbkrConfig{}, fmt.Errorf("failed to parse date: %w", err)
+			return &model.IbkrConfig{}, fmt.Errorf("failed to parse date on TokenExpiresAt: %w", err)
 		}
 	}
 
 	if lastImportStr.Valid {
 		ic.LastImportDate, err = ParseTime(lastImportStr.String)
 		if err != nil || ic.LastImportDate.IsZero() {
-			return &model.IbkrConfig{}, fmt.Errorf("failed to parse date: %w", err)
+			return &model.IbkrConfig{}, fmt.Errorf("failed to parse date on LastImportDate: %w", err)
 		}
 	}
 
 	if defaultAllocationStr.Valid {
 		var defaultAllocation []model.Allocation
 		if err := json.Unmarshal([]byte(defaultAllocationStr.String), &defaultAllocation); err != nil {
-			return &ic, fmt.Errorf("failed to parse allocation model: %w", err)
+			//log.Printf("warning: failed to parse allocation model: %v", err)
+			// Continue without allocations
+		} else {
+			ic.DefaultAllocations = defaultAllocation
 		}
-		ic.DefaultAllocations = defaultAllocation
 	}
 
 	return &ic, err

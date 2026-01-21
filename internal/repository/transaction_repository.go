@@ -169,6 +169,8 @@ func (s *TransactionRepository) GetTransactionsPerPortfolio(portfolioId string) 
 		LEFT JOIN ibkr_transaction_allocation ita ON t.id = ita.transaction_id
 	`
 
+	var args []any
+
 	if portfolioId == "" {
 		transactionQuery += `
 		ORDER BY t.date ASC
@@ -178,9 +180,10 @@ func (s *TransactionRepository) GetTransactionsPerPortfolio(portfolioId string) 
 		WHERE pf.portfolio_id = ?
 		ORDER BY t.date ASC
 		`
+		args = append(args, portfolioId)
 	}
 
-	rows, err := s.db.Query(transactionQuery, portfolioId)
+	rows, err := s.db.Query(transactionQuery, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query transaction table: %w", err)
 	}

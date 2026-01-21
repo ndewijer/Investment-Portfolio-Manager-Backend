@@ -34,13 +34,15 @@ func (s *FundRepository) GetFund(fundId string) ([]model.Fund, error) {
 		) latest ON fp.fund_id = latest.fund_id AND fp.date = latest.latest_date
       `
 
+	var args []any
+
 	if fundId != "" {
-		query += `
-		WHERE f.id = ?
-		`
+		query += ` WHERE f.id = ?`
+		args = append(args, fundId)
 	}
 
-	rows, err := s.db.Query(query, fundId)
+	rows, err := s.db.Query(query, args...)
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to query fund table: %w", err)
 	}
@@ -345,7 +347,7 @@ func (s *FundRepository) GetSymbol(symbol string) (*model.Symbol, error) {
 		&sb.IsValid,
 	)
 	if err == sql.ErrNoRows {
-		return &model.Symbol{}, err
+		return nil, nil
 	}
 
 	if lastUpdatedStr.Valid {

@@ -27,9 +27,19 @@ func NewIbkrService(
 func (s *IbkrService) GetIbkrConfig() (*model.IbkrConfig, error) {
 	config, err := s.ibkrRepo.GetIbkrConfig()
 
-	diff := time.Until(config.TokenExpiresAt)
-	if diff.Hours() <= 720.0 {
-		config.TokenWarning = fmt.Sprintf("Token expires in %d days", int64(diff.Hours()/24))
+	if err != nil {
+		return config, err // Return whatever we got
+	}
+	if config == nil {
+		return nil, fmt.Errorf("unexpected nil config")
+	}
+
+	if !config.TokenExpiresAt.IsZero() {
+		diff := time.Until(config.TokenExpiresAt)
+		if diff.Hours() <= 720.0 {
+			config.TokenWarning = fmt.Sprintf("Token expires in %d days",
+				int64(diff.Hours()/24))
+		}
 	}
 
 	return config, err

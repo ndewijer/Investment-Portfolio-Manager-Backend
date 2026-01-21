@@ -24,15 +24,15 @@ func NewTransactionHandler(transactionService *service.TransactionService) *Tran
 
 func (h *TransactionHandler) TransactionPerPortfolio(w http.ResponseWriter, r *http.Request) {
 
-	portfolioID := chi.URLParam(r, "portfolioId")
-	if portfolioID == "" {
+	portfolioId := chi.URLParam(r, "portfolioId")
+	if portfolioId == "" {
 		respondJSON(w, http.StatusBadRequest, map[string]string{
 			"error": "portfolio ID is required",
 		})
 		return
 	}
 
-	if err := validation.ValidateUUID(portfolioID); err != nil {
+	if err := validation.ValidateUUID(portfolioId); err != nil {
 		respondJSON(w, http.StatusBadRequest, map[string]string{
 			"error":  "invalid portfolio ID format",
 			"detail": err.Error(),
@@ -40,7 +40,7 @@ func (h *TransactionHandler) TransactionPerPortfolio(w http.ResponseWriter, r *h
 		return
 	}
 
-	transactions, err := h.transactionService.GetTransactionsperPortfolio(portfolioID)
+	transactions, err := h.transactionService.GetTransactionsperPortfolio(portfolioId)
 	if err != nil {
 		errorResponse := map[string]string{
 			"error":  "failed to retrieve transactions",
