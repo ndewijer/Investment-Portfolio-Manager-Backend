@@ -13,16 +13,16 @@ import (
 // It serves as the HTTP layer adapter, parsing requests and delegating
 // business logic to the fundService.
 type FundHandler struct {
-	fundService         *service.FundService
-	portfolioService    *service.PortfolioService
+	fundService *service.FundService
+
 	materializedService *service.MaterializedService
 }
 
 // NewFundHandler creates a new FundHandler with the provided service dependency.
-func NewFundHandler(fundService *service.FundService, portfolioService *service.PortfolioService, materializedService *service.MaterializedService) *FundHandler {
+func NewFundHandler(fundService *service.FundService, materializedService *service.MaterializedService) *FundHandler {
 	return &FundHandler{
-		fundService:         fundService,
-		portfolioService:    portfolioService,
+		fundService: fundService,
+
 		materializedService: materializedService,
 	}
 }
@@ -77,21 +77,30 @@ func (h *FundHandler) GetFund(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if len(funds) == 0 {
+		errorResponse := map[string]string{
+			"error":  "Fund not found",
+			"detail": "No fund found with the given ID",
+		}
+		respondJSON(w, http.StatusNotFound, errorResponse)
+		return
+	}
+
 	respondJSON(w, http.StatusOK, funds[0])
 }
 
 func (h *FundHandler) GetSymbol(w http.ResponseWriter, r *http.Request) {
 
-	Symbol := chi.URLParam(r, "Symbol")
+	symbol := chi.URLParam(r, "Symbol")
 
-	if Symbol == "" {
+	if symbol == "" {
 		respondJSON(w, http.StatusBadRequest, map[string]string{
 			"error": "Symbol is required",
 		})
 		return
 	}
 
-	funds, err := h.fundService.GetSymbol(Symbol)
+	symbolresponse, err := h.fundService.GetSymbol(symbol)
 	if err != nil {
 		errorResponse := map[string]string{
 			"error":  "failed to retrieve symbol",
@@ -101,7 +110,7 @@ func (h *FundHandler) GetSymbol(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respondJSON(w, http.StatusOK, funds)
+	respondJSON(w, http.StatusOK, symbolresponse)
 }
 
 // GetFundHistory handles GET requests to retrieve historical fund data for a portfolio.
@@ -158,16 +167,16 @@ func (h *FundHandler) GetFundHistory(w http.ResponseWriter, r *http.Request) {
 
 func (h *FundHandler) GetFundPrices(w http.ResponseWriter, r *http.Request) {
 
-	FundId := chi.URLParam(r, "FundId")
+	fundId := chi.URLParam(r, "fundId")
 
-	if FundId == "" {
+	if fundId == "" {
 		respondJSON(w, http.StatusBadRequest, map[string]string{
 			"error": "portfolio ID is required",
 		})
 		return
 	}
 
-	if err := validation.ValidateUUID(FundId); err != nil {
+	if err := validation.ValidateUUID(fundId); err != nil {
 		respondJSON(w, http.StatusBadRequest, map[string]string{
 			"error":  "invalid portfolio ID format",
 			"detail": err.Error(),
@@ -178,7 +187,7 @@ func (h *FundHandler) GetFundPrices(w http.ResponseWriter, r *http.Request) {
 	startDate, _ := time.Parse("2006-01-02", "1970-01-01")
 	endDate := time.Now()
 
-	funds, err := h.fundService.LoadFundPrices([]string{FundId}, startDate, endDate, false)
+	funds, err := h.fundService.LoadFundPrices([]string{fundId}, startDate, endDate, false)
 	if err != nil {
 		errorResponse := map[string]string{
 			"error":  "failed to retrieve funds",
@@ -188,5 +197,5 @@ func (h *FundHandler) GetFundPrices(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respondJSON(w, http.StatusOK, funds[FundId])
+	respondJSON(w, http.StatusOK, funds[fundId])
 }

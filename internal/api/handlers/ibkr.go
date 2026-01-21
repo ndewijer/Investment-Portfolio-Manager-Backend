@@ -24,7 +24,7 @@ func (h *IbkrHandler) GetConfig(w http.ResponseWriter, r *http.Request) {
 	config, err := h.ibkrService.GetIbkrConfig()
 	if err != nil {
 		errorResponse := map[string]string{
-			"error":  "failed to retrieve portfolios",
+			"error":  "failed to retrieve ibkr config",
 			"detail": err.Error(),
 		}
 		respondJSON(w, http.StatusInternalServerError, errorResponse)
