@@ -77,6 +77,7 @@ func NewRouter(
 		r.Route("/ibkr", func(r chi.Router) {
 			ibkrHandler := handlers.NewIbkrHandler(ibkrService)
 			r.Get("/config", ibkrHandler.GetConfig)
+			r.Get("/portfolios", ibkrHandler.GetActivePortfolios)
 		})
 	})
 

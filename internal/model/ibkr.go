@@ -3,8 +3,8 @@ package model
 import "time"
 
 type Allocation struct {
-	PortfolioId string `json:"portfolioId"`
-	Percentage  int64  `json:"percentage"`
+	PortfolioId string  `json:"portfolioId" sql:"portfolio_id"`
+	Percentage  float64 `json:"percentage"`
 }
 
 type IbkrConfig struct {
@@ -13,7 +13,7 @@ type IbkrConfig struct {
 	TokenExpiresAt           time.Time    `json:"tokenExpiresAt,omitempty"`
 	TokenWarning             string       `json:"tokenWarning,omitempty"`
 	LastImportDate           time.Time    `json:"lastImportDate,omitempty"`
-	AutoImprtEnabled         bool         `json:"autoImprtEnabled"`
+	AutoImportEnabled        bool         `json:"autoImportEnabled"`
 	Enabled                  bool         `json:"enabled"`
 	DefaultAllocationEnabled bool         `json:"defaultAllocationEnabled"`
 	DefaultAllocations       []Allocation `json:"defaultAllocations,omitempty"`

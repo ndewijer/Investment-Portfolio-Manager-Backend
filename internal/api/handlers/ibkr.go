@@ -33,3 +33,17 @@ func (h *IbkrHandler) GetConfig(w http.ResponseWriter, r *http.Request) {
 
 	respondJSON(w, http.StatusOK, config)
 }
+
+func (h *IbkrHandler) GetActivePortfolios(w http.ResponseWriter, r *http.Request) {
+	config, err := h.ibkrService.GetActivePortfolios()
+	if err != nil {
+		errorResponse := map[string]string{
+			"error":  "failed to retrieve portfolios",
+			"detail": err.Error(),
+		}
+		respondJSON(w, http.StatusInternalServerError, errorResponse)
+		return
+	}
+
+	respondJSON(w, http.StatusOK, config)
+}
