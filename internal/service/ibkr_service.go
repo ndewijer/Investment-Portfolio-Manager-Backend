@@ -69,3 +69,9 @@ func (s *IbkrService) GetPendingDividends(symbol, isin string) ([]model.PendingD
 func (s *IbkrService) GetInbox(status, transactionType string) ([]model.IBKRTransaction, error) {
 	return s.ibkrRepo.GetInbox(status, transactionType)
 }
+
+// GetInboxCount retrieves the count of IBKR imported transactions with status "pending".
+// Returns only the count without fetching full transaction records for efficiency.
+func (s *IbkrService) GetInboxCount() (model.IBKRInboxCount, error) {
+	return s.ibkrRepo.GetIbkrInboxCount()
+}

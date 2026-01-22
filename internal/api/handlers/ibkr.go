@@ -117,3 +117,26 @@ func (h *IbkrHandler) GetInbox(w http.ResponseWriter, r *http.Request) {
 
 	respondJSON(w, http.StatusOK, inbox)
 }
+
+// GetInboxCount handles GET requests to retrieve the count of IBKR imported transactions.
+// Returns the total number of pending transactions in the inbox.
+//
+// Endpoint: GET /api/ibkr/inbox/count
+//
+// Response: 200 OK with {"count": <number>}
+// Error: 500 Internal Server Error if retrieval fails
+func (h *IbkrHandler) GetInboxCount(w http.ResponseWriter, r *http.Request) {
+
+	count, err := h.ibkrService.GetInboxCount()
+
+	if err != nil {
+		errorResponse := map[string]string{
+			"error":  "failed to retrieve inbox transactions",
+			"detail": err.Error(),
+		}
+		respondJSON(w, http.StatusInternalServerError, errorResponse)
+		return
+	}
+
+	respondJSON(w, http.StatusOK, count)
+}

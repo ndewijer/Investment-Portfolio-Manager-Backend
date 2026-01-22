@@ -81,6 +81,7 @@ func NewRouter(
 			r.Get("/portfolios", ibkrHandler.GetActivePortfolios)
 			r.Get("/dividend/pending", ibkrHandler.GetPendingDividends)
 			r.Get("/inbox", ibkrHandler.GetInbox)
+			r.Get("/inbox/count", ibkrHandler.GetInboxCount)
 		})
 	})
 

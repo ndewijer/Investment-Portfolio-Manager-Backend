@@ -53,17 +53,19 @@ func (r *IbkrRepository) GetIbkrConfig() (*model.IbkrConfig, error) {
 	ic.Configured = true
 
 	if tokenExpiresStr.Valid {
-		*ic.TokenExpiresAt, err = ParseTime(tokenExpiresStr.String)
-		if err != nil || ic.TokenExpiresAt.IsZero() {
+		t, err := ParseTime(tokenExpiresStr.String)
+		if err != nil || t.IsZero() {
 			return &model.IbkrConfig{}, fmt.Errorf("failed to parse date on TokenExpiresAt: %w", err)
 		}
+		ic.TokenExpiresAt = &t
 	}
 
 	if lastImportStr.Valid {
-		*ic.LastImportDate, err = ParseTime(lastImportStr.String)
-		if err != nil || ic.LastImportDate.IsZero() {
+		l, err := ParseTime(lastImportStr.String)
+		if err != nil || l.IsZero() {
 			return &model.IbkrConfig{}, fmt.Errorf("failed to parse date on LastImportDate: %w", err)
 		}
+		ic.LastImportDate = &l
 	}
 
 	if defaultAllocationStr.Valid {
@@ -143,9 +145,6 @@ func (r *IbkrRepository) GetPendingDividends(symbol, isin string) ([]model.Pendi
 			&t.DividendPerShare,
 			&t.TotalAmount,
 		)
-		if err == sql.ErrNoRows {
-			return []model.PendingDividend{}, nil
-		}
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan dividend table results: %w", err)
 		}
@@ -228,9 +227,6 @@ func (r *IbkrRepository) GetInbox(status, transactionType string) ([]model.IBKRT
 			&t.Status,
 			&importedAtStr,
 		)
-		if err == sql.ErrNoRows {
-			return []model.IBKRTransaction{}, nil
-		}
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan IBKR Transactions table results: %w", err)
 		}
@@ -252,4 +248,29 @@ func (r *IbkrRepository) GetInbox(status, transactionType string) ([]model.IBKRT
 	}
 
 	return ibkrTransactions, nil
+}
+
+// GetIbkrInboxCount retrieves the count of IBKR imported transactions.
+// Uses a COUNT(*) query for efficiency rather than fetching all records.
+// Returns 0 if no transactions exist.
+func (r *IbkrRepository) GetIbkrInboxCount() (model.IBKRInboxCount, error) {
+
+	query := `
+        SELECT count(*)
+		FROM ibkr_transaction
+		WHERE status = 'pending'
+      `
+
+	count := model.IBKRInboxCount{}
+	err := r.db.QueryRow(query).Scan(&count.Count)
+	if err == sql.ErrNoRows {
+		return model.IBKRInboxCount{
+			Count: 0,
+		}, nil
+	}
+	if err != nil {
+		return model.IBKRInboxCount{}, err
+	}
+
+	return count, err
 }
