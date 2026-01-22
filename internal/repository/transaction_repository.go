@@ -147,7 +147,6 @@ func (s *TransactionRepository) GetOldestTransaction(pfIDs []string) time.Time {
 
 func (s *TransactionRepository) GetTransactionsPerPortfolio(portfolioId string) ([]model.TransactionResponse, error) {
 
-	// Retrieve all transactions based on returned portfolio_fund IDs
 	transactionQuery := `
 		SELECT 
 			t.id, 
@@ -229,4 +228,63 @@ func (s *TransactionRepository) GetTransactionsPerPortfolio(portfolioId string) 
 	}
 
 	return transactionResponse, nil
+}
+
+func (s *TransactionRepository) GetTransaction(transactionId string) (model.TransactionResponse, error) {
+	if transactionId == "" {
+		return model.TransactionResponse{}, nil
+	}
+
+	transactionQuery := `
+		SELECT 
+			t.id, 
+			t.portfolio_fund_id, 
+			f.name, 
+			t.date, 
+			t.type, 
+			t.shares, 
+			t.cost_per_share, 
+			ita.ibkr_transaction_id,
+			CASE 
+				WHEN ita.ibkr_transaction_id IS NOT NULL THEN 1 
+				ELSE 0 
+			END AS ibkr_linked
+		FROM "transaction" t
+		JOIN portfolio_fund pf ON t.portfolio_fund_id = pf.id
+		JOIN portfolio p ON pf.portfolio_id = p.id
+		JOIN fund f ON pf.fund_id = f.id
+		LEFT JOIN ibkr_transaction_allocation ita ON t.id = ita.transaction_id
+		WHERE t.id = ?
+	`
+	var t model.TransactionResponse
+	var dateStr string
+	var ibkrTransactionIdStr sql.NullString
+	err := s.db.QueryRow(transactionQuery, transactionId).Scan(
+		&t.Id,
+		&t.PortfolioFundId,
+		&t.FundName,
+		&dateStr,
+		&t.Type,
+		&t.Shares,
+		&t.CostPerShare,
+		&ibkrTransactionIdStr,
+		&t.IbkrLinked,
+	)
+	if err == sql.ErrNoRows {
+		return model.TransactionResponse{}, nil
+	}
+
+	if err != nil {
+		return t, fmt.Errorf("failed to scan transaction table results: %w", err)
+	}
+	t.Date, err = ParseTime(dateStr)
+	if err != nil || t.Date.IsZero() {
+		return t, fmt.Errorf("failed to parse date: %w", err)
+	}
+
+	if ibkrTransactionIdStr.Valid {
+		t.IbkrTransactionId = ibkrTransactionIdStr.String
+	}
+
+	return t, nil
 }
