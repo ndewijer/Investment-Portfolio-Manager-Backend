@@ -2,7 +2,8 @@ package model
 
 import "time"
 
-// Fund represents a dividend from the database
+// Dividend represents a dividend record from the database.
+// Used internally for calculations and data processing.
 type Dividend struct {
 	ID                        string
 	FundID                    string
@@ -35,4 +36,17 @@ type DividendFund struct {
 	BuyOrderDate              *time.Time `json:"buyOrderDate,omitempty"`              // Date when reinvestment buy order was placed (nil if not reinvested)
 	ReinvestmentTransactionId string     `json:"reinvestmentTransactionId,omitempty"` // Transaction ID if dividend was reinvested (empty if not)
 	DividendType              string     `json:"dividendType"`                        // Type of dividend: "accumulating", "distributing"
+}
+
+// PendingDividend represents a dividend record awaiting processing or matching.
+// Used for the IBKR dividend matching workflow to reconcile imported dividend transactions.
+type PendingDividend struct {
+	ID               string    `json:"id"`
+	FundID           string    `json:"fundId"`
+	PortfolioFundID  string    `json:"portfolioFundId"`
+	RecordDate       time.Time `json:"recordDate"`
+	ExDividendDate   time.Time `json:"exDividendDate"`
+	SharesOwned      float64   `json:"sharesOwned"`
+	DividendPerShare float64   `json:"dividendPerShare"`
+	TotalAmount      float64   `json:"totalAmount"`
 }

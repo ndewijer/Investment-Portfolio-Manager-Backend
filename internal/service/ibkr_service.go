@@ -37,7 +37,7 @@ func (s *IbkrService) GetIbkrConfig() (*model.IbkrConfig, error) {
 	}
 
 	if !config.TokenExpiresAt.IsZero() {
-		diff := time.Until(config.TokenExpiresAt)
+		diff := time.Until(*config.TokenExpiresAt)
 		if diff.Hours() <= 720.0 {
 			config.TokenWarning = fmt.Sprintf("Token expires in %d days",
 				int64(diff.Hours()/24))
@@ -54,4 +54,24 @@ func (s *IbkrService) GetActivePortfolios() ([]model.Portfolio, error) {
 		IncludeArchived: false,
 		IncludeExcluded: false,
 	})
+}
+
+// GetPendingDividends retrieves dividend records with PENDING reinvestment status.
+// These dividends can be matched to incoming IBKR dividend transactions.
+// Optionally filters by fund symbol or ISIN.
+func (s *IbkrService) GetPendingDividends(symbol, isin string) ([]model.PendingDividend, error) {
+	return s.ibkrRepo.GetPendingDividends(symbol, isin)
+}
+
+// GetInbox retrieves IBKR imported transactions from the inbox.
+// Returns transactions filtered by status (defaults to "pending") and optionally by transaction type.
+// Used to display imported IBKR transactions that need to be allocated to portfolios.
+func (s *IbkrService) GetInbox(status, transactionType string) ([]model.IBKRTransaction, error) {
+	return s.ibkrRepo.GetInbox(status, transactionType)
+}
+
+// GetInboxCount retrieves the count of IBKR imported transactions with status "pending".
+// Returns only the count without fetching full transaction records for efficiency.
+func (s *IbkrService) GetInboxCount() (model.IBKRInboxCount, error) {
+	return s.ibkrRepo.GetIbkrInboxCount()
 }
