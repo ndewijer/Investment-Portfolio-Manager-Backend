@@ -2,6 +2,8 @@ package model
 
 import "time"
 
+// Transaction represents a buy or sell transaction for a portfolio fund.
+// Used internally for calculations and data processing.
 type Transaction struct {
 	ID              string
 	PortfolioFundID string
@@ -11,6 +13,9 @@ type Transaction struct {
 	CostPerShare    float64
 	CreatedAt       time.Time
 }
+
+// TransactionResponse represents a transaction with enriched data for API responses.
+// Includes fund name and IBKR linkage information.
 type TransactionResponse struct {
 	Id                string    `json:"id"`
 	PortfolioFundId   string    `json:"portfolioFundId"`

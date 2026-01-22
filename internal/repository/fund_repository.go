@@ -219,8 +219,9 @@ func (s *FundRepository) GetFundPrice(fundIDs []string, startDate, endDate time.
 	return fundPriceByFund, nil
 }
 
-// GetFund retrieves fund records for the given fund IDs.
-// Returns a slice of Fund objects containing metadata like name, ISIN, symbol, currency, etc.
+// GetPortfolioFunds retrieves all funds associated with a portfolio.
+// If PortfolioID is empty, returns funds across all portfolios.
+// Returns basic fund metadata from the portfolio_fund and fund tables.
 func (s *FundRepository) GetPortfolioFunds(PortfolioID string) ([]model.PortfolioFund, error) {
 
 	// Retrieve all funds based on returned portfolio_fund IDs
@@ -322,6 +323,9 @@ func (s *FundRepository) GetAllPortfolioFundListings() ([]model.PortfolioFundLis
 	return listings, nil
 }
 
+// GetSymbol retrieves symbol information by ticker symbol from the symbol_info table.
+// Returns nil, nil if the symbol is not found.
+// Returns nil, error if a database error occurs.
 func (s *FundRepository) GetSymbol(symbol string) (*model.Symbol, error) {
 	if symbol == "" {
 		return &model.Symbol{}, nil

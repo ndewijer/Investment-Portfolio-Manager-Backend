@@ -22,6 +22,13 @@ func NewTransactionHandler(transactionService *service.TransactionService) *Tran
 	}
 }
 
+// TransactionPerPortfolio handles GET requests to retrieve all transactions for a specific portfolio.
+// Returns transaction details including fund information, dates, shares, and IBKR linkage status.
+//
+// Endpoint: GET /api/transaction/portfolio/{portfolioId}
+// Response: 200 OK with array of TransactionResponse
+// Error: 400 Bad Request if portfolio ID is missing or invalid
+// Error: 500 Internal Server Error if retrieval fails
 func (h *TransactionHandler) TransactionPerPortfolio(w http.ResponseWriter, r *http.Request) {
 
 	portfolioId := chi.URLParam(r, "portfolioId")
@@ -53,6 +60,12 @@ func (h *TransactionHandler) TransactionPerPortfolio(w http.ResponseWriter, r *h
 	respondJSON(w, http.StatusOK, transactions)
 }
 
+// AllTransactions handles GET requests to retrieve all transactions across all portfolios.
+// Returns transaction details including fund information, dates, shares, and IBKR linkage status.
+//
+// Endpoint: GET /api/transaction
+// Response: 200 OK with array of TransactionResponse
+// Error: 500 Internal Server Error if retrieval fails
 func (h *TransactionHandler) AllTransactions(w http.ResponseWriter, r *http.Request) {
 
 	transactions, err := h.transactionService.GetTransactionsperPortfolio("")
@@ -68,6 +81,13 @@ func (h *TransactionHandler) AllTransactions(w http.ResponseWriter, r *http.Requ
 	respondJSON(w, http.StatusOK, transactions)
 }
 
+// GetTransaction handles GET requests to retrieve a single transaction by ID.
+// Returns transaction details including fund information, date, shares, and IBKR linkage status.
+//
+// Endpoint: GET /api/transaction/{transactionId}
+// Response: 200 OK with TransactionResponse
+// Error: 400 Bad Request if transaction ID is missing or invalid
+// Error: 500 Internal Server Error if retrieval fails
 func (h *TransactionHandler) GetTransaction(w http.ResponseWriter, r *http.Request) {
 
 	transactionId := chi.URLParam(r, "transactionId")

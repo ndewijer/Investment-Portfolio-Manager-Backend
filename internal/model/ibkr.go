@@ -2,11 +2,14 @@ package model
 
 import "time"
 
+// Allocation represents a portfolio allocation percentage for IBKR imports.
 type Allocation struct {
 	PortfolioId string  `json:"portfolioId" sql:"portfolio_id"`
 	Percentage  float64 `json:"percentage"`
 }
 
+// IbkrConfig represents the IBKR (Interactive Brokers) integration configuration.
+// Contains settings for flex queries, token management, and default allocation rules.
 type IbkrConfig struct {
 	Configured               bool         `json:"configured"`
 	FlexQueryId              string       `json:"flexQueryId"`
