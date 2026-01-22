@@ -36,3 +36,14 @@ type DividendFund struct {
 	ReinvestmentTransactionId string     `json:"reinvestmentTransactionId,omitempty"` // Transaction ID if dividend was reinvested (empty if not)
 	DividendType              string     `json:"dividendType"`                        // Type of dividend: "accumulating", "distributing"
 }
+
+type PendingDividend struct {
+	ID               string    `json:"id"`
+	FundID           string    `json:"fundId"`
+	PortfolioFundID  string    `json:"portfolioFundId"`
+	RecordDate       time.Time `json:"recordDate"`
+	ExDividendDate   time.Time `json:"exDividendDate"`
+	SharesOwned      float64   `json:"sharesOwned"`
+	DividendPerShare float64   `json:"dividendPerShare"`
+	TotalAmount      float64   `json:"totalAmount"`
+}

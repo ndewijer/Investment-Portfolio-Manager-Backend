@@ -55,3 +55,7 @@ func (s *IbkrService) GetActivePortfolios() ([]model.Portfolio, error) {
 		IncludeExcluded: false,
 	})
 }
+
+func (s *IbkrService) GetPendingDividends(symbol, isin string) ([]model.PendingDividend, error) {
+	return s.ibkrRepo.GetPendingDividends(symbol, isin)
+}
