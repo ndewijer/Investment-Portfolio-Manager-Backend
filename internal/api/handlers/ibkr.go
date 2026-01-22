@@ -60,3 +60,21 @@ func (h *IbkrHandler) GetActivePortfolios(w http.ResponseWriter, r *http.Request
 
 	respondJSON(w, http.StatusOK, config)
 }
+func (h *IbkrHandler) GetPendingDividends(w http.ResponseWriter, r *http.Request) {
+
+	symbol := r.URL.Query().Get("symbol")
+	isin := r.URL.Query().Get("isin")
+
+	pendingDividend, err := h.ibkrService.GetPendingDividends(symbol, isin)
+
+	if err != nil {
+		errorResponse := map[string]string{
+			"error":  "failed to retrieve pending dividend",
+			"detail": err.Error(),
+		}
+		respondJSON(w, http.StatusInternalServerError, errorResponse)
+		return
+	}
+
+	respondJSON(w, http.StatusOK, pendingDividend)
+}
