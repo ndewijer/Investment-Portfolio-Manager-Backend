@@ -7,7 +7,7 @@ import (
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/repository"
 )
 
-// DividendService handles fund-related business logic operations.
+// DividendService handles dividend-related business logic operations.
 type DividendService struct {
 	dividendRepo *repository.DividendRepository
 }
@@ -21,6 +21,8 @@ func NewDividendService(
 	}
 }
 
+// GetAllDividends retrieves all dividend records from the database.
+// Returns raw dividend data without fund enrichment.
 func (s *DividendService) GetAllDividends() ([]model.Dividend, error) {
 	return s.dividendRepo.GetDividend()
 }

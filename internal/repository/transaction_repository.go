@@ -145,6 +145,9 @@ func (s *TransactionRepository) GetOldestTransaction(pfIDs []string) time.Time {
 	return oldestDate
 }
 
+// GetTransactionsPerPortfolio retrieves all transactions for a specific portfolio or all transactions if portfolioId is empty.
+// Returns enriched transaction data including fund names and IBKR linkage status.
+// Transactions are sorted by date in ascending order.
 func (s *TransactionRepository) GetTransactionsPerPortfolio(portfolioId string) ([]model.TransactionResponse, error) {
 
 	transactionQuery := `
@@ -230,6 +233,9 @@ func (s *TransactionRepository) GetTransactionsPerPortfolio(portfolioId string) 
 	return transactionResponse, nil
 }
 
+// GetTransaction retrieves a single transaction by its ID.
+// Returns enriched transaction data including fund name and IBKR linkage status.
+// Returns an empty TransactionResponse if transactionId is empty or not found.
 func (s *TransactionRepository) GetTransaction(transactionId string) (model.TransactionResponse, error) {
 	if transactionId == "" {
 		return model.TransactionResponse{}, nil

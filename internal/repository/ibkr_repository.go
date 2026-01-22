@@ -19,6 +19,9 @@ func NewIbkrRepository(db *sql.DB) *IbkrRepository {
 	return &IbkrRepository{db: db}
 }
 
+// GetIbkrConfig retrieves the IBKR integration configuration from the database.
+// Returns a config with Configured=false if no configuration exists.
+// Parses nullable fields (token expiration, last import date, default allocations) safely.
 func (r *IbkrRepository) GetIbkrConfig() (*model.IbkrConfig, error) {
 
 	query := `

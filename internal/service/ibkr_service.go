@@ -8,7 +8,7 @@ import (
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/repository"
 )
 
-// IbkrService handles fund-related business logic operations.
+// IbkrService handles IBKR (Interactive Brokers) integration business logic operations.
 type IbkrService struct {
 	ibkrRepo      *repository.IbkrRepository
 	portfolioRepo *repository.PortfolioRepository
@@ -24,6 +24,8 @@ func NewIbkrService(
 	}
 }
 
+// GetIbkrConfig retrieves the IBKR integration configuration.
+// Adds a token expiration warning if the token expires within 30 days.
 func (s *IbkrService) GetIbkrConfig() (*model.IbkrConfig, error) {
 	config, err := s.ibkrRepo.GetIbkrConfig()
 
@@ -45,6 +47,8 @@ func (s *IbkrService) GetIbkrConfig() (*model.IbkrConfig, error) {
 	return config, err
 }
 
+// GetActivePortfolios retrieves all active portfolios that can be used for IBKR import allocation.
+// Returns portfolios that are not archived and not excluded from tracking.
 func (s *IbkrService) GetActivePortfolios() ([]model.Portfolio, error) {
 	return s.portfolioRepo.GetPortfolios(model.PortfolioFilter{
 		IncludeArchived: false,

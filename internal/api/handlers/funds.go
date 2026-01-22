@@ -27,8 +27,9 @@ func NewFundHandler(fundService *service.FundService, materializedService *servi
 	}
 }
 
-// Funds handles GET requests to retrieve all funds.
-// Returns a list of all available funds that can be held in portfolios.
+// GetAllFunds handles GET requests to retrieve all funds.
+// Returns a list of all available funds that can be held in portfolios,
+// including their latest prices.
 //
 // Endpoint: GET /api/fund
 // Response: 200 OK with array of Fund
@@ -48,6 +49,14 @@ func (h *FundHandler) GetAllFunds(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, funds)
 }
 
+// GetFund handles GET requests to retrieve a single fund by ID.
+// Returns fund details including name, ISIN, symbol, currency, and latest price.
+//
+// Endpoint: GET /api/fund/{FundId}
+// Response: 200 OK with Fund
+// Error: 400 Bad Request if fund ID is missing or invalid
+// Error: 404 Not Found if no fund exists with the given ID
+// Error: 500 Internal Server Error if retrieval fails
 func (h *FundHandler) GetFund(w http.ResponseWriter, r *http.Request) {
 
 	FundId := chi.URLParam(r, "FundId")
@@ -89,6 +98,13 @@ func (h *FundHandler) GetFund(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, funds[0])
 }
 
+// GetSymbol handles GET requests to retrieve symbol information by ticker symbol.
+// Returns symbol metadata including name, exchange, currency, and ISIN.
+//
+// Endpoint: GET /api/fund/symbol/{Symbol}
+// Response: 200 OK with Symbol
+// Error: 400 Bad Request if symbol is missing
+// Error: 500 Internal Server Error if retrieval fails
 func (h *FundHandler) GetSymbol(w http.ResponseWriter, r *http.Request) {
 
 	symbol := chi.URLParam(r, "Symbol")
@@ -165,6 +181,13 @@ func (h *FundHandler) GetFundHistory(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, fundHistory)
 }
 
+// GetFundPrices handles GET requests to retrieve historical price data for a fund.
+// Returns all available price history from 1970-01-01 to the current date.
+//
+// Endpoint: GET /api/fund/fund-prices/{fundId}
+// Response: 200 OK with array of FundPrice
+// Error: 400 Bad Request if fund ID is missing or invalid
+// Error: 500 Internal Server Error if retrieval fails
 func (h *FundHandler) GetFundPrices(w http.ResponseWriter, r *http.Request) {
 
 	fundId := chi.URLParam(r, "fundId")

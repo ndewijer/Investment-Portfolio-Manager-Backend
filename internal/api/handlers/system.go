@@ -46,6 +46,8 @@ func (h *SystemHandler) Health(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, response)
 }
 
+// VersionInfoResponse represents the version check response containing application
+// and database version information, feature availability, and migration status.
 type VersionInfoResponse struct {
 	AppVersion       string          `json:"app_version"`
 	DbVersion        string          `json:"db_version"`
@@ -54,6 +56,12 @@ type VersionInfoResponse struct {
 	MigrationMessage *string         `json:"migration_message"`
 }
 
+// Version handles GET requests to retrieve version information and feature availability.
+// Returns the application version, database version, available features, and any pending migrations.
+//
+// Endpoint: GET /api/system/version
+// Response: 200 OK with VersionInfoResponse
+// Error: 500 Internal Server Error if version check fails
 func (h *SystemHandler) Version(w http.ResponseWriter, r *http.Request) {
 	version, err := h.systemService.CheckVersion()
 	if err != nil {

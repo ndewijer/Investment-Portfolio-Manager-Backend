@@ -20,6 +20,13 @@ func NewIbkrHandler(ibkrService *service.IbkrService) *IbkrHandler {
 	}
 }
 
+// GetConfig handles GET requests to retrieve the IBKR integration configuration.
+// Returns configuration details including flex query ID, token expiration, import settings,
+// and default allocation settings.
+//
+// Endpoint: GET /api/ibkr/config
+// Response: 200 OK with IbkrConfig
+// Error: 500 Internal Server Error if retrieval fails
 func (h *IbkrHandler) GetConfig(w http.ResponseWriter, r *http.Request) {
 	config, err := h.ibkrService.GetIbkrConfig()
 	if err != nil {
@@ -34,6 +41,12 @@ func (h *IbkrHandler) GetConfig(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, config)
 }
 
+// GetActivePortfolios handles GET requests to retrieve all active portfolios for IBKR import allocation.
+// Returns portfolios that are not archived and not excluded from tracking.
+//
+// Endpoint: GET /api/ibkr/portfolios
+// Response: 200 OK with array of Portfolio
+// Error: 500 Internal Server Error if retrieval fails
 func (h *IbkrHandler) GetActivePortfolios(w http.ResponseWriter, r *http.Request) {
 	config, err := h.ibkrService.GetActivePortfolios()
 	if err != nil {
