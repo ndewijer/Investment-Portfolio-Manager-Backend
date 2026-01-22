@@ -36,3 +36,7 @@ func (s *TransactionService) loadTransactions(pfIDs []string, startDate, endDate
 func (s *TransactionService) GetTransactionsperPortfolio(portfolioId string) ([]model.TransactionResponse, error) {
 	return s.transactionRepo.GetTransactionsPerPortfolio(portfolioId)
 }
+
+func (s *TransactionService) GetTransaction(transactionId string) (model.TransactionResponse, error) {
+	return s.transactionRepo.GetTransaction(transactionId)
+}
