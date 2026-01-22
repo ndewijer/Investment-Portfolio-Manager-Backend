@@ -60,6 +60,17 @@ func (h *IbkrHandler) GetActivePortfolios(w http.ResponseWriter, r *http.Request
 
 	respondJSON(w, http.StatusOK, config)
 }
+
+// GetPendingDividends handles GET requests to retrieve dividend records awaiting processing.
+// Returns dividends with reinvestment_status = 'PENDING' that can be matched to IBKR dividend transactions.
+//
+// Endpoint: GET /api/ibkr/dividend/pending
+// Query params:
+//   - symbol: Filter by fund trading symbol (optional)
+//   - isin: Filter by fund ISIN (optional)
+//
+// Response: 200 OK with array of PendingDividend
+// Error: 500 Internal Server Error if retrieval fails
 func (h *IbkrHandler) GetPendingDividends(w http.ResponseWriter, r *http.Request) {
 
 	symbol := r.URL.Query().Get("symbol")
@@ -77,4 +88,32 @@ func (h *IbkrHandler) GetPendingDividends(w http.ResponseWriter, r *http.Request
 	}
 
 	respondJSON(w, http.StatusOK, pendingDividend)
+}
+
+// GetInbox handles GET requests to retrieve IBKR imported transactions from the inbox.
+// Returns transactions that have been imported from IBKR and are awaiting allocation or processing.
+//
+// Endpoint: GET /api/ibkr/inbox
+// Query params:
+//   - status: Filter by transaction status (optional, defaults to "pending")
+//   - transaction_type: Filter by transaction type (optional, e.g., "dividend", "trade")
+//
+// Response: 200 OK with array of IBKRTransaction
+// Error: 500 Internal Server Error if retrieval fails
+func (h *IbkrHandler) GetInbox(w http.ResponseWriter, r *http.Request) {
+	status := r.URL.Query().Get("status")
+	transactionType := r.URL.Query().Get("transactionType")
+
+	inbox, err := h.ibkrService.GetInbox(status, transactionType)
+
+	if err != nil {
+		errorResponse := map[string]string{
+			"error":  "failed to retrieve inbox transactions",
+			"detail": err.Error(),
+		}
+		respondJSON(w, http.StatusInternalServerError, errorResponse)
+		return
+	}
+
+	respondJSON(w, http.StatusOK, inbox)
 }
