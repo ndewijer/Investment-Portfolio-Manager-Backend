@@ -93,14 +93,14 @@ func (h *TransactionHandler) GetTransaction(w http.ResponseWriter, r *http.Reque
 	transactionId := chi.URLParam(r, "transactionId")
 	if transactionId == "" {
 		respondJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "portfolio ID is required",
+			"error": "transactions ID is required",
 		})
 		return
 	}
 
 	if err := validation.ValidateUUID(transactionId); err != nil {
 		respondJSON(w, http.StatusBadRequest, map[string]string{
-			"error":  "invalid portfolio ID format",
+			"error":  "invalid transaction ID format",
 			"detail": err.Error(),
 		})
 		return
@@ -113,6 +113,15 @@ func (h *TransactionHandler) GetTransaction(w http.ResponseWriter, r *http.Reque
 			"detail": err.Error(),
 		}
 		respondJSON(w, http.StatusInternalServerError, errorResponse)
+		return
+	}
+
+	if transaction.Id == "" {
+		errorResponse := map[string]string{
+			"error":  "Transaction not found",
+			"detail": "No transaction found with the given ID",
+		}
+		respondJSON(w, http.StatusNotFound, errorResponse)
 		return
 	}
 

@@ -52,23 +52,23 @@ func (h *FundHandler) GetAllFunds(w http.ResponseWriter, r *http.Request) {
 // GetFund handles GET requests to retrieve a single fund by ID.
 // Returns fund details including name, ISIN, symbol, currency, and latest price.
 //
-// Endpoint: GET /api/fund/{FundId}
+// Endpoint: GET /api/fund/{fundId}
 // Response: 200 OK with Fund
 // Error: 400 Bad Request if fund ID is missing or invalid
 // Error: 404 Not Found if no fund exists with the given ID
 // Error: 500 Internal Server Error if retrieval fails
 func (h *FundHandler) GetFund(w http.ResponseWriter, r *http.Request) {
 
-	FundId := chi.URLParam(r, "FundId")
+	fundId := chi.URLParam(r, "fundId")
 
-	if FundId == "" {
+	if fundId == "" {
 		respondJSON(w, http.StatusBadRequest, map[string]string{
 			"error": "portfolio ID is required",
 		})
 		return
 	}
 
-	if err := validation.ValidateUUID(FundId); err != nil {
+	if err := validation.ValidateUUID(fundId); err != nil {
 		respondJSON(w, http.StatusBadRequest, map[string]string{
 			"error":  "invalid portfolio ID format",
 			"detail": err.Error(),
@@ -76,7 +76,7 @@ func (h *FundHandler) GetFund(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	funds, err := h.fundService.GetFund(FundId)
+	funds, err := h.fundService.GetFund(fundId)
 	if err != nil {
 		errorResponse := map[string]string{
 			"error":  "failed to retrieve funds",
