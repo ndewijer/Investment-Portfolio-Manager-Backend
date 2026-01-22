@@ -2,7 +2,8 @@ package model
 
 import "time"
 
-// Fund represents a dividend from the database
+// Dividend represents a dividend record from the database.
+// Used internally for calculations and data processing.
 type Dividend struct {
 	ID                        string
 	FundID                    string
@@ -37,6 +38,8 @@ type DividendFund struct {
 	DividendType              string     `json:"dividendType"`                        // Type of dividend: "accumulating", "distributing"
 }
 
+// PendingDividend represents a dividend record awaiting processing or matching.
+// Used for the IBKR dividend matching workflow to reconcile imported dividend transactions.
 type PendingDividend struct {
 	ID               string    `json:"id"`
 	FundID           string    `json:"fundId"`

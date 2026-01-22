@@ -53,14 +53,14 @@ func (r *IbkrRepository) GetIbkrConfig() (*model.IbkrConfig, error) {
 	ic.Configured = true
 
 	if tokenExpiresStr.Valid {
-		ic.TokenExpiresAt, err = ParseTime(tokenExpiresStr.String)
+		*ic.TokenExpiresAt, err = ParseTime(tokenExpiresStr.String)
 		if err != nil || ic.TokenExpiresAt.IsZero() {
 			return &model.IbkrConfig{}, fmt.Errorf("failed to parse date on TokenExpiresAt: %w", err)
 		}
 	}
 
 	if lastImportStr.Valid {
-		ic.LastImportDate, err = ParseTime(lastImportStr.String)
+		*ic.LastImportDate, err = ParseTime(lastImportStr.String)
 		if err != nil || ic.LastImportDate.IsZero() {
 			return &model.IbkrConfig{}, fmt.Errorf("failed to parse date on LastImportDate: %w", err)
 		}
@@ -79,6 +79,9 @@ func (r *IbkrRepository) GetIbkrConfig() (*model.IbkrConfig, error) {
 	return &ic, err
 }
 
+// GetPendingDividends retrieves dividend records with reinvestment_status = 'PENDING'.
+// Optionally filters by fund symbol or ISIN by joining with the fund table.
+// Returns an empty slice if no pending dividends match the criteria.
 func (r *IbkrRepository) GetPendingDividends(symbol, isin string) ([]model.PendingDividend, error) {
 
 	var query string
@@ -166,4 +169,87 @@ func (r *IbkrRepository) GetPendingDividends(symbol, isin string) ([]model.Pendi
 
 	return dividend, nil
 
+}
+
+// GetInbox retrieves IBKR imported transactions from the ibkr_transaction table.
+// Filters by status (defaults to "pending" if not provided) and optionally by transaction_type.
+// Returns transactions ordered by transaction_date descending.
+// Returns an empty slice if no transactions match the criteria.
+func (r *IbkrRepository) GetInbox(status, transactionType string) ([]model.IBKRTransaction, error) {
+	var query string
+	var args []any
+
+	query = `
+	SELECT id, ibkr_transaction_id, transaction_date, symbol, isin, description,
+         transaction_type, quantity, price, total_amount, currency, fees,
+         status, imported_at
+	FROM ibkr_transaction
+	WHERE status = ?
+  `
+	if status == "" {
+		args = append(args, "pending")
+	} else {
+		args = append(args, status)
+	}
+	if transactionType != "" {
+		query += `
+			AND transaction_type = ? 
+		`
+		args = append(args, transactionType)
+	}
+
+	query += `
+		ORDER BY transaction_date DESC
+	`
+	rows, err := r.db.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query IBKR Transactions table: %w", err)
+	}
+	defer rows.Close()
+
+	ibkrTransactions := []model.IBKRTransaction{}
+
+	for rows.Next() {
+		var transactionDateStr, importedAtStr string
+		t := model.IBKRTransaction{}
+		err := rows.Scan(
+			&t.ID,
+			&t.IBKRTransactionID,
+			&transactionDateStr,
+			&t.Symbol,
+			&t.ISIN,
+			&t.Description,
+			&t.TransactionType,
+			&t.Quantity,
+			&t.Price,
+			&t.TotalAmount,
+			&t.Currency,
+			&t.Fees,
+			&t.Status,
+			&importedAtStr,
+		)
+		if err == sql.ErrNoRows {
+			return []model.IBKRTransaction{}, nil
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan IBKR Transactions table results: %w", err)
+		}
+
+		t.TransactionDate, err = ParseTime(transactionDateStr)
+		if err != nil || t.TransactionDate.IsZero() {
+			return nil, fmt.Errorf("failed to parse date: %w", err)
+		}
+
+		t.ImportedAt, err = ParseTime(importedAtStr)
+		if err != nil || t.ImportedAt.IsZero() {
+			return nil, fmt.Errorf("failed to parse date: %w", err)
+		}
+
+		ibkrTransactions = append(ibkrTransactions, t)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating IBKR Transactions table: %w", err)
+	}
+
+	return ibkrTransactions, nil
 }
