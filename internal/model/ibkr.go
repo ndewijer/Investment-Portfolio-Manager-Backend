@@ -43,3 +43,9 @@ type IBKRTransaction struct {
 	Status            string    `json:"status"`
 	ImportedAt        time.Time `json:"importedAt"`
 }
+
+// IBKRInboxCount represents the count of IBKR imported transactions.
+// Used as the response payload for the inbox count endpoint.
+type IBKRInboxCount struct {
+	Count int `json:"count"`
+}
