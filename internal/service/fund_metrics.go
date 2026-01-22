@@ -65,7 +65,7 @@ func (s *FundService) calculateFundMetrics(
 	useLatestPrice bool,
 ) (FundMetrics, error) {
 
-	var totalValue, shares, cost, dividends, value, fees float64
+	var shares, cost, dividends, value, fees float64
 	shares = dividendShares
 
 	for _, transaction := range transactions {
@@ -105,7 +105,6 @@ func (s *FundService) calculateFundMetrics(
 		}
 		if latestPrice > 0 {
 			value = shares * latestPrice
-			totalValue += value
 		}
 	}
 

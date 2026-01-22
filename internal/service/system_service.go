@@ -4,6 +4,7 @@ import (
 	"database/sql"
 
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/database"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/version"
 )
 
@@ -24,15 +25,9 @@ func (s *SystemService) CheckHealth() error {
 	return database.HealthCheck(s.db)
 }
 
-type VersionInfo struct {
-	AppVersion       string          `json:"app_version"`
-	DbVersion        string          `json:"db_version"`
-	Features         map[string]bool `json:"features"`
-	MigrationNeeded  bool            `json:"migration_needed"`
-	MigrationMessage *string         `json:"migration_message,omitempty"`
-}
-
-func (s *SystemService) CheckVersion() (VersionInfo, error) {
+// CheckVersion retrieves version information including app version, database version,
+// feature availability, and pending migration status.
+func (s *SystemService) CheckVersion() (model.VersionInfo, error) {
 	appVersion := version.Version
 	dbVersion, err := s.getDbVersion()
 	if err != nil {
@@ -47,7 +42,7 @@ func (s *SystemService) CheckVersion() (VersionInfo, error) {
 		msgPtr = &migrationMsg
 	}
 
-	return VersionInfo{
+	return model.VersionInfo{
 		AppVersion:       appVersion,
 		DbVersion:        dbVersion,
 		Features:         features,
@@ -56,10 +51,7 @@ func (s *SystemService) CheckVersion() (VersionInfo, error) {
 	}, nil
 }
 
-//
-// SUPPORTING FUNCTIONS
-//
-
+// getDbVersion retrieves the current database schema version from the alembic_version table.
 func (s *SystemService) getDbVersion() (string, error) {
 	var versionNum string
 	err := s.db.QueryRow("SELECT version_num FROM alembic_version").Scan(&versionNum)
@@ -69,6 +61,7 @@ func (s *SystemService) getDbVersion() (string, error) {
 	return versionNum, nil
 }
 
+// checkFeatureAvailability determines which features are available based on the database version.
 func (s *SystemService) checkFeatureAvailability(dbVersion string) map[string]bool {
 	features := map[string]bool{
 		"basic_portfolio_management":    true, // Introduced 1.1.1
@@ -117,6 +110,8 @@ func (s *SystemService) checkFeatureAvailability(dbVersion string) map[string]bo
 	return features
 }
 
+// checkPendingMigrations checks if there are pending database migrations.
+// Returns whether a migration is needed and an optional message describing the migration.
 func (s *SystemService) checkPendingMigrations(dbVersion, appVersion string) (bool, string) {
 
 	_ = dbVersion

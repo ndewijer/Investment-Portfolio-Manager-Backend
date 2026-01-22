@@ -1,6 +1,6 @@
 module github.com/ndewijer/Investment-Portfolio-Manager-Backend
 
-go 1.25.5
+go 1.25.6
 
 require (
 	github.com/go-chi/chi/v5 v5.2.3

@@ -31,12 +31,15 @@ func NewFundService(
 	}
 }
 
-// GetAllFunds retrieves all funds from the database with no filters applied.
-// Returns a complete list of all available funds that can be held in portfolios.
+// GetFund retrieves funds from the database. If fundId is empty, returns all funds.
+// If fundId is provided, returns only the fund with that ID.
+// Returns fund metadata including latest prices.
 func (s *FundService) GetFund(fundId string) ([]model.Fund, error) {
 	return s.fundRepo.GetFund(fundId)
 }
 
+// GetSymbol retrieves symbol information by ticker symbol.
+// Returns symbol metadata including name, exchange, currency, and ISIN.
 func (s *FundService) GetSymbol(symbol string) (*model.Symbol, error) {
 	return s.fundRepo.GetSymbol(symbol)
 }
