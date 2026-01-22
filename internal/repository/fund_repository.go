@@ -328,7 +328,7 @@ func (s *FundRepository) GetAllPortfolioFundListings() ([]model.PortfolioFundLis
 // Returns nil, error if a database error occurs.
 func (s *FundRepository) GetSymbol(symbol string) (*model.Symbol, error) {
 	if symbol == "" {
-		return &model.Symbol{}, nil
+		return nil, nil
 	}
 
 	query := `
