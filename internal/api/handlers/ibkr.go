@@ -27,7 +27,7 @@ func NewIbkrHandler(ibkrService *service.IbkrService) *IbkrHandler {
 // Endpoint: GET /api/ibkr/config
 // Response: 200 OK with IbkrConfig
 // Error: 500 Internal Server Error if retrieval fails
-func (h *IbkrHandler) GetConfig(w http.ResponseWriter, r *http.Request) {
+func (h *IbkrHandler) GetConfig(w http.ResponseWriter, _ *http.Request) {
 	config, err := h.ibkrService.GetIbkrConfig()
 	if err != nil {
 		errorResponse := map[string]string{
@@ -47,7 +47,7 @@ func (h *IbkrHandler) GetConfig(w http.ResponseWriter, r *http.Request) {
 // Endpoint: GET /api/ibkr/portfolios
 // Response: 200 OK with array of Portfolio
 // Error: 500 Internal Server Error if retrieval fails
-func (h *IbkrHandler) GetActivePortfolios(w http.ResponseWriter, r *http.Request) {
+func (h *IbkrHandler) GetActivePortfolios(w http.ResponseWriter, _ *http.Request) {
 	config, err := h.ibkrService.GetActivePortfolios()
 	if err != nil {
 		errorResponse := map[string]string{
@@ -125,7 +125,7 @@ func (h *IbkrHandler) GetInbox(w http.ResponseWriter, r *http.Request) {
 //
 // Response: 200 OK with {"count": <number>}
 // Error: 500 Internal Server Error if retrieval fails
-func (h *IbkrHandler) GetInboxCount(w http.ResponseWriter, r *http.Request) {
+func (h *IbkrHandler) GetInboxCount(w http.ResponseWriter, _ *http.Request) {
 
 	count, err := h.ibkrService.GetInboxCount()
 

@@ -4,7 +4,7 @@ import "time"
 
 // Allocation represents a portfolio allocation percentage for IBKR imports.
 type Allocation struct {
-	PortfolioId string  `json:"portfolioId" sql:"portfolio_id"`
+	PortfolioID string  `json:"portfolioId" sql:"portfolio_id"`
 	Percentage  float64 `json:"percentage"`
 }
 
@@ -12,7 +12,7 @@ type Allocation struct {
 // Contains settings for flex queries, token management, and default allocation rules.
 type IbkrConfig struct {
 	Configured               bool         `json:"configured"`
-	FlexQueryId              string       `json:"flexQueryId"`
+	FlexQueryID              string       `json:"flexQueryId"`
 	TokenExpiresAt           *time.Time   `json:"tokenExpiresAt,omitempty"`
 	TokenWarning             string       `json:"tokenWarning,omitempty"`
 	LastImportDate           *time.Time   `json:"lastImportDate,omitempty"`

@@ -60,10 +60,10 @@ func (s *DividendService) processDividendSharesForDate(dividendMap map[string][]
 
 		for _, div := range dividend {
 			if div.ExDividendDate.Before(date) || div.ExDividendDate.Equal(date) {
-				if div.ReinvestmentTransactionId != "" {
+				if div.ReinvestmentTransactionID != "" {
 					// Find the transaction with this ID
 					for _, transaction := range transactions {
-						if transaction.ID == div.ReinvestmentTransactionId {
+						if transaction.ID == div.ReinvestmentTransactionID {
 							dividendShares += transaction.Shares
 							break
 						}

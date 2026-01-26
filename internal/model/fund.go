@@ -27,7 +27,7 @@ type FundPrice struct {
 // Used for detailed portfolio fund breakdowns with shares, values, and gains/losses.
 type PortfolioFund struct {
 	ID                 string  `json:"id"`
-	FundId             string  `json:"fundId"`
+	FundID             string  `json:"fundId"`
 	FundName           string  `json:"fundName"`
 	TotalShares        float64 `json:"totalShares"`
 	LatestPrice        float64 `json:"latestPrice"`

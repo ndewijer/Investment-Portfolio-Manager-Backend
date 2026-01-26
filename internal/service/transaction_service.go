@@ -33,14 +33,14 @@ func (s *TransactionService) loadTransactions(pfIDs []string, startDate, endDate
 	return s.transactionRepo.GetTransactions(pfIDs, startDate, endDate)
 }
 
-// GetTransactionsperPortfolio retrieves all transactions for a specific portfolio or all transactions if portfolioId is empty.
+// GetTransactionsperPortfolio retrieves all transactions for a specific portfolio or all transactions if portfolioID is empty.
 // Returns enriched transaction data including fund names and IBKR linkage status.
-func (s *TransactionService) GetTransactionsperPortfolio(portfolioId string) ([]model.TransactionResponse, error) {
-	return s.transactionRepo.GetTransactionsPerPortfolio(portfolioId)
+func (s *TransactionService) GetTransactionsperPortfolio(portfolioID string) ([]model.TransactionResponse, error) {
+	return s.transactionRepo.GetTransactionsPerPortfolio(portfolioID)
 }
 
 // GetTransaction retrieves a single transaction by its ID.
 // Returns enriched transaction data including fund name and IBKR linkage status.
-func (s *TransactionService) GetTransaction(transactionId string) (model.TransactionResponse, error) {
-	return s.transactionRepo.GetTransaction(transactionId)
+func (s *TransactionService) GetTransaction(transactionID string) (model.TransactionResponse, error) {
+	return s.transactionRepo.GetTransaction(transactionID)
 }

@@ -22,7 +22,7 @@ func NewFundRepository(db *sql.DB) *FundRepository {
 
 // GetFund retrieves all funds from the database.
 // Returns an empty slice if no funds are found.
-func (s *FundRepository) GetFund(fundId string) ([]model.Fund, error) {
+func (s *FundRepository) GetFund(fundID string) ([]model.Fund, error) {
 	query := `
         SELECT f.id, f.name, f.isin, f.symbol, f.currency, f.exchange, f.investment_type, f.dividend_type, fp.price
 		FROM fund f
@@ -36,9 +36,9 @@ func (s *FundRepository) GetFund(fundId string) ([]model.Fund, error) {
 
 	var args []any
 
-	if fundId != "" {
+	if fundID != "" {
 		query += ` WHERE f.id = ?`
-		args = append(args, fundId)
+		args = append(args, fundID)
 	}
 
 	rows, err := s.db.Query(query, args...)
@@ -86,7 +86,7 @@ func (s *FundRepository) GetFunds(fundIDs []string) ([]model.Fund, error) {
 		fundPlaceholders[i] = "?"
 	}
 
-	// Retrieve all funds based on returned portfolio_fund IDs
+	//#nosec G202 -- Safe: placeholders are generated programmatically, not from user input
 	fundQuery := `
       SELECT id, name, isin, symbol, currency, exchange, investment_type, dividend_type
       FROM fund
@@ -164,7 +164,7 @@ func (s *FundRepository) GetFundPrice(fundIDs []string, startDate, endDate time.
 		sortOrder = "DESC"
 	}
 
-	// Build query with sortOrder directly in the string
+	//#nosec G202 -- Safe: placeholders are generated programmatically, not from user input
 	fundPriceQuery := `
     SELECT id, fund_id, date, price
     FROM fund_price
@@ -174,7 +174,6 @@ func (s *FundRepository) GetFundPrice(fundIDs []string, startDate, endDate time.
     ORDER BY fund_id ASC, date ` + sortOrder + `
 `
 
-	// Build args: fundIDs first, then startDate, then endDate
 	fundPriceArgs := make([]any, 0, len(fundIDs)+2)
 	for _, id := range fundIDs {
 		fundPriceArgs = append(fundPriceArgs, id)
@@ -254,7 +253,7 @@ func (s *FundRepository) GetPortfolioFunds(PortfolioID string) ([]model.Portfoli
 
 		err := rows.Scan(
 			&f.ID,
-			&f.FundId,
+			&f.FundID,
 			&f.FundName,
 			&f.InvestmentType,
 			&f.DividendType,

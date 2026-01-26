@@ -26,7 +26,7 @@ type HealthResponse struct {
 }
 
 // Health checks the health of the system and database connectivity
-func (h *SystemHandler) Health(w http.ResponseWriter, r *http.Request) {
+func (h *SystemHandler) Health(w http.ResponseWriter, _ *http.Request) {
 	// Check database health
 	if err := h.systemService.CheckHealth(); err != nil {
 		response := HealthResponse{
@@ -62,7 +62,7 @@ type VersionInfoResponse struct {
 // Endpoint: GET /api/system/version
 // Response: 200 OK with VersionInfoResponse
 // Error: 500 Internal Server Error if version check fails
-func (h *SystemHandler) Version(w http.ResponseWriter, r *http.Request) {
+func (h *SystemHandler) Version(w http.ResponseWriter, _ *http.Request) {
 	version, err := h.systemService.CheckVersion()
 	if err != nil {
 		errorResponse := map[string]string{

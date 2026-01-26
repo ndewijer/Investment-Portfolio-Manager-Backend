@@ -53,6 +53,7 @@ func (r *MaterializedRepository) GetMaterializedHistory(
 		placeholders[i] = "?"
 	}
 
+	//#nosec G202 -- Safe: placeholders are generated programmatically, not from user input
 	query := `
 	SELECT
 		'' as id,

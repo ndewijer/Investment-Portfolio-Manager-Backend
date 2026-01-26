@@ -40,7 +40,7 @@ func (s *TransactionRepository) GetTransactions(pfIDs []string, startDate, endDa
 		transactionPlaceholders[i] = "?"
 	}
 
-	// Retrieve all transactions based on returned portfolio_fund IDs
+	//#nosec G202 -- Safe: placeholders are generated programmatically, not from user input
 	transactionQuery := `
 		SELECT id, portfolio_fund_id, date, type, shares, cost_per_share, created_at
 		FROM "transaction"
@@ -50,7 +50,6 @@ func (s *TransactionRepository) GetTransactions(pfIDs []string, startDate, endDa
 		ORDER BY date ASC
 	`
 
-	// Build args: pfIDs first, then startDate, then endDate
 	transactionArgs := make([]any, 0, len(pfIDs)+2)
 	for _, id := range pfIDs {
 		transactionArgs = append(transactionArgs, id)
@@ -148,7 +147,7 @@ func (s *TransactionRepository) GetOldestTransaction(pfIDs []string) time.Time {
 // GetTransactionsPerPortfolio retrieves all transactions for a specific portfolio or all transactions if portfolioId is empty.
 // Returns enriched transaction data including fund names and IBKR linkage status.
 // Transactions are sorted by date in ascending order.
-func (s *TransactionRepository) GetTransactionsPerPortfolio(portfolioId string) ([]model.TransactionResponse, error) {
+func (s *TransactionRepository) GetTransactionsPerPortfolio(portfolioID string) ([]model.TransactionResponse, error) {
 
 	transactionQuery := `
 		SELECT 
@@ -173,7 +172,7 @@ func (s *TransactionRepository) GetTransactionsPerPortfolio(portfolioId string) 
 
 	var args []any
 
-	if portfolioId == "" {
+	if portfolioID == "" {
 		transactionQuery += `
 		ORDER BY t.date ASC
 		`
@@ -182,7 +181,7 @@ func (s *TransactionRepository) GetTransactionsPerPortfolio(portfolioId string) 
 		WHERE pf.portfolio_id = ?
 		ORDER BY t.date ASC
 		`
-		args = append(args, portfolioId)
+		args = append(args, portfolioID)
 	}
 
 	rows, err := s.db.Query(transactionQuery, args...)
@@ -196,18 +195,18 @@ func (s *TransactionRepository) GetTransactionsPerPortfolio(portfolioId string) 
 	for rows.Next() {
 
 		var dateStr string
-		var ibkrTransactionIdStr sql.NullString
+		var ibkrTransactionIDStr sql.NullString
 		var t model.TransactionResponse
 
 		err := rows.Scan(
-			&t.Id,
-			&t.PortfolioFundId,
+			&t.ID,
+			&t.PortfolioFundID,
 			&t.FundName,
 			&dateStr,
 			&t.Type,
 			&t.Shares,
 			&t.CostPerShare,
-			&ibkrTransactionIdStr,
+			&ibkrTransactionIDStr,
 			&t.IbkrLinked,
 		)
 		if err != nil {
@@ -219,8 +218,8 @@ func (s *TransactionRepository) GetTransactionsPerPortfolio(portfolioId string) 
 		}
 
 		// IbkrTransactionId is nullable
-		if ibkrTransactionIdStr.Valid {
-			t.IbkrTransactionId = ibkrTransactionIdStr.String
+		if ibkrTransactionIDStr.Valid {
+			t.IbkrTransactionID = ibkrTransactionIDStr.String
 		}
 
 		transactionResponse = append(transactionResponse, t)
@@ -235,9 +234,9 @@ func (s *TransactionRepository) GetTransactionsPerPortfolio(portfolioId string) 
 
 // GetTransaction retrieves a single transaction by its ID.
 // Returns enriched transaction data including fund name and IBKR linkage status.
-// Returns an empty TransactionResponse if transactionId is empty or not found.
-func (s *TransactionRepository) GetTransaction(transactionId string) (model.TransactionResponse, error) {
-	if transactionId == "" {
+// Returns an empty TransactionResponse if transactionID is empty or not found.
+func (s *TransactionRepository) GetTransaction(transactionID string) (model.TransactionResponse, error) {
+	if transactionID == "" {
 		return model.TransactionResponse{}, nil
 	}
 
@@ -264,16 +263,16 @@ func (s *TransactionRepository) GetTransaction(transactionId string) (model.Tran
 	`
 	var t model.TransactionResponse
 	var dateStr string
-	var ibkrTransactionIdStr sql.NullString
-	err := s.db.QueryRow(transactionQuery, transactionId).Scan(
-		&t.Id,
-		&t.PortfolioFundId,
+	var ibkrTransactionIDStr sql.NullString
+	err := s.db.QueryRow(transactionQuery, transactionID).Scan(
+		&t.ID,
+		&t.PortfolioFundID,
 		&t.FundName,
 		&dateStr,
 		&t.Type,
 		&t.Shares,
 		&t.CostPerShare,
-		&ibkrTransactionIdStr,
+		&ibkrTransactionIDStr,
 		&t.IbkrLinked,
 	)
 	if err == sql.ErrNoRows {
@@ -288,8 +287,8 @@ func (s *TransactionRepository) GetTransaction(transactionId string) (model.Tran
 		return t, fmt.Errorf("failed to parse date: %w", err)
 	}
 
-	if ibkrTransactionIdStr.Valid {
-		t.IbkrTransactionId = ibkrTransactionIdStr.String
+	if ibkrTransactionIDStr.Valid {
+		t.IbkrTransactionID = ibkrTransactionIDStr.String
 	}
 
 	return t, nil
