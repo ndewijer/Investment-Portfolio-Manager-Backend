@@ -17,13 +17,13 @@ type Transaction struct {
 // TransactionResponse represents a transaction with enriched data for API responses.
 // Includes fund name and IBKR linkage information.
 type TransactionResponse struct {
-	Id                string    `json:"id"`
-	PortfolioFundId   string    `json:"portfolioFundId"`
+	ID                string    `json:"id"`
+	PortfolioFundID   string    `json:"portfolioFundId"`
 	FundName          string    `json:"fundName"`
 	Date              time.Time `json:"date"`
 	Type              string    `json:"type"`
 	Shares            float64   `json:"shares"`
 	CostPerShare      float64   `json:"costPerShare"`
-	IbkrTransactionId string    `json:"ibkrTransactionId,omitempty"`
+	IbkrTransactionID string    `json:"ibkrTransactionId,omitempty"`
 	IbkrLinked        bool      `json:"ibkrLinked"`
 }

@@ -85,9 +85,9 @@ func (s *DividendRepository) GetDividend() ([]model.Dividend, error) {
 			}
 		}
 
-		// ReinvestmentTransactionId is nullable
+		// ReinvestmentTransactionID is nullable
 		if reinvestmentTxID.Valid {
-			t.ReinvestmentTransactionId = reinvestmentTxID.String
+			t.ReinvestmentTransactionID = reinvestmentTxID.String
 		}
 
 		t.CreatedAt, err = ParseTime(createdAtStr)
@@ -126,7 +126,7 @@ func (s *DividendRepository) GetDividendPerPF(pfIDs []string, startDate, endDate
 		dividendPlaceholders[i] = "?"
 	}
 
-	// Retrieve all dividend based on returned portfolio_fund IDs
+	//#nosec G202 -- Safe: placeholders are generated programmatically, not from user input
 	dividendQuery := `
 		SELECT id, fund_id, portfolio_fund_id, record_date, ex_dividend_date, shares_owned,
 		dividend_per_share, total_amount, reinvestment_status, buy_order_date, reinvestment_transaction_id, created_at
@@ -137,7 +137,6 @@ func (s *DividendRepository) GetDividendPerPF(pfIDs []string, startDate, endDate
 		ORDER BY ex_dividend_date ASC
 	`
 
-	// Build args: pfIDs first, then startDate, then endDate
 	dividendArgs := make([]any, 0, len(pfIDs)+2)
 	for _, id := range pfIDs {
 		dividendArgs = append(dividendArgs, id)
@@ -194,9 +193,9 @@ func (s *DividendRepository) GetDividendPerPF(pfIDs []string, startDate, endDate
 			}
 		}
 
-		// ReinvestmentTransactionId is nullable
+		// ReinvestmentTransactionID is nullable
 		if reinvestmentTxID.Valid {
-			t.ReinvestmentTransactionId = reinvestmentTxID.String
+			t.ReinvestmentTransactionID = reinvestmentTxID.String
 		}
 
 		t.CreatedAt, err = ParseTime(createdAtStr)
@@ -291,9 +290,9 @@ func (s *DividendRepository) GetDividendPerPortfolioFund(portfolioID string) ([]
 			t.BuyOrderDate = &buyDate // Assign pointer for nullable field
 		}
 
-		// ReinvestmentTransactionId is nullable
+		// ReinvestmentTransactionID is nullable
 		if reinvestmentTxID.Valid {
-			t.ReinvestmentTransactionId = reinvestmentTxID.String
+			t.ReinvestmentTransactionID = reinvestmentTxID.String
 		}
 
 		dividendFund = append(dividendFund, t)

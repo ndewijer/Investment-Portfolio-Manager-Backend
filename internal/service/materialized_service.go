@@ -94,8 +94,8 @@ func (s *MaterializedService) GetPortfolioHistoryMaterialized(requestedStartDate
 		}
 	}
 	portfolioIDs := make([]string, len(portfolios))
-	portfolioNames := make(map[string]string)
-	portfolioDescription := make(map[string]string)
+	portfolioNames := make(map[string]string, len(portfolios))
+	portfolioDescription := make(map[string]string, len(portfolios))
 	for i, p := range portfolios {
 		portfolioIDs[i] = p.ID
 		portfolioNames[p.ID] = p.Name
@@ -183,9 +183,9 @@ func (s *MaterializedService) GetPortfolioHistory(requestedStartDate, requestedE
 		}
 	}
 
-	var portfolioUuids []string
-	for _, port := range portfolios {
-		portfolioUuids = append(portfolioUuids, port.ID)
+	portfolioUuids := make([]string, len(portfolios))
+	for i, port := range portfolios {
+		portfolioUuids[i] = port.ID
 	}
 
 	_, portfolioFundToPortfolio, portfolioFundToFund, pfIDs, fundIDs, err := s.portfolioRepo.GetPortfolioFundsOnPortfolioID(portfolios)
@@ -436,10 +436,11 @@ func (s *MaterializedService) calculateFundHistoryOnFly(portfolioID string, star
 	}
 
 	// Collect IDs
-	var pfIDs, fundIDs []string
+	pfIDs := make([]string, 0, len(portfolioFunds))
+	fundIDs := make([]string, 0, len(portfolioFunds))
 	for _, fund := range portfolioFunds {
 		pfIDs = append(pfIDs, fund.ID)
-		fundIDs = append(fundIDs, fund.FundId)
+		fundIDs = append(fundIDs, fund.FundID)
 	}
 
 	// Get oldest transaction to determine data start
@@ -479,7 +480,7 @@ func (s *MaterializedService) calculateFundHistoryOnFly(portfolioID string, star
 	realizedGainsByPF := make(map[string][]model.RealizedGainLoss)
 	for _, entry := range realizedGainsByPortfolio[portfolioID] {
 		for _, pf := range portfolioFunds {
-			if entry.FundID == pf.FundId {
+			if entry.FundID == pf.FundID {
 				realizedGainsByPF[pf.ID] = append(realizedGainsByPF[pf.ID], entry)
 			}
 		}
@@ -501,11 +502,11 @@ func (s *MaterializedService) calculateFundHistoryOnFly(portfolioID string, star
 			// Calculate metrics for this fund on this date
 			fundMetrics, err := s.fundService.calculateFundMetrics(
 				pf.ID,
-				pf.FundId,
+				pf.FundID,
 				currentDate,
 				transactionsByPF[pf.ID],
 				dividendSharesMap[pf.ID],
-				fundPriceByFund[pf.FundId],
+				fundPriceByFund[pf.FundID],
 				false, // Use price as of date, not latest
 			)
 			if err != nil {
@@ -527,7 +528,7 @@ func (s *MaterializedService) calculateFundHistoryOnFly(portfolioID string, star
 			// Build entry
 			fundsForDate = append(fundsForDate, model.FundHistoryEntry{
 				PortfolioFundID: pf.ID,
-				FundID:          pf.FundId,
+				FundID:          pf.FundID,
 				FundName:        pf.FundName,
 				Shares:          math.Round(fundMetrics.Shares*RoundingPrecision) / RoundingPrecision,
 				Price:           math.Round(fundMetrics.LatestPrice*RoundingPrecision) / RoundingPrecision,

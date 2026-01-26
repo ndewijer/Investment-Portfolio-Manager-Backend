@@ -32,7 +32,7 @@ func (r *IbkrRepository) GetIbkrConfig() (*model.IbkrConfig, error) {
 	var ic model.IbkrConfig
 	var tokenExpiresStr, lastImportStr, defaultAllocationStr sql.NullString
 	err := r.db.QueryRow(query).Scan(
-		&ic.FlexQueryId,
+		&ic.FlexQueryID,
 		&tokenExpiresStr,
 		&lastImportStr,
 		&ic.AutoImportEnabled,

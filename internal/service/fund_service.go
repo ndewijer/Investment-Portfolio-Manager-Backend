@@ -31,11 +31,11 @@ func NewFundService(
 	}
 }
 
-// GetFund retrieves funds from the database. If fundId is empty, returns all funds.
-// If fundId is provided, returns only the fund with that ID.
+// GetFund retrieves funds from the database. If fundID is empty, returns all funds.
+// If fundID is provided, returns only the fund with that ID.
 // Returns fund metadata including latest prices.
-func (s *FundService) GetFund(fundId string) ([]model.Fund, error) {
-	return s.fundRepo.GetFund(fundId)
+func (s *FundService) GetFund(fundID string) ([]model.Fund, error) {
+	return s.fundRepo.GetFund(fundID)
 }
 
 // GetSymbol retrieves symbol information by ticker symbol.
@@ -78,10 +78,12 @@ func (s *FundService) GetPortfolioFunds(portfolioID string) ([]model.PortfolioFu
 	if len(portfolioFunds) == 0 {
 		return portfolioFunds, nil
 	}
-	var pfIDs, fundIDs []string
+
+	pfIDs := make([]string, 0, len(portfolioFunds))
+	fundIDs := make([]string, 0, len(portfolioFunds))
 	for _, fund := range portfolioFunds {
 		pfIDs = append(pfIDs, fund.ID)
-		fundIDs = append(fundIDs, fund.FundId)
+		fundIDs = append(fundIDs, fund.FundID)
 	}
 	oldestTransactionDate := s.transactionService.getOldestTransaction(pfIDs)
 	today := time.Now()
@@ -111,7 +113,7 @@ func (s *FundService) GetPortfolioFunds(portfolioID string) ([]model.PortfolioFu
 
 		realizedGainsByPF := make(map[string][]model.RealizedGainLoss)
 		for _, entry := range realizedGainLossByPortfolio[portfolioID] {
-			if entry.FundID == fund.FundId {
+			if entry.FundID == fund.FundID {
 				realizedGainsByPF[fund.ID] = append(realizedGainsByPF[fund.ID], entry)
 			}
 		}
@@ -122,7 +124,7 @@ func (s *FundService) GetPortfolioFunds(portfolioID string) ([]model.PortfolioFu
 		}
 
 		fundMetrics, err := s.calculateFundMetrics(
-			fund.ID, fund.FundId, today, transactionsByPF[fund.ID], totalDividendSharesPerPF[fund.ID], fundPriceByFund[fund.FundId], true)
+			fund.ID, fund.FundID, today, transactionsByPF[fund.ID], totalDividendSharesPerPF[fund.ID], fundPriceByFund[fund.FundID], true)
 		if err != nil {
 			return nil, err
 		}

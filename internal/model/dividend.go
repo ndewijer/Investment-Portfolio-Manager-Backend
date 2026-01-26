@@ -15,7 +15,7 @@ type Dividend struct {
 	TotalAmount               float64
 	ReinvestmentStatus        string
 	BuyOrderDate              time.Time
-	ReinvestmentTransactionId string
+	ReinvestmentTransactionID string
 	CreatedAt                 time.Time
 }
 
@@ -34,7 +34,7 @@ type DividendFund struct {
 	TotalAmount               float64    `json:"totalAmount"`                         // Total dividend amount (sharesOwned × dividendPerShare)
 	ReinvestmentStatus        string     `json:"reinvestmentStatus"`                  // Status: "reinvested", "paid", etc.
 	BuyOrderDate              *time.Time `json:"buyOrderDate,omitempty"`              // Date when reinvestment buy order was placed (nil if not reinvested)
-	ReinvestmentTransactionId string     `json:"reinvestmentTransactionId,omitempty"` // Transaction ID if dividend was reinvested (empty if not)
+	ReinvestmentTransactionID string     `json:"reinvestmentTransactionId,omitempty"` // Transaction ID if dividend was reinvested (empty if not)
 	DividendType              string     `json:"dividendType"`                        // Type of dividend: "accumulating", "distributing"
 }
 
