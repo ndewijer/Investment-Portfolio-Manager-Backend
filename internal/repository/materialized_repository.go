@@ -22,8 +22,15 @@ func NewMaterializedRepository(db *sql.DB) *MaterializedRepository {
 // GetMaterializedHistory retrieves aggregated portfolio history by querying fund_history_materialized.
 // This method streams results using a callback pattern to minimize memory usage.
 //
+// The method performs the following:
+//  1. Builds the SQL query and parameter list (delegates to buildMaterializedQuery)
+//  2. Executes the query against the fund_history_materialized table
+//  3. Scans each row into a PortfolioHistoryMaterialized struct
+//  4. Parses date fields (date, calculated_at)
+//  5. Invokes the callback function for each record
+//
 // The query aggregates fund-level data from fund_history_materialized using GROUP BY,
-// and uses correlated subqueries to fetch:
+// and uses correlated subqueries to fetch cumulative values:
 //   - realized_gain, total_sale_proceeds, total_original_cost from realized_gain_loss table
 //   - total_dividends from dividend table
 //   - is_archived from portfolio table
@@ -37,7 +44,7 @@ func NewMaterializedRepository(db *sql.DB) *MaterializedRepository {
 // The callback pattern allows the caller to process records one at a time without loading
 // the entire result set into memory, which is efficient for large date ranges.
 //
-// Returns an error if the query fails or if the callback returns an error during processing.
+// Returns an error if the query fails, date parsing fails, or if the callback returns an error during processing.
 func (r *MaterializedRepository) GetMaterializedHistory(
 	portfolioIDs []string,
 	startDate, endDate time.Time,
@@ -48,11 +55,88 @@ func (r *MaterializedRepository) GetMaterializedHistory(
 		return nil
 	}
 
+	query, args := r.buildMaterializedQuery(portfolioIDs, startDate, endDate)
+
+	rows, err := r.db.Query(query, args...)
+	if err != nil {
+		return fmt.Errorf("failed to query fund_history_materialized: %w", err)
+	}
+
+	defer rows.Close()
+
+	for rows.Next() {
+		var record model.PortfolioHistoryMaterialized
+		var dateStr, calculatedAtStr string
+
+		err := rows.Scan(
+			&record.ID,
+			&record.PortfolioID,
+			&dateStr,
+			&record.Value,
+			&record.Cost,
+			&record.RealizedGain,
+			&record.UnrealizedGain,
+			&record.TotalDividends,
+			&record.TotalSaleProceeds,
+			&record.TotalOriginalCost,
+			&record.TotalGainLoss,
+			&record.IsArchived,
+			&calculatedAtStr,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to scan row: %w", err)
+		}
+
+		record.Date, err = ParseTime(dateStr)
+		if err != nil {
+			return fmt.Errorf("failed to parse date: %w", err)
+		}
+
+		record.CalculatedAt, err = ParseTime(calculatedAtStr)
+		if err != nil {
+			return fmt.Errorf("failed to parse calculated_at: %w", err)
+		}
+
+		if err := callback(record); err != nil {
+			return err
+		}
+	}
+
+	if err = rows.Err(); err != nil {
+		return fmt.Errorf("error iterating rows: %w", err)
+	}
+	return nil
+}
+
+// buildMaterializedQuery constructs the SQL query and argument list for fetching portfolio history
+// from the materialized view. This method was extracted from GetMaterializedHistory to reduce
+// function complexity and improve readability.
+//
+// The query performs portfolio-level aggregation by:
+//   - Joining fund_history_materialized with portfolio_fund and portfolio tables
+//   - Grouping by date and portfolio_id to sum fund-level metrics
+//   - Calculating cumulative realized gains, dividends, and sale proceeds via subqueries
+//   - Filtering by portfolio IDs and date range
+//
+// Parameters:
+//   - portfolioIDs: Slice of portfolio UUIDs to include in the query
+//   - startDate: Inclusive start date for the history range
+//   - endDate: Inclusive end date for the history range
+//
+// Returns:
+//   - SQL query string with placeholders for portfolioIDs and dates
+//   - Argument slice containing portfolio IDs followed by formatted start and end dates
+//
+// Security Note: The #nosec G202 directive is used because placeholder concatenation
+// is safe here - we're building "?" placeholders programmatically, not concatenating user input.
+func (r *MaterializedRepository) buildMaterializedQuery(portfolioIDs []string, startDate, endDate time.Time) (string, []any) {
+
 	placeholders := make([]string, len(portfolioIDs))
 	for i := range placeholders {
 		placeholders[i] = "?"
 	}
 
+	//#nosec G202 -- Safe: placeholders are generated programmatically, not from user input
 	query := `
 	SELECT
 		'' as id,
@@ -106,55 +190,7 @@ func (r *MaterializedRepository) GetMaterializedHistory(
 	args = append(args, startDate.Format("2006-01-02"))
 	args = append(args, endDate.Format("2006-01-02"))
 
-	rows, err := r.db.Query(query, args...)
-	if err != nil {
-		return fmt.Errorf("failed to query fund_history_materialized: %w", err)
-	}
-
-	defer rows.Close()
-
-	for rows.Next() {
-		var record model.PortfolioHistoryMaterialized
-		var dateStr, calculatedAtStr string
-
-		err := rows.Scan(
-			&record.ID,
-			&record.PortfolioID,
-			&dateStr,
-			&record.Value,
-			&record.Cost,
-			&record.RealizedGain,
-			&record.UnrealizedGain,
-			&record.TotalDividends,
-			&record.TotalSaleProceeds,
-			&record.TotalOriginalCost,
-			&record.TotalGainLoss,
-			&record.IsArchived,
-			&calculatedAtStr,
-		)
-		if err != nil {
-			return fmt.Errorf("failed to scan row: %w", err)
-		}
-
-		record.Date, err = ParseTime(dateStr)
-		if err != nil {
-			return fmt.Errorf("failed to parse date: %w", err)
-		}
-
-		record.CalculatedAt, err = ParseTime(calculatedAtStr)
-		if err != nil {
-			return fmt.Errorf("failed to parse calculated_at: %w", err)
-		}
-
-		if err := callback(record); err != nil {
-			return err
-		}
-	}
-
-	if err = rows.Err(); err != nil {
-		return fmt.Errorf("error iterating rows: %w", err)
-	}
-	return nil
+	return query, args
 }
 
 // GetFundHistoryMaterialized retrieves historical fund data from the materialized view.

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"log"
 	"net/http"
 	"os"
@@ -32,50 +33,7 @@ func main() {
 
 	log.Printf("Connected to database: %s", cfg.Database.Path)
 
-	// Create repositories
-	portfolioRepo := repository.NewPortfolioRepository(db)
-	transactionRepo := repository.NewTransactionRepository(db)
-	fundRepo := repository.NewFundRepository(db)
-	dividendRepo := repository.NewDividendRepository(db)
-	realizedGainLossRepo := repository.NewRealizedGainLossRepository(db)
-	materializedRepo := repository.NewMaterializedRepository(db)
-	ibkrRepo := repository.NewIbkrRepository(db)
-
-	// Create services
-	systemService := service.NewSystemService(db)
-
-	realizedGainLossService := service.NewRealizedGainLossService(
-		realizedGainLossRepo,
-	)
-	transactionService := service.NewTransactionService(
-		transactionRepo,
-	)
-	dividendService := service.NewDividendService(
-		dividendRepo,
-	)
-	fundService := service.NewFundService(
-		fundRepo,
-		transactionService,
-		dividendService,
-		realizedGainLossService,
-	)
-	portfolioService := service.NewPortfolioService(
-		portfolioRepo,
-	)
-	ibkrService := service.NewIbkrService(
-		ibkrRepo,
-		portfolioRepo,
-	)
-	materializedService := service.NewMaterializedService(
-		materializedRepo,
-		portfolioRepo,
-		fundRepo,
-		transactionService,
-		fundService,
-		dividendService,
-		realizedGainLossService,
-	)
-
+	systemService, portfolioService, fundService, materializedService, transactionService, ibkrService := createRepoAndServices(db)
 	// Create router
 	router := api.NewRouter(
 		systemService,
@@ -120,4 +78,75 @@ func main() {
 	}
 
 	log.Println("Server exited")
+}
+
+func createRepoAndServices(db *sql.DB) (
+	*service.SystemService,
+	*service.PortfolioService,
+	*service.FundService,
+	*service.MaterializedService,
+	*service.TransactionService,
+	*service.IbkrService,
+) {
+	// Create repositories
+	portfolioRepo := repository.NewPortfolioRepository(db)
+	transactionRepo := repository.NewTransactionRepository(db)
+	fundRepo := repository.NewFundRepository(db)
+	dividendRepo := repository.NewDividendRepository(db)
+	realizedGainLossRepo := repository.NewRealizedGainLossRepository(db)
+	materializedRepo := repository.NewMaterializedRepository(db)
+	ibkrRepo := repository.NewIbkrRepository(db)
+
+	// Create services
+	systemService := service.NewSystemService(db)
+
+	realizedGainLossService := service.NewRealizedGainLossService(
+		realizedGainLossRepo,
+	)
+	transactionService := service.NewTransactionService(
+		transactionRepo,
+	)
+	dividendService := service.NewDividendService(
+		dividendRepo,
+	)
+	portfolioService := service.NewPortfolioService(
+		portfolioRepo,
+	)
+	dataloaderService := service.NewDataLoaderService(
+		portfolioRepo,
+		fundRepo,
+		transactionService,
+		dividendService,
+		realizedGainLossService,
+	)
+	fundService := service.NewFundService(
+		fundRepo,
+		transactionService,
+		dividendService,
+		realizedGainLossService,
+		dataloaderService,
+		portfolioService,
+	)
+	ibkrService := service.NewIbkrService(
+		ibkrRepo,
+		portfolioRepo,
+	)
+	materializedService := service.NewMaterializedService(
+		materializedRepo,
+		portfolioRepo,
+		fundRepo,
+		transactionService,
+		fundService,
+		dividendService,
+		realizedGainLossService,
+		dataloaderService,
+		portfolioService,
+	)
+
+	return systemService,
+		portfolioService,
+		fundService,
+		materializedService,
+		transactionService,
+		ibkrService
 }

@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"strings"
 
@@ -53,7 +54,9 @@ func getCORSOrigins() []string {
 // Load reads configuration from environment variables and .env file
 func Load() (*Config, error) {
 	// Try to load .env file (ignore error if it doesn't exist)
-	_ = godotenv.Load()
+	if err := godotenv.Load(); err != nil {
+		log.Printf("Warning: .env file not loaded: %v (this is OK if using env vars)", err)
+	}
 
 	config := &Config{
 		Server: ServerConfig{

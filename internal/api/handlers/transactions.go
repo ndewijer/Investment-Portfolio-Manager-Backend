@@ -31,15 +31,15 @@ func NewTransactionHandler(transactionService *service.TransactionService) *Tran
 // Error: 500 Internal Server Error if retrieval fails
 func (h *TransactionHandler) TransactionPerPortfolio(w http.ResponseWriter, r *http.Request) {
 
-	portfolioId := chi.URLParam(r, "portfolioId")
-	if portfolioId == "" {
+	portfolioID := chi.URLParam(r, "portfolioId")
+	if portfolioID == "" {
 		respondJSON(w, http.StatusBadRequest, map[string]string{
 			"error": "portfolio ID is required",
 		})
 		return
 	}
 
-	if err := validation.ValidateUUID(portfolioId); err != nil {
+	if err := validation.ValidateUUID(portfolioID); err != nil {
 		respondJSON(w, http.StatusBadRequest, map[string]string{
 			"error":  "invalid portfolio ID format",
 			"detail": err.Error(),
@@ -47,7 +47,7 @@ func (h *TransactionHandler) TransactionPerPortfolio(w http.ResponseWriter, r *h
 		return
 	}
 
-	transactions, err := h.transactionService.GetTransactionsperPortfolio(portfolioId)
+	transactions, err := h.transactionService.GetTransactionsperPortfolio(portfolioID)
 	if err != nil {
 		errorResponse := map[string]string{
 			"error":  "failed to retrieve transactions",
@@ -66,7 +66,7 @@ func (h *TransactionHandler) TransactionPerPortfolio(w http.ResponseWriter, r *h
 // Endpoint: GET /api/transaction
 // Response: 200 OK with array of TransactionResponse
 // Error: 500 Internal Server Error if retrieval fails
-func (h *TransactionHandler) AllTransactions(w http.ResponseWriter, r *http.Request) {
+func (h *TransactionHandler) AllTransactions(w http.ResponseWriter, _ *http.Request) {
 
 	transactions, err := h.transactionService.GetTransactionsperPortfolio("")
 	if err != nil {
@@ -90,15 +90,15 @@ func (h *TransactionHandler) AllTransactions(w http.ResponseWriter, r *http.Requ
 // Error: 500 Internal Server Error if retrieval fails
 func (h *TransactionHandler) GetTransaction(w http.ResponseWriter, r *http.Request) {
 
-	transactionId := chi.URLParam(r, "transactionId")
-	if transactionId == "" {
+	transactionID := chi.URLParam(r, "transactionId")
+	if transactionID == "" {
 		respondJSON(w, http.StatusBadRequest, map[string]string{
 			"error": "transactions ID is required",
 		})
 		return
 	}
 
-	if err := validation.ValidateUUID(transactionId); err != nil {
+	if err := validation.ValidateUUID(transactionID); err != nil {
 		respondJSON(w, http.StatusBadRequest, map[string]string{
 			"error":  "invalid transaction ID format",
 			"detail": err.Error(),
@@ -106,7 +106,7 @@ func (h *TransactionHandler) GetTransaction(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	transaction, err := h.transactionService.GetTransaction(transactionId)
+	transaction, err := h.transactionService.GetTransaction(transactionID)
 	if err != nil {
 		errorResponse := map[string]string{
 			"error":  "failed to retrieve transaction",
@@ -116,7 +116,7 @@ func (h *TransactionHandler) GetTransaction(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	if transaction.Id == "" {
+	if transaction.ID == "" {
 		errorResponse := map[string]string{
 			"error":  "Transaction not found",
 			"detail": "No transaction found with the given ID",

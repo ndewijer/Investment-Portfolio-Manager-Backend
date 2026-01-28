@@ -28,7 +28,7 @@ func NewDividendHandler(dividendService *service.DividendService) *DividendHandl
 // Endpoint: GET /api/dividend
 // Response: 200 OK with array of Dividend
 // Error: 500 Internal Server Error if retrieval fails
-func (h *DividendHandler) GetAllDividends(w http.ResponseWriter, r *http.Request) {
+func (h *DividendHandler) GetAllDividends(w http.ResponseWriter, _ *http.Request) {
 
 	dividends, err := h.dividendService.GetAllDividends()
 	if err != nil {

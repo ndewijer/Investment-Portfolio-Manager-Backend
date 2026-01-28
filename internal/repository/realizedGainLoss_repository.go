@@ -41,7 +41,7 @@ func (s *RealizedGainLossRepository) GetRealizedGainLossByPortfolio(portfolio []
 		realizedGainLossPlaceholders[i] = "?"
 	}
 
-	// Retrieve all realizedGainLosss based on returned portfolio_fund IDs
+	//#nosec G202 -- Safe: placeholders are generated programmatically, not from user input
 	realizedGainLossQuery := `
 		SELECT id, portfolio_id, fund_id, transaction_id, transaction_date, shares_sold, cost_basis,
 		sale_proceeds, realized_gain_loss, created_at
@@ -52,7 +52,6 @@ func (s *RealizedGainLossRepository) GetRealizedGainLossByPortfolio(portfolio []
 		ORDER BY created_at ASC
 	`
 
-	// Build args: portfolio first, then startDate, then endDate
 	realizedGainLossdArgs := make([]any, 0, len(portfolio)+2)
 	for _, id := range portfolio {
 		realizedGainLossdArgs = append(realizedGainLossdArgs, id)

@@ -89,7 +89,7 @@ func (s *FundService) calculateFundMetrics(
 				cost += transaction.CostPerShare
 				fees += transaction.CostPerShare
 			default:
-				err := errors.New("Unknown transaction type.")
+				err := errors.New("unknown transaction type")
 				return FundMetrics{}, fmt.Errorf(": %w", err)
 			}
 		} else {
@@ -125,7 +125,7 @@ func (s *FundService) calculateFundMetrics(
 // Assumes prices are sorted in ASC order (oldest first).
 // Returns 0 if no price is found on or before the target date.
 func (s *FundService) getPriceForDate(prices []model.FundPrice, targetDate time.Time) float64 {
-	var latestPrice float64 = 0
+	var latestPrice float64
 
 	// Prices are sorted ASC, so iterate forward
 	for _, price := range prices {

@@ -34,7 +34,7 @@ func NewPortfolioHandler(portfolioService *service.PortfolioService, fundService
 // Endpoint: GET /api/portfolio
 // Response: 200 OK with array of PortfoliosResponse
 // Error: 500 Internal Server Error if retrieval fails
-func (h *PortfolioHandler) Portfolios(w http.ResponseWriter, r *http.Request) {
+func (h *PortfolioHandler) Portfolios(w http.ResponseWriter, _ *http.Request) {
 
 	portfolios, err := h.portfolioService.GetAllPortfolios()
 	if err != nil {
@@ -74,7 +74,10 @@ func (h *PortfolioHandler) GetPortfolio(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	startDate, _ := time.Parse("2006-01-02", "1970-01-01")
+	startDate, err := time.Parse("2006-01-02", "1970-01-01")
+	if err != nil {
+		panic("impossible: hardcoded date failed to parse: " + err.Error())
+	}
 	endDate := time.Now()
 	history, err := h.materializedService.GetPortfolioHistoryWithFallback(startDate, endDate, portfolioID)
 	if err != nil {
@@ -107,9 +110,12 @@ func (h *PortfolioHandler) GetPortfolio(w http.ResponseWriter, r *http.Request) 
 // Endpoint: GET /api/portfolio/summary
 // Response: 200 OK with array of PortfolioSummaryResponse
 // Error: 500 Internal Server Error if calculation fails
-func (h *PortfolioHandler) PortfolioSummary(w http.ResponseWriter, r *http.Request) {
+func (h *PortfolioHandler) PortfolioSummary(w http.ResponseWriter, _ *http.Request) {
 
-	startDate, _ := time.Parse("2006-01-02", "1970-01-01")
+	startDate, err := time.Parse("2006-01-02", "1970-01-01")
+	if err != nil {
+		panic("impossible: hardcoded date failed to parse: " + err.Error())
+	}
 	endDate := time.Now()
 	portfolioSummary, err := h.materializedService.GetPortfolioHistoryWithFallback(startDate, endDate, "")
 	if err != nil {
@@ -173,7 +179,10 @@ func parseDateParams(r *http.Request) (time.Time, time.Time, error) {
 	var err error
 
 	if r.URL.Query().Get("start_date") == "" {
-		startDate, _ = time.Parse("2006-01-02", "1970-01-01")
+		startDate, err = time.Parse("2006-01-02", "1970-01-01")
+		if err != nil {
+			panic("impossible: hardcoded date failed to parse: " + err.Error())
+		}
 	} else {
 		startDate, err = time.Parse("2006-01-02", r.URL.Query().Get("start_date"))
 		if err != nil {
@@ -199,7 +208,7 @@ func parseDateParams(r *http.Request) (time.Time, time.Time, error) {
 // Endpoint: GET /api/portfolio/funds
 // Response: 200 OK with array of PortfolioFundListing
 // Error: 500 Internal Server Error if retrieval fails
-func (h *PortfolioHandler) PortfolioFunds(w http.ResponseWriter, r *http.Request) {
+func (h *PortfolioHandler) PortfolioFunds(w http.ResponseWriter, _ *http.Request) {
 	listings, err := h.fundService.GetAllPortfolioFundListings()
 	if err != nil {
 		errorResponse := map[string]string{

@@ -114,13 +114,12 @@ func (s *PortfolioRepository) GetPortfolioFundsOnPortfolioID(portfolios []model.
 		return nil, nil, nil, nil, nil, nil
 	}
 
-	// Set placeholder for the lazy loading
 	portfolioPlaceholders := make([]string, len(portfolios))
 	for i := range portfolioPlaceholders {
 		portfolioPlaceholders[i] = "?"
 	}
 
-	// Retrieve all funds based on returned portfolio IDs
+	//#nosec G202 -- Safe: placeholders are generated programmatically, not from user input
 	fundQuery := `
 		SELECT
 		portfolio_fund.id, portfolio_fund.portfolio_id,
@@ -130,7 +129,6 @@ func (s *PortfolioRepository) GetPortfolioFundsOnPortfolioID(portfolios []model.
 		WHERE portfolio_fund.portfolio_id IN (` + strings.Join(portfolioPlaceholders, ",") + `)
 	`
 
-	// Extract portfolio IDs
 	fundArgs := make([]any, len(portfolios))
 	for i, p := range portfolios {
 		fundArgs[i] = p.ID

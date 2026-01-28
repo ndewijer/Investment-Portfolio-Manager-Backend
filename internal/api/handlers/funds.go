@@ -34,7 +34,7 @@ func NewFundHandler(fundService *service.FundService, materializedService *servi
 // Endpoint: GET /api/fund
 // Response: 200 OK with array of Fund
 // Error: 500 Internal Server Error if retrieval fails
-func (h *FundHandler) GetAllFunds(w http.ResponseWriter, r *http.Request) {
+func (h *FundHandler) GetAllFunds(w http.ResponseWriter, _ *http.Request) {
 
 	funds, err := h.fundService.GetFund("")
 	if err != nil {
@@ -52,31 +52,31 @@ func (h *FundHandler) GetAllFunds(w http.ResponseWriter, r *http.Request) {
 // GetFund handles GET requests to retrieve a single fund by ID.
 // Returns fund details including name, ISIN, symbol, currency, and latest price.
 //
-// Endpoint: GET /api/fund/{fundId}
+// Endpoint: GET /api/fund/{fundID}
 // Response: 200 OK with Fund
 // Error: 400 Bad Request if fund ID is missing or invalid
 // Error: 404 Not Found if no fund exists with the given ID
 // Error: 500 Internal Server Error if retrieval fails
 func (h *FundHandler) GetFund(w http.ResponseWriter, r *http.Request) {
 
-	fundId := chi.URLParam(r, "fundId")
+	fundID := chi.URLParam(r, "fundId")
 
-	if fundId == "" {
+	if fundID == "" {
 		respondJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "portfolio ID is required",
+			"error": "fund ID is required",
 		})
 		return
 	}
 
-	if err := validation.ValidateUUID(fundId); err != nil {
+	if err := validation.ValidateUUID(fundID); err != nil {
 		respondJSON(w, http.StatusBadRequest, map[string]string{
-			"error":  "invalid portfolio ID format",
+			"error":  "invalid fund ID format",
 			"detail": err.Error(),
 		})
 		return
 	}
 
-	funds, err := h.fundService.GetFund(fundId)
+	funds, err := h.fundService.GetFund(fundID)
 	if err != nil {
 		errorResponse := map[string]string{
 			"error":  "failed to retrieve funds",
@@ -107,8 +107,7 @@ func (h *FundHandler) GetFund(w http.ResponseWriter, r *http.Request) {
 // Error: 500 Internal Server Error if retrieval fails
 func (h *FundHandler) GetSymbol(w http.ResponseWriter, r *http.Request) {
 
-	symbol := chi.URLParam(r, "Symbol")
-
+	symbol := chi.URLParam(r, "symbol")
 	if symbol == "" {
 		respondJSON(w, http.StatusBadRequest, map[string]string{
 			"error": "Symbol is required",
@@ -141,16 +140,16 @@ func (h *FundHandler) GetSymbol(w http.ResponseWriter, r *http.Request) {
 // Error: 400 Bad Request if portfolio ID is invalid or date parsing fails
 // Error: 500 Internal Server Error if retrieval fails
 func (h *FundHandler) GetFundHistory(w http.ResponseWriter, r *http.Request) {
-	portfolioId := chi.URLParam(r, "portfolioId")
+	portfolioID := chi.URLParam(r, "portfolioId")
 
-	if portfolioId == "" {
+	if portfolioID == "" {
 		respondJSON(w, http.StatusBadRequest, map[string]string{
 			"error": "portfolio ID is required",
 		})
 		return
 	}
 
-	if err := validation.ValidateUUID(portfolioId); err != nil {
+	if err := validation.ValidateUUID(portfolioID); err != nil {
 		respondJSON(w, http.StatusBadRequest, map[string]string{
 			"error":  "invalid portfolio ID format",
 			"detail": err.Error(),
@@ -168,7 +167,7 @@ func (h *FundHandler) GetFundHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fundHistory, err := h.materializedService.GetFundHistoryWithFallback(portfolioId, startDate, endDate)
+	fundHistory, err := h.materializedService.GetFundHistoryWithFallback(portfolioID, startDate, endDate)
 	if err != nil {
 		errorResponse := map[string]string{
 			"error":  "failed to retrieve fund history",
@@ -190,16 +189,16 @@ func (h *FundHandler) GetFundHistory(w http.ResponseWriter, r *http.Request) {
 // Error: 500 Internal Server Error if retrieval fails
 func (h *FundHandler) GetFundPrices(w http.ResponseWriter, r *http.Request) {
 
-	fundId := chi.URLParam(r, "fundId")
+	fundID := chi.URLParam(r, "fundId")
 
-	if fundId == "" {
+	if fundID == "" {
 		respondJSON(w, http.StatusBadRequest, map[string]string{
 			"error": "portfolio ID is required",
 		})
 		return
 	}
 
-	if err := validation.ValidateUUID(fundId); err != nil {
+	if err := validation.ValidateUUID(fundID); err != nil {
 		respondJSON(w, http.StatusBadRequest, map[string]string{
 			"error":  "invalid portfolio ID format",
 			"detail": err.Error(),
@@ -207,10 +206,13 @@ func (h *FundHandler) GetFundPrices(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	startDate, _ := time.Parse("2006-01-02", "1970-01-01")
+	startDate, err := time.Parse("2006-01-02", "1970-01-01")
+	if err != nil {
+		panic("impossible: hardcoded date failed to parse: " + err.Error())
+	}
 	endDate := time.Now()
 
-	funds, err := h.fundService.LoadFundPrices([]string{fundId}, startDate, endDate, false)
+	funds, err := h.fundService.LoadFundPrices([]string{fundID}, startDate, endDate, false)
 	if err != nil {
 		errorResponse := map[string]string{
 			"error":  "failed to retrieve funds",
@@ -220,5 +222,5 @@ func (h *FundHandler) GetFundPrices(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respondJSON(w, http.StatusOK, funds[fundId])
+	respondJSON(w, http.StatusOK, funds[fundID])
 }
