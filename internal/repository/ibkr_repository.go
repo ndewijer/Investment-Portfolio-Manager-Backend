@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 )
@@ -71,7 +72,7 @@ func (r *IbkrRepository) GetIbkrConfig() (*model.IbkrConfig, error) {
 	if defaultAllocationStr.Valid {
 		var defaultAllocation []model.Allocation
 		if err := json.Unmarshal([]byte(defaultAllocationStr.String), &defaultAllocation); err != nil {
-			//log.Printf("warning: failed to parse allocation model: %v", err)
+			log.Printf("warning: failed to parse allocation model: %v", err)
 			// Continue without allocations
 		} else {
 			ic.DefaultAllocations = defaultAllocation

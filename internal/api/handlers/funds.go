@@ -59,18 +59,18 @@ func (h *FundHandler) GetAllFunds(w http.ResponseWriter, _ *http.Request) {
 // Error: 500 Internal Server Error if retrieval fails
 func (h *FundHandler) GetFund(w http.ResponseWriter, r *http.Request) {
 
-	fundID := chi.URLParam(r, "fundID")
+	fundID := chi.URLParam(r, "fundId")
 
 	if fundID == "" {
 		respondJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "portfolio ID is required",
+			"error": "fund ID is required",
 		})
 		return
 	}
 
 	if err := validation.ValidateUUID(fundID); err != nil {
 		respondJSON(w, http.StatusBadRequest, map[string]string{
-			"error":  "invalid portfolio ID format",
+			"error":  "invalid fund ID format",
 			"detail": err.Error(),
 		})
 		return
@@ -107,8 +107,7 @@ func (h *FundHandler) GetFund(w http.ResponseWriter, r *http.Request) {
 // Error: 500 Internal Server Error if retrieval fails
 func (h *FundHandler) GetSymbol(w http.ResponseWriter, r *http.Request) {
 
-	symbol := chi.URLParam(r, "Symbol")
-
+	symbol := chi.URLParam(r, "symbol")
 	if symbol == "" {
 		respondJSON(w, http.StatusBadRequest, map[string]string{
 			"error": "Symbol is required",

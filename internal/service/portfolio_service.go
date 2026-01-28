@@ -61,3 +61,39 @@ func (s *PortfolioService) LoadActivePortfolios() ([]model.Portfolio, error) {
 func (s *PortfolioService) LoadAllPortfolioFunds(portfolios []model.Portfolio) (map[string][]model.Fund, map[string]string, map[string]string, []string, []string, error) {
 	return s.portfolioRepo.GetPortfolioFundsOnPortfolioID(portfolios)
 }
+
+// GetPortfoliosForRequest resolves a portfolio ID parameter into a slice of portfolios.
+// This is a helper method that handles the common pattern where API endpoints accept
+// an optional portfolio ID - if provided, return that one portfolio; if empty, return
+// all active portfolios.
+//
+// This centralizes the "specific portfolio vs all portfolios" logic that was duplicated
+// across multiple service methods.
+//
+// Parameters:
+//   - portfolioID: Optional portfolio ID. Empty string means "all portfolios"
+//
+// Returns:
+//   - If portfolioID is provided: a slice containing just that portfolio
+//   - If portfolioID is empty: all active, non-excluded portfolios
+//   - Error if the specific portfolio ID is not found or database query fails
+//
+// Usage in other services:
+//
+//	portfolios, err := portfolioService.GetPortfoliosForRequest(portfolioID)
+//	// portfolios is always a slice, simplifying downstream code
+func (s *PortfolioService) GetPortfoliosForRequest(portfolioID string) ([]model.Portfolio, error) {
+	if portfolioID != "" {
+		portfolio, err := s.portfolioRepo.GetPortfolioOnID(portfolioID)
+		if err != nil {
+			return []model.Portfolio{}, err
+		}
+		return []model.Portfolio{portfolio}, nil
+	}
+
+	// Load all active portfolios
+	return s.portfolioRepo.GetPortfolios(model.PortfolioFilter{
+		IncludeArchived: false,
+		IncludeExcluded: false,
+	})
+}

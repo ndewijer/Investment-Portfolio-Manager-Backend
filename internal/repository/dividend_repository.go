@@ -108,14 +108,23 @@ func (s *DividendRepository) GetDividend() ([]model.Dividend, error) {
 // GetDividendPerPF retrieves all dividends for the given portfolio_fund IDs within the specified date range.
 // Dividends are filtered by ex-dividend date and sorted in ascending order by that date.
 //
-// Parameters:
-//   - pfIDs: slice of portfolio_fund IDs to query
-//   - startDate: inclusive start date for the query (compared against ex_dividend_date)
-//   - endDate: inclusive end date for the query (compared against ex_dividend_date)
+// The method performs the following:
+//  1. Builds a parameterized query with placeholders for portfolio_fund IDs
+//  2. Executes the query and iterates through results
+//  3. Scans each row into a Dividend struct
+//  4. Delegates date parsing and nullable field handling to parseDividendRecords
+//  5. Groups dividends by portfolio_fund_id
 //
-// Returns a map of portfolioFundID -> []Dividend. If pfIDs is empty, returns an empty map.
-// Handles nullable fields like buy_order_date and reinvestment_transaction_id appropriately.
-// This grouping allows callers to decide how to aggregate (by portfolio, by fund, etc.) after retrieval.
+// Date parsing is extracted to parseDividendRecords to reduce cyclomatic complexity.
+//
+// Parameters:
+//   - pfIDs: Slice of portfolio_fund IDs to query
+//   - startDate: Inclusive start date for the query (compared against ex_dividend_date)
+//   - endDate: Inclusive end date for the query (compared against ex_dividend_date)
+//
+// Returns a map of portfolioFundID -> []Dividend, grouped for efficient per-fund calculations.
+// If pfIDs is empty, returns an empty map. The grouping allows callers to aggregate by
+// portfolio, fund, or other dimensions after retrieval.
 func (s *DividendRepository) GetDividendPerPF(pfIDs []string, startDate, endDate time.Time) (map[string][]model.Dividend, error) {
 	if len(pfIDs) == 0 {
 		return make(map[string][]model.Dividend), nil
@@ -175,32 +184,9 @@ func (s *DividendRepository) GetDividendPerPF(pfIDs []string, startDate, endDate
 			return nil, fmt.Errorf("failed to scan dividend table results: %w", err)
 		}
 
-		t.RecordDate, err = ParseTime(recordDateStr)
-		if err != nil || t.RecordDate.IsZero() {
-			return nil, fmt.Errorf("failed to parse date: %w", err)
-		}
-
-		t.ExDividendDate, err = ParseTime(exDividendStr)
-		if err != nil || t.ExDividendDate.IsZero() {
-			return nil, fmt.Errorf("failed to parse date: %w", err)
-		}
-
-		// BuyOrderDate is nullable
-		if buyOrderStr.Valid {
-			t.BuyOrderDate, err = ParseTime(buyOrderStr.String)
-			if err != nil || t.BuyOrderDate.IsZero() {
-				return nil, fmt.Errorf("failed to parse buy_order_date: %w", err)
-			}
-		}
-
-		// ReinvestmentTransactionID is nullable
-		if reinvestmentTxID.Valid {
-			t.ReinvestmentTransactionID = reinvestmentTxID.String
-		}
-
-		t.CreatedAt, err = ParseTime(createdAtStr)
-		if err != nil || t.CreatedAt.IsZero() {
-			return nil, fmt.Errorf("failed to parse date: %w", err)
+		err = s.parseDividendRecords(&t, recordDateStr, exDividendStr, createdAtStr, buyOrderStr, reinvestmentTxID)
+		if err != nil {
+			return nil, err
 		}
 
 		dividend[t.PortfolioFundID] = append(dividend[t.PortfolioFundID], t)
@@ -211,6 +197,60 @@ func (s *DividendRepository) GetDividendPerPF(pfIDs []string, startDate, endDate
 	}
 
 	return dividend, nil
+}
+
+// parseDividendRecords parses date strings and nullable fields from database rows into a Dividend model.
+// This helper method was extracted from GetDividendPerPF to reduce cyclomatic complexity by isolating
+// the field parsing logic into a dedicated function.
+//
+// The method handles:
+//   - Parsing required date fields (RecordDate, ExDividendDate, CreatedAt)
+//   - Parsing optional/nullable date fields (BuyOrderDate)
+//   - Extracting nullable string fields (ReinvestmentTransactionID)
+//   - Validating that parsed dates are not zero values
+//
+// Parameters:
+//   - t: Pointer to the Dividend struct to populate (modified in-place)
+//   - recordDateStr: String representation of the record date (required)
+//   - exDividendStr: String representation of the ex-dividend date (required)
+//   - createdAtStr: String representation of when the record was created (required)
+//   - buyOrderStr: Nullable string for the buy order date
+//   - reinvestmentTxID: Nullable string for the reinvestment transaction ID
+//
+// Returns an error if any required date fails to parse or parses to a zero value.
+// Nullable fields are left at their zero values if NULL in the database.
+func (s *DividendRepository) parseDividendRecords(t *model.Dividend, recordDateStr, exDividendStr, createdAtStr string, buyOrderStr, reinvestmentTxID sql.NullString) error {
+	var err error
+
+	t.RecordDate, err = ParseTime(recordDateStr)
+	if err != nil || t.RecordDate.IsZero() {
+		return fmt.Errorf("failed to parse date: %w", err)
+	}
+
+	t.ExDividendDate, err = ParseTime(exDividendStr)
+	if err != nil || t.ExDividendDate.IsZero() {
+		return fmt.Errorf("failed to parse date: %w", err)
+	}
+
+	// BuyOrderDate is nullable
+	if buyOrderStr.Valid {
+		t.BuyOrderDate, err = ParseTime(buyOrderStr.String)
+		if err != nil || t.BuyOrderDate.IsZero() {
+			return fmt.Errorf("failed to parse buy_order_date: %w", err)
+		}
+	}
+
+	// ReinvestmentTransactionID is nullable
+	if reinvestmentTxID.Valid {
+		t.ReinvestmentTransactionID = reinvestmentTxID.String
+	}
+
+	t.CreatedAt, err = ParseTime(createdAtStr)
+	if err != nil || t.CreatedAt.IsZero() {
+		return fmt.Errorf("failed to parse date: %w", err)
+	}
+
+	return nil
 }
 
 // GetDividendPerPortfolioFund retrieves all dividend records for funds in a specific portfolio.

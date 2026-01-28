@@ -1,7 +1,6 @@
 package service
 
 import (
-	"math"
 	"time"
 
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
@@ -14,6 +13,8 @@ type FundService struct {
 	transactionService      *TransactionService
 	dividendService         *DividendService
 	realizedGainLossService *RealizedGainLossService
+	dataLoaderService       *DataLoaderService
+	portfolioService        *PortfolioService
 }
 
 // NewFundService creates a new FundService with the provided repository dependencies.
@@ -22,12 +23,16 @@ func NewFundService(
 	transactionService *TransactionService,
 	dividendService *DividendService,
 	realizedGainLossService *RealizedGainLossService,
+	dataLoaderService *DataLoaderService,
+	portfolioService *PortfolioService,
 ) *FundService {
 	return &FundService{
 		fundRepo:                fundRepo,
 		transactionService:      transactionService,
 		dividendService:         dividendService,
 		realizedGainLossService: realizedGainLossService,
+		dataLoaderService:       dataLoaderService,
+		portfolioService:        portfolioService,
 	}
 }
 
@@ -52,119 +57,45 @@ func (s *FundService) GetAllPortfolioFundListings() ([]model.PortfolioFundListin
 }
 
 // GetPortfolioFunds retrieves detailed fund metrics for all funds in a portfolio.
-// Returns per-fund breakdowns including shares, cost, value, gains/losses, dividends, and fees.
+// This method orchestrates the complete calculation pipeline to produce enriched fund data
+// with current valuations, gains/losses, dividends, and fees.
 //
-// This method calculates current valuations by:
-//   - Loading all historical transactions and dividends from inception to present
-//   - Processing dividend reinvestments
-//   - Calculating share counts, cost basis, and market value using latest available prices
-//   - Computing realized gains from sale transactions
-//   - Aggregating dividend payments
+// Calculation Pipeline:
+//  1. Resolves portfolio(s) from the ID parameter (specific portfolio or all active)
+//  2. Batch-loads all required data (transactions, dividends, prices, realized gains)
+//  3. Maps realized gains from portfolio level to fund level
+//  4. Enriches each fund with calculated metrics using historical data
+//
+// The actual calculations (share counts, cost basis, valuations) are delegated to
+// enrichPortfolioFundsWithMetrics and its helpers. This method focuses on orchestration
+// and data loading.
 //
 // Parameters:
-//   - portfolioID: The portfolio ID to retrieve funds for. If empty, returns all portfolio funds.
+//   - portfolioID: The portfolio ID to retrieve funds for. If empty, returns all active portfolios.
 //
-// Returns:
-// A slice of PortfolioFund structs with populated metrics including totalShares, currentValue,
-// unrealizedGainLoss, realizedGainLoss, totalDividends, and totalFees.
+// Returns a slice of PortfolioFund structs with all metric fields populated:
+// TotalShares, LatestPrice, AverageCost, TotalCost, CurrentValue, UnrealizedGainLoss,
+// RealizedGainLoss, TotalGainLoss, TotalDividends, and TotalFees.
 // All monetary values are rounded to two decimal places.
 func (s *FundService) GetPortfolioFunds(portfolioID string) ([]model.PortfolioFund, error) {
 
-	portfolioFunds, err := s.fundRepo.GetPortfolioFunds(portfolioID)
+	portfolio, err := s.portfolioService.GetPortfoliosForRequest(portfolioID)
 	if err != nil {
 		return nil, err
 	}
 
-	if len(portfolioFunds) == 0 {
-		return portfolioFunds, nil
-	}
-
-	pfIDs := make([]string, 0, len(portfolioFunds))
-	fundIDs := make([]string, 0, len(portfolioFunds))
-	for _, fund := range portfolioFunds {
-		pfIDs = append(pfIDs, fund.ID)
-		fundIDs = append(fundIDs, fund.FundID)
-	}
-	oldestTransactionDate := s.transactionService.getOldestTransaction(pfIDs)
-	today := time.Now()
-
-	transactionsByPF, err := s.transactionService.loadTransactions(pfIDs, oldestTransactionDate, today)
+	data, err := s.dataLoaderService.LoadForPortfolios(portfolio, time.Time{}, time.Now())
 	if err != nil {
 		return nil, err
 	}
 
-	dividendsByPF, err := s.dividendService.loadDividendPerPF(pfIDs, oldestTransactionDate, today)
-	if err != nil {
-		return nil, err
+	if len(data.PFIDs) == 0 {
+		return []model.PortfolioFund{}, nil
 	}
 
-	fundPriceByFund, err := s.LoadFundPrices(fundIDs, oldestTransactionDate, today, true) //ASC
-	if err != nil {
-		return nil, err
-	}
+	realizedGainsByPF := data.MapRealizedGainsByPF(portfolioID)
 
-	realizedGainLossByPortfolio, err := s.realizedGainLossService.loadRealizedGainLoss([]string{portfolioID}, oldestTransactionDate, today)
-	if err != nil {
-		return nil, err
-	}
-
-	for i := range portfolioFunds {
-		fund := &portfolioFunds[i]
-
-		realizedGainsByPF := make(map[string][]model.RealizedGainLoss)
-		for _, entry := range realizedGainLossByPortfolio[portfolioID] {
-			if entry.FundID == fund.FundID {
-				realizedGainsByPF[fund.ID] = append(realizedGainsByPF[fund.ID], entry)
-			}
-		}
-
-		totalDividendSharesPerPF, err := s.dividendService.processDividendSharesForDate(dividendsByPF, transactionsByPF[fund.ID], today)
-		if err != nil {
-			return nil, err
-		}
-
-		fundMetrics, err := s.calculateFundMetrics(
-			fund.ID, fund.FundID, today, transactionsByPF[fund.ID], totalDividendSharesPerPF[fund.ID], fundPriceByFund[fund.FundID], true)
-		if err != nil {
-			return nil, err
-		}
-
-		totalDividendAmount, err := s.dividendService.processDividendAmountForDate(
-			dividendsByPF[fund.ID],
-			today,
-		)
-		if err != nil {
-			return nil, err
-		}
-
-		// Calculate realized gains for this fund
-		totalRealizedGainLoss, _, _, err := s.realizedGainLossService.processRealizedGainLossForDate(
-			realizedGainsByPF[fund.ID],
-			today,
-		)
-		if err != nil {
-			return nil, err
-		}
-
-		roundedShares := math.Round(fundMetrics.Shares*RoundingPrecision) / RoundingPrecision
-		averageCost := 0.0
-		if roundedShares > 0 {
-			averageCost = fundMetrics.Cost / roundedShares
-		}
-
-		fund.TotalShares = roundedShares
-		fund.LatestPrice = math.Round(fundMetrics.LatestPrice*RoundingPrecision) / RoundingPrecision
-		fund.AverageCost = math.Round(averageCost*RoundingPrecision) / RoundingPrecision
-		fund.TotalCost = math.Round(fundMetrics.Cost*RoundingPrecision) / RoundingPrecision
-		fund.CurrentValue = math.Round(fundMetrics.Value*RoundingPrecision) / RoundingPrecision
-		fund.UnrealizedGainLoss = math.Round(fundMetrics.UnrealizedGain*RoundingPrecision) / RoundingPrecision
-		fund.RealizedGainLoss = math.Round(totalRealizedGainLoss*RoundingPrecision) / RoundingPrecision
-		fund.TotalGainLoss = math.Round((fundMetrics.UnrealizedGain+totalRealizedGainLoss)*RoundingPrecision) / RoundingPrecision
-		fund.TotalDividends = math.Round(totalDividendAmount*RoundingPrecision) / RoundingPrecision
-		fund.TotalFees = math.Round(fundMetrics.Fees*RoundingPrecision) / RoundingPrecision
-
-	}
-	return portfolioFunds, nil
+	return s.enrichPortfolioFundsWithMetrics(data, realizedGainsByPF)
 }
 
 // loadFundPrices retrieves fund prices for the given fund IDs within the specified date range.
