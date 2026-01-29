@@ -1,12 +1,15 @@
 package handlers_test
 
 import (
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/handlers"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/testutil"
 )
 
@@ -19,8 +22,10 @@ func TestPortfolioHandler_Portfolios(t *testing.T) {
 	t.Run("GET /api/portfolio returns 200 with empty array", func(t *testing.T) {
 		// Setup
 		db := testutil.SetupTestDB(t)
-		svc := testutil.NewTestPortfolioService(t, db)
-		handler := handlers.NewPortfolioHandler(svc)
+		ps := testutil.NewTestPortfolioService(t, db)
+		fs := testutil.NewTestFundService(t, db)
+		ms := testutil.NewTestMaterializedService(t, db)
+		handler := handlers.NewPortfolioHandler(ps, fs, ms)
 
 		// Create HTTP request
 		req := httptest.NewRequest(http.MethodGet, "/api/portfolio/", nil)
@@ -41,7 +46,7 @@ func TestPortfolioHandler_Portfolios(t *testing.T) {
 		}
 
 		// Assert response body
-		var response []handlers.PortfoliosResponse
+		var response []model.Portfolio
 		err := json.NewDecoder(w.Body).Decode(&response)
 		if err != nil {
 			t.Fatalf("Failed to decode response: %v", err)
@@ -55,8 +60,10 @@ func TestPortfolioHandler_Portfolios(t *testing.T) {
 	t.Run("GET /api/portfolio returns all portfolios", func(t *testing.T) {
 		// Setup
 		db := testutil.SetupTestDB(t)
-		svc := testutil.NewTestPortfolioService(t, db)
-		handler := handlers.NewPortfolioHandler(svc)
+		ps := testutil.NewTestPortfolioService(t, db)
+		fs := testutil.NewTestFundService(t, db)
+		ms := testutil.NewTestMaterializedService(t, db)
+		handler := handlers.NewPortfolioHandler(ps, fs, ms)
 
 		// Create test data
 		p1 := testutil.CreatePortfolio(t, db, "Portfolio One")
@@ -74,7 +81,7 @@ func TestPortfolioHandler_Portfolios(t *testing.T) {
 			t.Errorf("Expected status 200, got %d", w.Code)
 		}
 
-		var response []handlers.PortfoliosResponse
+		var response []model.Portfolio
 		err := json.NewDecoder(w.Body).Decode(&response)
 		if err != nil {
 			t.Fatalf("Failed to decode response: %v", err)
@@ -84,27 +91,41 @@ func TestPortfolioHandler_Portfolios(t *testing.T) {
 			t.Errorf("Expected 2 portfolios, got %d", len(response))
 		}
 
-		// Verify data matches what we created
-		if response[0].ID != p1.ID {
-			t.Errorf("Expected first portfolio ID %s, got %s", p1.ID, response[0].ID)
-		}
-		if response[0].Name != "Portfolio One" {
-			t.Errorf("Expected first portfolio name 'Portfolio One', got '%s'", response[0].Name)
+		// Find portfolios by ID - don't assume order
+		var portfolio1, portfolio2 *model.Portfolio
+		for i := range response {
+			if response[i].ID == p1.ID {
+				portfolio1 = &response[i]
+			}
+			if response[i].ID == p2.ID {
+				portfolio2 = &response[i]
+			}
 		}
 
-		if response[1].ID != p2.ID {
-			t.Errorf("Expected second portfolio ID %s, got %s", p2.ID, response[1].ID)
+		// Verify we found both
+		if portfolio1 == nil {
+			t.Fatal("Portfolio One not found in response")
 		}
-		if response[1].Name != "Portfolio Two" {
-			t.Errorf("Expected second portfolio name 'Portfolio Two', got '%s'", response[1].Name)
+		if portfolio2 == nil {
+			t.Fatal("Portfolio Two not found in response")
+		}
+
+		// Verify data matches what we created
+		if portfolio1.Name != "Portfolio One" {
+			t.Errorf("Expected first portfolio name 'Portfolio One', got '%s'", portfolio1.Name)
+		}
+		if portfolio2.Name != "Portfolio Two" {
+			t.Errorf("Expected second portfolio name 'Portfolio Two', got '%s'", portfolio2.Name)
 		}
 	})
 
 	t.Run("GET /api/portfolio includes all fields", func(t *testing.T) {
 		// Setup
 		db := testutil.SetupTestDB(t)
-		svc := testutil.NewTestPortfolioService(t, db)
-		handler := handlers.NewPortfolioHandler(svc)
+		ps := testutil.NewTestPortfolioService(t, db)
+		fs := testutil.NewTestFundService(t, db)
+		ms := testutil.NewTestMaterializedService(t, db)
+		handler := handlers.NewPortfolioHandler(ps, fs, ms)
 
 		// Create portfolio with all fields set
 		p := testutil.NewPortfolio().
@@ -126,7 +147,7 @@ func TestPortfolioHandler_Portfolios(t *testing.T) {
 			t.Errorf("Expected status 200, got %d", w.Code)
 		}
 
-		var response []handlers.PortfoliosResponse
+		var response []model.Portfolio
 		err := json.NewDecoder(w.Body).Decode(&response)
 		if err != nil {
 			t.Fatalf("Failed to decode response: %v", err)
@@ -156,13 +177,77 @@ func TestPortfolioHandler_Portfolios(t *testing.T) {
 		}
 	})
 
+	t.Run("GET /api/portfolio includes archived and excluded from overview", func(t *testing.T) {
+		// Setup
+		db := testutil.SetupTestDB(t)
+		ps := testutil.NewTestPortfolioService(t, db)
+		fs := testutil.NewTestFundService(t, db)
+		ms := testutil.NewTestMaterializedService(t, db)
+		handler := handlers.NewPortfolioHandler(ps, fs, ms)
+
+		// Create portfolio with all fields set
+		p1 := testutil.CreateArchivedPortfolio(t, db, "Portfolio One")
+		p2 := testutil.CreateExcludedPortfolio(t, db, "Portfolio Two")
+
+		// Create HTTP request
+		req := httptest.NewRequest(http.MethodGet, "/api/portfolio/", nil)
+		w := httptest.NewRecorder()
+
+		// Execute
+		handler.Portfolios(w, req)
+
+		// Assert
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected status 200, got %d", w.Code)
+		}
+
+		var response []model.Portfolio
+		err := json.NewDecoder(w.Body).Decode(&response)
+		if err != nil {
+			t.Fatalf("Failed to decode response: %v", err)
+		}
+
+		if len(response) != 2 {
+			t.Fatalf("Expected 2 portfolios, got %d", len(response))
+		}
+
+		// Find portfolios by ID - don't assume order
+		var archivedPortfolio, excludedPortfolio *model.Portfolio
+		for i := range response {
+			if response[i].ID == p1.ID {
+				archivedPortfolio = &response[i]
+			}
+			if response[i].ID == p2.ID {
+				excludedPortfolio = &response[i]
+			}
+		}
+
+		// Verify we found both
+		if archivedPortfolio == nil {
+			t.Fatal("Archived portfolio not found in response")
+		}
+		if excludedPortfolio == nil {
+			t.Fatal("Excluded portfolio not found in response")
+		}
+
+		// Verify flags are set correctly
+		if !archivedPortfolio.IsArchived {
+			t.Errorf("Expected archived portfolio isArchived to be true, got %t", archivedPortfolio.IsArchived)
+		}
+		if !excludedPortfolio.ExcludeFromOverview {
+			t.Errorf("Expected excluded portfolio exclude_from_overview to be true, got %t", excludedPortfolio.ExcludeFromOverview)
+		}
+	})
+
 	t.Run("GET /api/portfolio returns 500 on database error", func(t *testing.T) {
 		// Setup with closed database
 		db := testutil.SetupTestDB(t)
 		db.Close() // Force database error
 
-		svc := testutil.NewTestPortfolioService(t, db)
-		handler := handlers.NewPortfolioHandler(svc)
+		ps := testutil.NewTestPortfolioService(t, db)
+		fs := testutil.NewTestFundService(t, db)
+		ms := testutil.NewTestMaterializedService(t, db)
+		handler := handlers.NewPortfolioHandler(ps, fs, ms)
 
 		// Create HTTP request
 		req := httptest.NewRequest(http.MethodGet, "/api/portfolio/", nil)
@@ -195,8 +280,10 @@ func TestPortfolioHandler_WithHelper(t *testing.T) {
 		t.Helper()
 
 		db := testutil.SetupTestDB(t)
-		svc := testutil.NewTestPortfolioService(t, db)
-		handler := handlers.NewPortfolioHandler(svc)
+		ps := testutil.NewTestPortfolioService(t, db)
+		fs := testutil.NewTestFundService(t, db)
+		ms := testutil.NewTestMaterializedService(t, db)
+		handler := handlers.NewPortfolioHandler(ps, fs, ms)
 		w := httptest.NewRecorder()
 
 		return handler, w
@@ -222,8 +309,10 @@ func TestPortfolioHandler_PortfolioSummary(t *testing.T) {
 	t.Run("returns empty array when no portfolios exist", func(t *testing.T) {
 		// Setup
 		db := testutil.SetupTestDB(t)
-		svc := testutil.NewTestPortfolioService(t, db)
-		handler := handlers.NewPortfolioHandler(svc)
+		ps := testutil.NewTestPortfolioService(t, db)
+		fs := testutil.NewTestFundService(t, db)
+		ms := testutil.NewTestMaterializedService(t, db)
+		handler := handlers.NewPortfolioHandler(ps, fs, ms)
 
 		// Create HTTP request
 		req := httptest.NewRequest(http.MethodGet, "/api/portfolio/summary", nil)
@@ -237,10 +326,15 @@ func TestPortfolioHandler_PortfolioSummary(t *testing.T) {
 			t.Errorf("Expected status 200, got %d", w.Code)
 		}
 
-		var response []handlers.PortfolioSummaryResponse
+		var response []model.PortfolioSummary
 		err := json.NewDecoder(w.Body).Decode(&response)
 		if err != nil {
 			t.Fatalf("Failed to decode response: %v", err)
+		}
+
+		// Debug output - only shows on failure or with -v flag
+		if len(response) != 0 {
+			t.Logf("Expected empty array, got %d items", len(response))
 		}
 
 		if len(response) != 0 {
@@ -251,8 +345,10 @@ func TestPortfolioHandler_PortfolioSummary(t *testing.T) {
 	t.Run("returns summary for portfolio with basic transactions", func(t *testing.T) {
 		// Setup
 		db := testutil.SetupTestDB(t)
-		svc := testutil.NewTestPortfolioService(t, db)
-		handler := handlers.NewPortfolioHandler(svc)
+		ps := testutil.NewTestPortfolioService(t, db)
+		fs := testutil.NewTestFundService(t, db)
+		ms := testutil.NewTestMaterializedService(t, db)
+		handler := handlers.NewPortfolioHandler(ps, fs, ms)
 
 		// Create test data: portfolio, fund, and transactions
 		portfolio := testutil.NewPortfolio().WithName("Test Portfolio").Build(t, db)
@@ -281,7 +377,7 @@ func TestPortfolioHandler_PortfolioSummary(t *testing.T) {
 			t.Errorf("Expected status 200, got %d", w.Code)
 		}
 
-		var response []handlers.PortfolioSummaryResponse
+		var response []model.PortfolioSummary
 		err := json.NewDecoder(w.Body).Decode(&response)
 		if err != nil {
 			t.Fatalf("Failed to decode response: %v", err)
@@ -338,8 +434,10 @@ func TestPortfolioHandler_PortfolioSummary(t *testing.T) {
 	t.Run("excludes archived portfolios from summary", func(t *testing.T) {
 		// Setup
 		db := testutil.SetupTestDB(t)
-		svc := testutil.NewTestPortfolioService(t, db)
-		handler := handlers.NewPortfolioHandler(svc)
+		ps := testutil.NewTestPortfolioService(t, db)
+		fs := testutil.NewTestFundService(t, db)
+		ms := testutil.NewTestMaterializedService(t, db)
+		handler := handlers.NewPortfolioHandler(ps, fs, ms)
 
 		// Create active portfolio
 		activePortfolio := testutil.NewPortfolio().WithName("Active").Build(t, db)
@@ -365,7 +463,7 @@ func TestPortfolioHandler_PortfolioSummary(t *testing.T) {
 			t.Errorf("Expected status 200, got %d", w.Code)
 		}
 
-		var response []handlers.PortfolioSummaryResponse
+		var response []model.PortfolioSummary
 		err := json.NewDecoder(w.Body).Decode(&response)
 		if err != nil {
 			t.Fatalf("Failed to decode response: %v", err)
@@ -384,8 +482,10 @@ func TestPortfolioHandler_PortfolioSummary(t *testing.T) {
 	t.Run("excludes portfolios marked as exclude_from_overview", func(t *testing.T) {
 		// Setup
 		db := testutil.SetupTestDB(t)
-		svc := testutil.NewTestPortfolioService(t, db)
-		handler := handlers.NewPortfolioHandler(svc)
+		ps := testutil.NewTestPortfolioService(t, db)
+		fs := testutil.NewTestFundService(t, db)
+		ms := testutil.NewTestMaterializedService(t, db)
+		handler := handlers.NewPortfolioHandler(ps, fs, ms)
 
 		// Create normal portfolio
 		normalPortfolio := testutil.NewPortfolio().WithName("Normal").Build(t, db)
@@ -407,7 +507,7 @@ func TestPortfolioHandler_PortfolioSummary(t *testing.T) {
 		handler.PortfolioSummary(w, req)
 
 		// Assert
-		var response []handlers.PortfolioSummaryResponse
+		var response []model.PortfolioSummary
 		json.NewDecoder(w.Body).Decode(&response)
 
 		// Should only include normal portfolio
@@ -423,8 +523,10 @@ func TestPortfolioHandler_PortfolioSummary(t *testing.T) {
 	t.Run("includes realized gains from sell transactions", func(t *testing.T) {
 		// Setup
 		db := testutil.SetupTestDB(t)
-		svc := testutil.NewTestPortfolioService(t, db)
-		handler := handlers.NewPortfolioHandler(svc)
+		ps := testutil.NewTestPortfolioService(t, db)
+		fs := testutil.NewTestFundService(t, db)
+		ms := testutil.NewTestMaterializedService(t, db)
+		handler := handlers.NewPortfolioHandler(ps, fs, ms)
 
 		// Create portfolio and fund
 		portfolio := testutil.NewPortfolio().Build(t, db)
@@ -463,7 +565,7 @@ func TestPortfolioHandler_PortfolioSummary(t *testing.T) {
 		handler.PortfolioSummary(w, req)
 
 		// Assert
-		var response []handlers.PortfolioSummaryResponse
+		var response []model.PortfolioSummary
 		json.NewDecoder(w.Body).Decode(&response)
 
 		if len(response) != 1 {
@@ -511,10 +613,16 @@ func TestPortfolioHandler_PortfolioSummary(t *testing.T) {
 	})
 
 	t.Run("includes dividend payments in summary", func(t *testing.T) {
+		// t.Skip("BLOCKED: Dividend calculation returns 0. Root cause: testutil.NewDividend() uses raw SQL INSERT " +
+		// 	"that doesn't match production data structure. Will fix when DividendService.Create() is implemented. " +
+		// 	"See docs/TESTDATA_LIMITATIONS.md")
+
 		// Setup
 		db := testutil.SetupTestDB(t)
-		svc := testutil.NewTestPortfolioService(t, db)
-		handler := handlers.NewPortfolioHandler(svc)
+		ps := testutil.NewTestPortfolioService(t, db)
+		fs := testutil.NewTestFundService(t, db)
+		ms := testutil.NewTestMaterializedService(t, db)
+		handler := handlers.NewPortfolioHandler(ps, fs, ms)
 
 		// Create portfolio and fund
 		portfolio := testutil.NewPortfolio().WithName("Dividend Test Portfolio").Build(t, db)
@@ -526,6 +634,7 @@ func TestPortfolioHandler_PortfolioSummary(t *testing.T) {
 			WithType("buy").
 			WithShares(100).
 			WithCostPerShare(10.0).
+			WithDate(time.Now().AddDate(0, 0, -20)).
 			Build(t, db)
 
 		// Add dividend: 100 shares * $0.50 = $50
@@ -549,7 +658,7 @@ func TestPortfolioHandler_PortfolioSummary(t *testing.T) {
 			t.Fatalf("Expected status 200, got %d: %s", w.Code, w.Body.String())
 		}
 
-		var response []handlers.PortfolioSummaryResponse
+		var response []model.PortfolioSummary
 		err := json.NewDecoder(w.Body).Decode(&response)
 		if err != nil {
 			t.Fatalf("Failed to decode response: %v. Body: %s", err, w.Body.String())
@@ -568,10 +677,15 @@ func TestPortfolioHandler_PortfolioSummary(t *testing.T) {
 	})
 
 	t.Run("includes dividend reinvestment shares in calculations", func(t *testing.T) {
+		// t.Skip("BLOCKED: Same as 'includes_dividend_payments_in_summary' - dividend test data issue. " +
+		// 	"See docs/TESTDATA_LIMITATIONS.md")
+
 		// Setup
 		db := testutil.SetupTestDB(t)
-		svc := testutil.NewTestPortfolioService(t, db)
-		handler := handlers.NewPortfolioHandler(svc)
+		ps := testutil.NewTestPortfolioService(t, db)
+		fs := testutil.NewTestFundService(t, db)
+		ms := testutil.NewTestMaterializedService(t, db)
+		handler := handlers.NewPortfolioHandler(ps, fs, ms)
 
 		// Create portfolio and fund
 		portfolio := testutil.NewPortfolio().Build(t, db)
@@ -583,6 +697,7 @@ func TestPortfolioHandler_PortfolioSummary(t *testing.T) {
 			WithType("buy").
 			WithShares(100).
 			WithCostPerShare(10.0).
+			WithDate(time.Now().AddDate(0, 0, -20)).
 			Build(t, db)
 
 		// Dividend reinvestment: buy 5 shares at $10
@@ -610,7 +725,7 @@ func TestPortfolioHandler_PortfolioSummary(t *testing.T) {
 		handler.PortfolioSummary(w, req)
 
 		// Assert
-		var response []handlers.PortfolioSummaryResponse
+		var response []model.PortfolioSummary
 		json.NewDecoder(w.Body).Decode(&response)
 
 		if len(response) != 1 {
@@ -635,8 +750,10 @@ func TestPortfolioHandler_PortfolioSummary(t *testing.T) {
 	t.Run("handles portfolio with no transactions gracefully", func(t *testing.T) {
 		// Setup
 		db := testutil.SetupTestDB(t)
-		svc := testutil.NewTestPortfolioService(t, db)
-		handler := handlers.NewPortfolioHandler(svc)
+		ps := testutil.NewTestPortfolioService(t, db)
+		fs := testutil.NewTestFundService(t, db)
+		ms := testutil.NewTestMaterializedService(t, db)
+		handler := handlers.NewPortfolioHandler(ps, fs, ms)
 
 		// Create portfolio with no transactions
 		testutil.NewPortfolio().WithName("Empty").Build(t, db)
@@ -654,7 +771,7 @@ func TestPortfolioHandler_PortfolioSummary(t *testing.T) {
 		}
 
 		// Should not crash, may return empty or zero-value summary
-		var response []handlers.PortfolioSummaryResponse
+		var response []model.PortfolioSummary
 		err := json.NewDecoder(w.Body).Decode(&response)
 		if err != nil {
 			t.Fatalf("Failed to decode response: %v", err)
@@ -664,8 +781,10 @@ func TestPortfolioHandler_PortfolioSummary(t *testing.T) {
 	t.Run("handles portfolio with no fund prices gracefully", func(t *testing.T) {
 		// Setup
 		db := testutil.SetupTestDB(t)
-		svc := testutil.NewTestPortfolioService(t, db)
-		handler := handlers.NewPortfolioHandler(svc)
+		ps := testutil.NewTestPortfolioService(t, db)
+		fs := testutil.NewTestFundService(t, db)
+		ms := testutil.NewTestMaterializedService(t, db)
+		handler := handlers.NewPortfolioHandler(ps, fs, ms)
 
 		// Create portfolio with transaction but no prices
 		portfolio := testutil.NewPortfolio().Build(t, db)
@@ -691,7 +810,7 @@ func TestPortfolioHandler_PortfolioSummary(t *testing.T) {
 			t.Errorf("Expected status 200, got %d", w.Code)
 		}
 
-		var response []handlers.PortfolioSummaryResponse
+		var response []model.PortfolioSummary
 		err := json.NewDecoder(w.Body).Decode(&response)
 		if err != nil {
 			t.Fatalf("Failed to decode response: %v", err)
@@ -717,8 +836,10 @@ func TestPortfolioHandler_PortfolioSummary(t *testing.T) {
 		db := testutil.SetupTestDB(t)
 		db.Close() // Force database error
 
-		svc := testutil.NewTestPortfolioService(t, db)
-		handler := handlers.NewPortfolioHandler(svc)
+		ps := testutil.NewTestPortfolioService(t, db)
+		fs := testutil.NewTestFundService(t, db)
+		ms := testutil.NewTestMaterializedService(t, db)
+		handler := handlers.NewPortfolioHandler(ps, fs, ms)
 
 		// Create HTTP request
 		req := httptest.NewRequest(http.MethodGet, "/api/portfolio/summary", nil)
@@ -744,8 +865,946 @@ func TestPortfolioHandler_PortfolioSummary(t *testing.T) {
 	})
 }
 
+// TestPortfolioHandler_GetPortfolio tests the GET /api/portfolio/{portfolioId} endpoint.
+//
+// WHY: This endpoint retrieves a single portfolio with its current valuation summary.
+// It's critical for portfolio detail views and dashboard widgets showing individual portfolio performance.
+func TestPortfolioHandler_GetPortfolio(t *testing.T) {
+	setupHandler := func(t *testing.T) (*handlers.PortfolioHandler, *sql.DB) {
+		t.Helper()
+		db := testutil.SetupTestDB(t)
+		ps := testutil.NewTestPortfolioService(t, db)
+		fs := testutil.NewTestFundService(t, db)
+		ms := testutil.NewTestMaterializedService(t, db)
+		return handlers.NewPortfolioHandler(ps, fs, ms), db
+	}
+
+	// Happy path
+	t.Run("returns portfolio with current summary for valid ID", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		// Create test data
+		portfolio := testutil.NewPortfolio().WithName("Test Portfolio").Build(t, db)
+		fund := testutil.NewFund().WithSymbol("AAPL").Build(t, db)
+		pfID := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+
+		// Buy 100 shares at $10
+		testutil.NewTransaction(pfID).
+			WithType("buy").
+			WithShares(100).
+			WithCostPerShare(10.0).
+			Build(t, db)
+
+		// Current price: $12
+		testutil.NewFundPrice(fund.ID).WithPrice(12.0).Build(t, db)
+
+		// Create request with URL params
+		req := testutil.NewRequestWithURLParams(
+			http.MethodGet,
+			"/api/portfolio/"+portfolio.ID,
+			map[string]string{"portfolioId": portfolio.ID},
+		)
+		w := httptest.NewRecorder()
+
+		// Execute
+		handler.GetPortfolio(w, req)
+
+		// Assert HTTP status
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected 200, got %d", w.Code)
+		}
+
+		// Assert response body
+		var response model.PortfolioSummary
+		err := json.NewDecoder(w.Body).Decode(&response)
+		if err != nil {
+			t.Fatalf("Failed to decode response: %v", err)
+		}
+
+		if response.ID != portfolio.ID {
+			t.Errorf("Expected portfolio ID %s, got %s", portfolio.ID, response.ID)
+		}
+
+		if response.Name != "Test Portfolio" {
+			t.Errorf("Expected name 'Test Portfolio', got '%s'", response.Name)
+		}
+
+		// Verify calculations: cost = 100 * $10 = $1000
+		if response.TotalCost != 1000.0 {
+			t.Errorf("Expected cost 1000.0, got %.2f", response.TotalCost)
+		}
+
+		// Value: 100 * $12 = $1200
+		if response.TotalValue != 1200.0 {
+			t.Errorf("Expected value 1200.0, got %.2f", response.TotalValue)
+		}
+
+		// Unrealized gain: $1200 - $1000 = $200
+		if response.TotalUnrealizedGainLoss != 200.0 {
+			t.Errorf("Expected unrealized gain 200.0, got %.2f", response.TotalUnrealizedGainLoss)
+		}
+	})
+
+	// Input validation: Invalid format
+	t.Run("returns 400 when portfolioId is invalid UUID format", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		req := testutil.NewRequestWithURLParams(
+			http.MethodGet,
+			"/api/portfolio/not-a-uuid",
+			map[string]string{"portfolioId": "not-a-uuid"},
+		)
+		w := httptest.NewRecorder()
+
+		handler.GetPortfolio(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d", w.Code)
+		}
+
+		var response map[string]string
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if _, hasError := response["error"]; !hasError {
+			t.Error("Expected error field in response")
+		}
+	})
+
+	// Resource not found
+	t.Run("returns 404 when portfolio doesn't exist", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		validID := testutil.MakeID()
+		req := testutil.NewRequestWithURLParams(
+			http.MethodGet,
+			"/api/portfolio/"+validID,
+			map[string]string{"portfolioId": validID},
+		)
+		w := httptest.NewRecorder()
+
+		handler.GetPortfolio(w, req)
+
+		if w.Code != http.StatusNotFound {
+			t.Errorf("Expected 404, got %d", w.Code)
+		}
+	})
+
+	// Edge case: Portfolio with no transactions
+	t.Run("handles portfolio with no transactions", func(t *testing.T) {
+		// t.Skip("BLOCKED: Returns 404 instead of 200. Issue: GetPortfolioHistoryWithFallback returns empty " +
+		// 	"history for portfolios with no transactions, which is treated as 'not found'. Need to distinguish " +
+		// 	"between 'portfolio doesn't exist' vs 'portfolio exists but has no data'. See portfolios.go:101")
+
+		handler, db := setupHandler(t)
+
+		portfolio := testutil.NewPortfolio().WithName("Empty Portfolio").Build(t, db)
+
+		req := testutil.NewRequestWithURLParams(
+			http.MethodGet,
+			"/api/portfolio/"+portfolio.ID,
+			map[string]string{"portfolioId": portfolio.ID},
+		)
+		w := httptest.NewRecorder()
+
+		handler.GetPortfolio(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected 200, got %d", w.Code)
+		}
+
+		var response model.PortfolioSummary
+		json.NewDecoder(w.Body).Decode(&response)
+
+		// Should have zero values, not errors
+		if response.TotalValue != 0 {
+			t.Errorf("Expected TotalValue 0, got %.2f", response.TotalValue)
+		}
+		if response.TotalCost != 0 {
+			t.Errorf("Expected TotalCost 0, got %.2f", response.TotalCost)
+		}
+	})
+
+	// Input validation: Empty portfolio ID
+	t.Run("returns 400 when portfolioId URL param is empty", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		req := testutil.NewRequestWithURLParams(
+			http.MethodGet,
+			"/api/portfolio/",
+			map[string]string{"portfolioId": ""},
+		)
+		w := httptest.NewRecorder()
+
+		handler.GetPortfolio(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400 for empty portfolioId, got %d", w.Code)
+		}
+
+		var response map[string]string
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if response["error"] != "portfolio ID is required" {
+			t.Errorf("Expected 'portfolio ID is required' error, got '%s'", response["error"])
+		}
+	})
+
+	// Database error
+	t.Run("returns 500 on database error", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		portfolio := testutil.NewPortfolio().WithName("Test").Build(t, db)
+		db.Close() // Force error
+
+		req := testutil.NewRequestWithURLParams(
+			http.MethodGet,
+			"/api/portfolio/"+portfolio.ID,
+			map[string]string{"portfolioId": portfolio.ID},
+		)
+		w := httptest.NewRecorder()
+
+		handler.GetPortfolio(w, req)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Errorf("Expected 500, got %d", w.Code)
+		}
+	})
+}
+
+// TestPortfolioHandler_PortfolioHistory tests the GET /api/portfolio/history endpoint.
+//
+// WHY: This endpoint returns historical portfolio valuations over a date range.
+// It's essential for performance charts and trend analysis in the frontend.
+//
+// TODO: Add tests for materialized view fast path once materialized view population is implemented.
+// Currently only tests the on-the-fly calculation fallback path.
+func TestPortfolioHandler_PortfolioHistory(t *testing.T) {
+	setupHandler := func(t *testing.T) (*handlers.PortfolioHandler, *sql.DB) {
+		t.Helper()
+		db := testutil.SetupTestDB(t)
+		ps := testutil.NewTestPortfolioService(t, db)
+		fs := testutil.NewTestFundService(t, db)
+		ms := testutil.NewTestMaterializedService(t, db)
+		return handlers.NewPortfolioHandler(ps, fs, ms), db
+	}
+
+	// Happy path: No portfolios
+	t.Run("returns empty array when no portfolios exist", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		req := testutil.NewRequestWithQueryParams(
+			http.MethodGet,
+			"/api/portfolio/history",
+			map[string]string{
+				"start_date": "2024-01-01",
+				"end_date":   "2024-12-31",
+			},
+		)
+		w := httptest.NewRecorder()
+
+		handler.PortfolioHistory(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected 200, got %d", w.Code)
+		}
+
+		var response []model.PortfolioHistory
+		err := json.NewDecoder(w.Body).Decode(&response)
+		if err != nil {
+			t.Fatalf("Failed to decode response: %v", err)
+		}
+
+		totalPortfolios := 0
+		for _, entry := range response {
+			totalPortfolios += len(entry.Portfolios)
+		}
+		if totalPortfolios != 0 {
+			t.Errorf("Expected no portfolios in timeframe, got %d total portfolios", totalPortfolios)
+		}
+	})
+
+	// Happy path: With data
+	t.Run("returns historical data for specified date range", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		// Create test data
+		portfolio := testutil.NewPortfolio().WithName("History Test").Build(t, db)
+		fund := testutil.NewFund().Build(t, db)
+		pfID := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+
+		// Transaction on 2024-06-01
+		txDate, _ := time.Parse("2006-01-02", "2024-06-01")
+		testutil.NewTransaction(pfID).
+			WithShares(100).
+			WithCostPerShare(10.0).
+			WithDate(txDate).
+			Build(t, db)
+
+		// Price on 2024-06-15
+		priceDate, _ := time.Parse("2006-01-02", "2024-06-15")
+		testutil.NewFundPrice(fund.ID).
+			WithPrice(12.0).
+			WithDate(priceDate).
+			Build(t, db)
+
+		req := testutil.NewRequestWithQueryParams(
+			http.MethodGet,
+			"/api/portfolio/history",
+			map[string]string{
+				"start_date": "2024-06-01",
+				"end_date":   "2024-06-30",
+			},
+		)
+		w := httptest.NewRecorder()
+
+		handler.PortfolioHistory(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var response []model.PortfolioHistory
+		err := json.NewDecoder(w.Body).Decode(&response)
+		if err != nil {
+			t.Fatalf("Failed to decode response: %v", err)
+		}
+
+		// Should have historical data points
+		if len(response) == 0 {
+			t.Error("Expected historical data, got empty array")
+		}
+	})
+
+	// Default behavior: Uses default dates when not provided
+	t.Run("uses default dates when query params not provided", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		// Create minimal test data
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		fund := testutil.NewFund().Build(t, db)
+		pfID := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+		testutil.NewTransaction(pfID).Build(t, db)
+		testutil.NewFundPrice(fund.ID).Build(t, db)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/portfolio/history", nil)
+		w := httptest.NewRecorder()
+
+		handler.PortfolioHistory(w, req)
+
+		// Should succeed with default dates
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected 200 with default dates, got %d", w.Code)
+		}
+	})
+
+	// Input validation: Invalid date format
+	t.Run("returns 400 when start_date has invalid format", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		req := testutil.NewRequestWithQueryParams(
+			http.MethodGet,
+			"/api/portfolio/history",
+			map[string]string{
+				"start_date": "not-a-date",
+				"end_date":   "2024-12-31",
+			},
+		)
+		w := httptest.NewRecorder()
+
+		handler.PortfolioHistory(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d", w.Code)
+		}
+
+		var response map[string]string
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if _, hasError := response["error"]; !hasError {
+			t.Error("Expected error field in response")
+		}
+	})
+
+	t.Run("returns 400 when end_date has invalid format", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		req := testutil.NewRequestWithQueryParams(
+			http.MethodGet,
+			"/api/portfolio/history",
+			map[string]string{
+				"start_date": "2024-01-01",
+				"end_date":   "invalid-date",
+			},
+		)
+		w := httptest.NewRecorder()
+
+		handler.PortfolioHistory(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d", w.Code)
+		}
+	})
+
+	// Edge case: Single day range
+	t.Run("handles single day date range", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		fund := testutil.NewFund().Build(t, db)
+		pfID := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+
+		singleDate, _ := time.Parse("2006-01-02", "2024-06-15")
+		testutil.NewTransaction(pfID).WithDate(singleDate).Build(t, db)
+		testutil.NewFundPrice(fund.ID).WithDate(singleDate).Build(t, db)
+
+		req := testutil.NewRequestWithQueryParams(
+			http.MethodGet,
+			"/api/portfolio/history",
+			map[string]string{
+				"start_date": "2024-06-15",
+				"end_date":   "2024-06-15",
+			},
+		)
+		w := httptest.NewRecorder()
+
+		handler.PortfolioHistory(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected 200 for single day range, got %d", w.Code)
+		}
+	})
+
+	// Database error
+	t.Run("returns 500 on database error", func(t *testing.T) {
+		handler, db := setupHandler(t)
+		db.Close() // Force error
+
+		req := testutil.NewRequestWithQueryParams(
+			http.MethodGet,
+			"/api/portfolio/history",
+			map[string]string{
+				"start_date": "2024-01-01",
+				"end_date":   "2024-12-31",
+			},
+		)
+		w := httptest.NewRecorder()
+
+		handler.PortfolioHistory(w, req)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Errorf("Expected 500, got %d", w.Code)
+		}
+	})
+}
+
+// TestPortfolioHandler_PortfolioFunds tests the GET /api/portfolio/funds endpoint.
+//
+// WHY: This endpoint returns all portfolio-fund relationships across all portfolios.
+// Used for overview pages showing which funds are in which portfolios.
+func TestPortfolioHandler_PortfolioFunds(t *testing.T) {
+	setupHandler := func(t *testing.T) (*handlers.PortfolioHandler, *sql.DB) {
+		t.Helper()
+		db := testutil.SetupTestDB(t)
+		ps := testutil.NewTestPortfolioService(t, db)
+		fs := testutil.NewTestFundService(t, db)
+		ms := testutil.NewTestMaterializedService(t, db)
+		return handlers.NewPortfolioHandler(ps, fs, ms), db
+	}
+
+	// Happy path: Empty
+	t.Run("returns empty array when no portfolio-fund relationships exist", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/portfolio/funds", nil)
+		w := httptest.NewRecorder()
+
+		handler.PortfolioFunds(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected 200, got %d", w.Code)
+		}
+
+		var response []model.PortfolioFund
+		err := json.NewDecoder(w.Body).Decode(&response)
+		if err != nil {
+			t.Fatalf("Failed to decode response: %v", err)
+		}
+
+		if len(response) != 0 {
+			t.Errorf("Expected empty array, got %d items", len(response))
+		}
+	})
+
+	// Happy path: With data
+	t.Run("returns all portfolio-fund relationships", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		// Create test data: 2 portfolios, 2 funds
+		p1 := testutil.NewPortfolio().WithName("Portfolio 1").Build(t, db)
+		p2 := testutil.NewPortfolio().WithName("Portfolio 2").Build(t, db)
+		f1 := testutil.NewFund().WithSymbol("AAPL").Build(t, db)
+		f2 := testutil.NewFund().WithSymbol("GOOGL").Build(t, db)
+
+		// Create relationships
+		testutil.NewPortfolioFund(p1.ID, f1.ID).Build(t, db)
+		testutil.NewPortfolioFund(p1.ID, f2.ID).Build(t, db)
+		testutil.NewPortfolioFund(p2.ID, f1.ID).Build(t, db)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/portfolio/funds", nil)
+		w := httptest.NewRecorder()
+
+		handler.PortfolioFunds(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected 200, got %d", w.Code)
+		}
+
+		var response []model.PortfolioFund
+		err := json.NewDecoder(w.Body).Decode(&response)
+		if err != nil {
+			t.Fatalf("Failed to decode response: %v", err)
+		}
+
+		// Should have 3 relationships
+		if len(response) != 3 {
+			t.Errorf("Expected 3 portfolio-fund relationships, got %d", len(response))
+		}
+	})
+
+	// Edge case: Multiple portfolios with same fund
+	t.Run("includes funds from multiple portfolios", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		p1 := testutil.NewPortfolio().Build(t, db)
+		p2 := testutil.NewPortfolio().Build(t, db)
+		fund := testutil.NewFund().Build(t, db)
+
+		// Same fund in two portfolios
+		testutil.NewPortfolioFund(p1.ID, fund.ID).Build(t, db)
+		testutil.NewPortfolioFund(p2.ID, fund.ID).Build(t, db)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/portfolio/funds", nil)
+		w := httptest.NewRecorder()
+
+		handler.PortfolioFunds(w, req)
+
+		var response []model.PortfolioFund
+		json.NewDecoder(w.Body).Decode(&response)
+
+		// Should list both relationships
+		if len(response) != 2 {
+			t.Errorf("Expected 2 relationships, got %d", len(response))
+		}
+	})
+
+	// Edge case: Verifies nil-safe response handling
+	t.Run("returns empty array not nil when no relationships exist", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/portfolio/funds", nil)
+		w := httptest.NewRecorder()
+
+		handler.PortfolioFunds(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected 200, got %d", w.Code)
+		}
+
+		var response []model.PortfolioFundListing
+		json.NewDecoder(w.Body).Decode(&response)
+
+		// Should be empty slice, not nil
+		if response == nil {
+			t.Error("Expected non-nil response (empty array)")
+		}
+		if len(response) != 0 {
+			t.Errorf("Expected empty array, got %d items", len(response))
+		}
+	})
+
+	// Database error
+	t.Run("returns 500 on database error", func(t *testing.T) {
+		handler, db := setupHandler(t)
+		db.Close() // Force error
+
+		req := httptest.NewRequest(http.MethodGet, "/api/portfolio/funds", nil)
+		w := httptest.NewRecorder()
+
+		handler.PortfolioFunds(w, req)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Errorf("Expected 500, got %d", w.Code)
+		}
+	})
+}
+
+// TestPortfolioHandler_GetPortfolioFunds tests the GET /api/portfolio/funds/{portfolioId} endpoint.
+//
+// WHY: This endpoint returns detailed fund metrics for a specific portfolio, including
+// shares, cost, value, gains, and dividends per fund. Critical for portfolio detail views.
+func TestPortfolioHandler_GetPortfolioFunds(t *testing.T) {
+	setupHandler := func(t *testing.T) (*handlers.PortfolioHandler, *sql.DB) {
+		t.Helper()
+		db := testutil.SetupTestDB(t)
+		ps := testutil.NewTestPortfolioService(t, db)
+		fs := testutil.NewTestFundService(t, db)
+		ms := testutil.NewTestMaterializedService(t, db)
+		return handlers.NewPortfolioHandler(ps, fs, ms), db
+	}
+
+	// Happy path
+	t.Run("returns funds with metrics for valid portfolio", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		// Create test data
+		portfolio := testutil.NewPortfolio().WithName("Test Portfolio").Build(t, db)
+		fund1 := testutil.NewFund().WithSymbol("AAPL").Build(t, db)
+		fund2 := testutil.NewFund().WithSymbol("GOOGL").Build(t, db)
+
+		pf1 := testutil.NewPortfolioFund(portfolio.ID, fund1.ID).Build(t, db)
+		pf2 := testutil.NewPortfolioFund(portfolio.ID, fund2.ID).Build(t, db)
+
+		// AAPL: 100 shares at $10
+		testutil.NewTransaction(pf1).
+			WithShares(100).
+			WithCostPerShare(10.0).
+			Build(t, db)
+		testutil.NewFundPrice(fund1.ID).WithPrice(12.0).Build(t, db)
+
+		// GOOGL: 50 shares at $20
+		testutil.NewTransaction(pf2).
+			WithShares(50).
+			WithCostPerShare(20.0).
+			Build(t, db)
+		testutil.NewFundPrice(fund2.ID).WithPrice(22.0).Build(t, db)
+
+		req := testutil.NewRequestWithURLParams(
+			http.MethodGet,
+			"/api/portfolio/funds/"+portfolio.ID,
+			map[string]string{"portfolioId": portfolio.ID},
+		)
+		w := httptest.NewRecorder()
+
+		handler.GetPortfolioFunds(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected 200, got %d", w.Code)
+		}
+
+		var response []model.PortfolioFund
+		err := json.NewDecoder(w.Body).Decode(&response)
+		if err != nil {
+			t.Fatalf("Failed to decode response: %v", err)
+		}
+
+		if len(response) != 2 {
+			t.Fatalf("Expected 2 funds, got %d", len(response))
+		}
+
+		// Find funds by ID - don't assume order
+		var aapl, googl *model.PortfolioFund
+		for i := range response {
+			if response[i].FundID == fund1.ID {
+				aapl = &response[i]
+			}
+			if response[i].FundID == fund2.ID {
+				googl = &response[i]
+			}
+		}
+
+		// Verify we found both funds
+		if aapl == nil {
+			t.Fatal("AAPL not found in response")
+		}
+		if googl == nil {
+			t.Fatal("GOOGL not found in response")
+		}
+
+		// Verify AAPL calculations
+		if aapl.TotalShares != 100 {
+			t.Errorf("Expected AAPL shares 100, got %.2f", aapl.TotalShares)
+		}
+		if aapl.TotalCost != 1000.0 {
+			t.Errorf("Expected AAPL cost 1000.0, got %.2f", aapl.TotalCost)
+		}
+		if aapl.CurrentValue != 1200.0 {
+			t.Errorf("Expected AAPL value 1200.0, got %.2f", aapl.CurrentValue)
+		}
+
+		// Verify GOOGL calculations
+		if googl.TotalShares != 50 {
+			t.Errorf("Expected GOOGL shares 50, got %.2f", googl.TotalShares)
+		}
+		if googl.TotalCost != 1000.0 {
+			t.Errorf("Expected GOOGL cost 1000.0, got %.2f", googl.TotalCost)
+		}
+		if googl.CurrentValue != 1100.0 {
+			t.Errorf("Expected GOOGL value 1100.0, got %.2f", googl.CurrentValue)
+		}
+	})
+
+	// Edge case: Empty portfolio
+	t.Run("returns empty array when portfolio has no funds", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		portfolio := testutil.NewPortfolio().WithName("Empty Portfolio").Build(t, db)
+
+		req := testutil.NewRequestWithURLParams(
+			http.MethodGet,
+			"/api/portfolio/funds/"+portfolio.ID,
+			map[string]string{"portfolioId": portfolio.ID},
+		)
+		w := httptest.NewRecorder()
+
+		handler.GetPortfolioFunds(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected 200, got %d", w.Code)
+		}
+
+		var response []model.PortfolioFund
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if len(response) != 0 {
+			t.Errorf("Expected empty array, got %d items", len(response))
+		}
+	})
+
+	// Input validation: Invalid UUID
+	t.Run("returns 400 when portfolioId is invalid UUID format", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		req := testutil.NewRequestWithURLParams(
+			http.MethodGet,
+			"/api/portfolio/funds/not-a-uuid",
+			map[string]string{"portfolioId": "not-a-uuid"},
+		)
+		w := httptest.NewRecorder()
+
+		handler.GetPortfolioFunds(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d", w.Code)
+		}
+	})
+
+	// Resource not found
+	t.Run("returns 404 when portfolio doesn't exist", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		validID := testutil.MakeID()
+		req := testutil.NewRequestWithURLParams(
+			http.MethodGet,
+			"/api/portfolio/funds/"+validID,
+			map[string]string{"portfolioId": validID},
+		)
+		w := httptest.NewRecorder()
+
+		handler.GetPortfolioFunds(w, req)
+
+		if w.Code != http.StatusNotFound {
+			t.Errorf("Expected 404, got %d", w.Code)
+		}
+	})
+
+	// Edge case: Fund with no prices
+	t.Run("handles fund with no price data", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		fund := testutil.NewFund().Build(t, db)
+		pfID := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+
+		testutil.NewTransaction(pfID).
+			WithShares(100).
+			WithCostPerShare(10.0).
+			Build(t, db)
+
+		// No price added
+
+		req := testutil.NewRequestWithURLParams(
+			http.MethodGet,
+			"/api/portfolio/funds/"+portfolio.ID,
+			map[string]string{"portfolioId": portfolio.ID},
+		)
+		w := httptest.NewRecorder()
+
+		handler.GetPortfolioFunds(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected 200, got %d", w.Code)
+		}
+
+		var response []model.PortfolioFund
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if len(response) != 1 {
+			t.Fatalf("Expected 1 fund, got %d", len(response))
+		}
+
+		// Value should be 0 when no price
+		if response[0].CurrentValue != 0 {
+			t.Errorf("Expected value 0 when no price, got %.2f", response[0].CurrentValue)
+		}
+
+		// Cost should still be calculated
+		if response[0].TotalCost != 1000.0 {
+			t.Errorf("Expected cost 1000.0, got %.2f", response[0].TotalCost)
+		}
+	})
+
+	// Edge case: Realized gains
+	t.Run("includes realized gains per fund", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		fund := testutil.NewFund().Build(t, db)
+		pfID := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+
+		// Buy 100 shares at $10
+		testutil.NewTransaction(pfID).
+			WithType("buy").
+			WithShares(100).
+			WithCostPerShare(10.0).
+			Build(t, db)
+
+		// Sell 30 shares at $15
+		sellTx := testutil.NewTransaction(pfID).
+			WithType("sell").
+			WithShares(30).
+			WithCostPerShare(15.0).
+			Build(t, db)
+
+		// Record realized gain
+		testutil.NewRealizedGainLoss(portfolio.ID, fund.ID, sellTx.ID).
+			WithShares(30).
+			WithCostBasis(300.0).
+			WithSaleProceeds(450.0).
+			Build(t, db)
+
+		testutil.NewFundPrice(fund.ID).WithPrice(12.0).Build(t, db)
+
+		req := testutil.NewRequestWithURLParams(
+			http.MethodGet,
+			"/api/portfolio/funds/"+portfolio.ID,
+			map[string]string{"portfolioId": portfolio.ID},
+		)
+		w := httptest.NewRecorder()
+
+		handler.GetPortfolioFunds(w, req)
+
+		var response []model.PortfolioFund
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if len(response) != 1 {
+			t.Fatalf("Expected 1 fund, got %d", len(response))
+		}
+
+		// Remaining shares: 70
+		if response[0].TotalShares != 70 {
+			t.Errorf("Expected 70 shares, got %.2f", response[0].TotalShares)
+		}
+
+		// Realized gain: $150
+		if response[0].RealizedGainLoss != 150.0 {
+			t.Errorf("Expected realized gain 150.0, got %.2f", response[0].RealizedGainLoss)
+		}
+	})
+
+	// Edge case: Dividends
+	t.Run("includes dividends per fund", func(t *testing.T) {
+		// t.Skip("BLOCKED: Same dividend test data issue as PortfolioSummary tests. " +
+		// 	"See docs/TESTDATA_LIMITATIONS.md")
+
+		handler, db := setupHandler(t)
+
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		fund := testutil.NewFund().Build(t, db)
+		pfID := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+
+		testutil.NewTransaction(pfID).
+			WithShares(100).
+			WithCostPerShare(10.0).
+			WithDate(time.Now().AddDate(0, 0, -20)).
+			Build(t, db)
+
+		// Add dividend: $50
+		testutil.NewDividend(fund.ID, pfID).
+			WithSharesOwned(100).
+			WithDividendPerShare(0.50).
+			Build(t, db)
+
+		testutil.NewFundPrice(fund.ID).WithPrice(12.0).Build(t, db)
+
+		req := testutil.NewRequestWithURLParams(
+			http.MethodGet,
+			"/api/portfolio/funds/"+portfolio.ID,
+			map[string]string{"portfolioId": portfolio.ID},
+		)
+		w := httptest.NewRecorder()
+
+		handler.GetPortfolioFunds(w, req)
+
+		var response []model.PortfolioFund
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if len(response) != 1 {
+			t.Fatalf("Expected 1 fund, got %d", len(response))
+		}
+
+		if response[0].TotalDividends != 50.0 {
+			t.Errorf("Expected dividends 50.0, got %.2f", response[0].TotalDividends)
+		}
+	})
+
+	// Input validation: Empty portfolio ID
+	t.Run("returns 400 when portfolioId URL param is empty", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		req := testutil.NewRequestWithURLParams(
+			http.MethodGet,
+			"/api/portfolio/funds/",
+			map[string]string{"portfolioId": ""},
+		)
+		w := httptest.NewRecorder()
+
+		handler.GetPortfolioFunds(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400 for empty portfolioId, got %d", w.Code)
+		}
+
+		var response map[string]string
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if response["error"] != "portfolio ID is required" {
+			t.Errorf("Expected 'portfolio ID is required' error, got '%s'", response["error"])
+		}
+	})
+
+	// Database error
+	t.Run("returns 500 on database error", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		db.Close() // Force error
+
+		req := testutil.NewRequestWithURLParams(
+			http.MethodGet,
+			"/api/portfolio/funds/"+portfolio.ID,
+			map[string]string{"portfolioId": portfolio.ID},
+		)
+		w := httptest.NewRecorder()
+
+		handler.GetPortfolioFunds(w, req)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Errorf("Expected 500, got %d", w.Code)
+		}
+	})
+}
+
 // TODO: Add more handler tests as you implement endpoints:
-// - TestPortfolioHandler_GetPortfolio (GET /api/portfolio/:id)
 // - TestPortfolioHandler_CreatePortfolio (POST /api/portfolio)
 // - TestPortfolioHandler_UpdatePortfolio (PUT /api/portfolio/:id)
 // - TestPortfolioHandler_DeletePortfolio (DELETE /api/portfolio/:id)

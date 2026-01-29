@@ -13,7 +13,11 @@
 
 # Created Binaries
 /bin/*
+/tmp/*
 
 # Test coverage files
 coverage.out
 coverage.html
+coverage_*.out
+*.coverprofile
+*.test

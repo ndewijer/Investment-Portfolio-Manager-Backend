@@ -1,10 +1,12 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	apperrors "github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/errors"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/service"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/validation"
@@ -81,21 +83,30 @@ func (h *PortfolioHandler) GetPortfolio(w http.ResponseWriter, r *http.Request) 
 	endDate := time.Now()
 	history, err := h.materializedService.GetPortfolioHistoryWithFallback(startDate, endDate, portfolioID)
 	if err != nil {
-		errorResponse := map[string]string{
+		if errors.Is(err, apperrors.ErrPortfolioNotFound) {
+			respondJSON(w, http.StatusNotFound, map[string]string{
+				"error": "portfolio does not exist",
+			})
+			return
+		}
+
+		respondJSON(w, http.StatusInternalServerError, map[string]string{
 			"error":  "failed to get portfolio summary",
 			"detail": err.Error(),
-		}
-		respondJSON(w, http.StatusInternalServerError, errorResponse)
+		})
 		return
 	}
 
 	// Should return exactly one portfolio
 	if len(history) == 0 || len(history[0].Portfolios) == 0 {
-		errorResponse := map[string]string{
-			"error":  "Portfolio not found",
-			"detail": "No portfolio found with the given ID",
-		}
-		respondJSON(w, http.StatusNotFound, errorResponse)
+		// Portfolio exists but has no transactions - return zero values
+		portfolio, _ := h.portfolioService.GetPortfolio(portfolioID)
+		respondJSON(w, http.StatusOK, model.PortfolioSummary{
+			ID:          portfolio.ID,
+			Name:        portfolio.Name,
+			Description: portfolio.Description,
+			IsArchived:  portfolio.IsArchived,
+		})
 		return
 	}
 
@@ -253,11 +264,17 @@ func (h *PortfolioHandler) GetPortfolioFunds(w http.ResponseWriter, r *http.Requ
 
 	portfolioFunds, err := h.fundService.GetPortfolioFunds(portfolioID)
 	if err != nil {
-		errorResponse := map[string]string{
+		if errors.Is(err, apperrors.ErrPortfolioNotFound) {
+			respondJSON(w, http.StatusNotFound, map[string]string{
+				"error": "portfolio does not exist",
+			})
+			return
+		}
+
+		respondJSON(w, http.StatusInternalServerError, map[string]string{
 			"error":  "failed to get portfolio funds",
 			"detail": err.Error(),
-		}
-		respondJSON(w, http.StatusInternalServerError, errorResponse)
+		})
 		return
 	}
 

@@ -94,6 +94,9 @@ func (s *TransactionRepository) GetTransactions(pfIDs []string, startDate, endDa
 
 		transactionsByPortfolioFund[t.PortfolioFundID] = append(transactionsByPortfolioFund[t.PortfolioFundID], t)
 	}
+	if err == sql.ErrNoRows {
+		return transactionsByPortfolioFund, nil
+	}
 
 	if err = rows.Err(); err != nil {
 		return nil, fmt.Errorf("error iterating transaction table: %w", err)
@@ -209,6 +212,9 @@ func (s *TransactionRepository) GetTransactionsPerPortfolio(portfolioID string) 
 			&ibkrTransactionIDStr,
 			&t.IbkrLinked,
 		)
+		if err == sql.ErrNoRows {
+			return []model.TransactionResponse{}, nil
+		}
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan transaction table results: %w", err)
 		}

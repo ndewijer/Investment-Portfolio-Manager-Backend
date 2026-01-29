@@ -131,6 +131,16 @@ func CreateArchivedPortfolio(t *testing.T, db *sql.DB, name string) model.Portfo
 	return NewPortfolio().WithName(name).Archived().Build(t, db)
 }
 
+// CreateExcludedPortfolio creates an portfolio excluded by overview.
+//
+// Example usage:
+//
+//	portfolio := testutil.CreateExcludedPortfolio(t, db, "Old Portfolio")
+func CreateExcludedPortfolio(t *testing.T, db *sql.DB, name string) model.Portfolio {
+	t.Helper()
+	return NewPortfolio().WithName(name).ExcludedFromOverview().Build(t, db)
+}
+
 // FundBuilder provides a fluent interface for creating test funds.
 //
 // Example usage:
@@ -498,7 +508,7 @@ func (b *DividendBuilder) Build(t *testing.T, db *sql.DB) model.Dividend {
 		DividendPerShare:          b.DividendPerShare,
 		TotalAmount:               b.TotalAmount,
 		ReinvestmentStatus:        b.ReinvestmentStatus,
-		ReinvestmentTransactionId: b.ReinvestmentTransactionID,
+		ReinvestmentTransactionID: b.ReinvestmentTransactionID,
 		CreatedAt:                 time.Now(),
 	}
 }

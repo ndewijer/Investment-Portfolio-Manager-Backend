@@ -15,17 +15,125 @@ func NewTestPortfolioService(t *testing.T, db *sql.DB) *service.PortfolioService
 	t.Helper()
 
 	portfolioRepo := repository.NewPortfolioRepository(db)
-	transactionRepo := repository.NewTransactionRepository(db)
-	fundRepo := repository.NewFundRepository(db)
-	dividendRepo := repository.NewDividendRepository(db)
-	realizedGainLossRepo := repository.NewRealizedGainLossRepository(db)
 
 	return service.NewPortfolioService(
 		portfolioRepo,
-		transactionRepo,
-		fundRepo,
-		dividendRepo,
+	)
+}
+
+func NewTestRealizedGainLossService(t *testing.T, db *sql.DB) *service.RealizedGainLossService {
+	t.Helper()
+
+	realizedGainLossRepo := repository.NewRealizedGainLossRepository(db)
+
+	return service.NewRealizedGainLossService(
 		realizedGainLossRepo,
+	)
+}
+
+func NewTestTransactionService(t *testing.T, db *sql.DB) *service.TransactionService {
+	t.Helper()
+
+	transactionRepo := repository.NewTransactionRepository(db)
+
+	return service.NewTransactionService(
+		transactionRepo,
+	)
+}
+
+func NewTestDividendService(t *testing.T, db *sql.DB) *service.DividendService {
+	t.Helper()
+
+	dividendRepo := repository.NewDividendRepository(db)
+
+	return service.NewDividendService(
+		dividendRepo,
+	)
+}
+
+func NewTestDataloaderService(t *testing.T, db *sql.DB) *service.DataLoaderService {
+	t.Helper()
+
+	portfolioRepo := repository.NewPortfolioRepository(db)
+	fundRepo := repository.NewFundRepository(db)
+	transactionService := service.NewTransactionService(repository.NewTransactionRepository(db))
+	dividendService := service.NewDividendService(repository.NewDividendRepository(db))
+	realizedGainLossService := service.NewRealizedGainLossService(repository.NewRealizedGainLossRepository(db))
+
+	return service.NewDataLoaderService(
+		portfolioRepo,
+		fundRepo,
+		transactionService,
+		dividendService,
+		realizedGainLossService,
+	)
+}
+
+func NewTestFundService(t *testing.T, db *sql.DB) *service.FundService {
+	t.Helper()
+
+	fundRepo := repository.NewFundRepository(db)
+	transactionService := service.NewTransactionService(repository.NewTransactionRepository(db))
+	dividendService := service.NewDividendService(repository.NewDividendRepository(db))
+	realizedGainLossService := service.NewRealizedGainLossService(repository.NewRealizedGainLossRepository(db))
+	dataLoaderService := service.NewDataLoaderService(
+		repository.NewPortfolioRepository(db),
+		fundRepo,
+		transactionService,
+		dividendService,
+		realizedGainLossService)
+	portfolioService := service.NewPortfolioService(repository.NewPortfolioRepository(db))
+
+	return service.NewFundService(
+		fundRepo,
+		transactionService,
+		dividendService,
+		realizedGainLossService,
+		dataLoaderService,
+		portfolioService,
+	)
+}
+
+func NewTestMaterializedService(t *testing.T, db *sql.DB) *service.MaterializedService {
+	t.Helper()
+
+	materializedRepo := repository.NewMaterializedRepository(db)
+	portfolioRepo := repository.NewPortfolioRepository(db)
+	fundRepo := repository.NewFundRepository(db)
+	transactionService := service.NewTransactionService(repository.NewTransactionRepository(db))
+
+	dividendService := service.NewDividendService(repository.NewDividendRepository(db))
+	realizedGainLossService := service.NewRealizedGainLossService(repository.NewRealizedGainLossRepository(db))
+	dataLoaderService := service.NewDataLoaderService(
+		repository.NewPortfolioRepository(db),
+		fundRepo,
+		transactionService,
+		dividendService,
+		realizedGainLossService)
+	portfolioService := service.NewPortfolioService(portfolioRepo)
+	fundService := service.NewFundService(fundRepo, transactionService, dividendService, realizedGainLossService, dataLoaderService, portfolioService)
+
+	return service.NewMaterializedService(
+		materializedRepo,
+		portfolioRepo,
+		fundRepo,
+		transactionService,
+		fundService,
+		dividendService,
+		realizedGainLossService,
+		dataLoaderService,
+		portfolioService,
+	)
+}
+
+func NewTestIbkrService(t *testing.T, db *sql.DB) *service.IbkrService {
+	t.Helper()
+
+	ibkrRepo := repository.NewIbkrRepository(db)
+
+	return service.NewIbkrService(
+		ibkrRepo,
+		repository.NewPortfolioRepository(db),
 	)
 }
 
