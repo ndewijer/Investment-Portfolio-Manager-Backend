@@ -60,7 +60,7 @@ type IBKRAllocation struct {
 type IBKRTransactionAllocationResponse struct {
 	PortfolioID          string  `json:"portfolioID"`
 	PortfolioName        string  `json:"PortfolioName"`
-	AllocationPercentage float64 `json:"allocationPrcentage"`
+	AllocationPercentage float64 `json:"allocationPercentage"`
 	AllocatedAmount      float64 `json:"allocatedAmount"`
 	AllocatedShares      float64 `json:"allocatedShares"`
 	AllocatedCommission  float64 `json:"allocatedCommission"`
