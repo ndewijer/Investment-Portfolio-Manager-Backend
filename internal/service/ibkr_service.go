@@ -1,26 +1,32 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
+	apperrors "github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/errors"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/repository"
 )
 
 // IbkrService handles IBKR (Interactive Brokers) integration business logic operations.
 type IbkrService struct {
-	ibkrRepo      *repository.IbkrRepository
-	portfolioRepo *repository.PortfolioRepository
+	ibkrRepo           *repository.IbkrRepository
+	portfolioRepo      *repository.PortfolioRepository
+	transactionService *TransactionService
+	fundRepository     *repository.FundRepository
 }
 
 // NewIbkrService creates a new IbkrService with the provided repository dependencies.
 func NewIbkrService(
-	ibkrRepo *repository.IbkrRepository, portfolioRepo *repository.PortfolioRepository,
+	ibkrRepo *repository.IbkrRepository, portfolioRepo *repository.PortfolioRepository, transactionService *TransactionService, fundRepository *repository.FundRepository,
 ) *IbkrService {
 	return &IbkrService{
-		ibkrRepo:      ibkrRepo,
-		portfolioRepo: portfolioRepo,
+		ibkrRepo:           ibkrRepo,
+		portfolioRepo:      portfolioRepo,
+		transactionService: transactionService,
+		fundRepository:     fundRepository,
 	}
 }
 
@@ -76,6 +82,18 @@ func (s *IbkrService) GetInboxCount() (model.IBKRInboxCount, error) {
 	return s.ibkrRepo.GetIbkrInboxCount()
 }
 
+// GetTransactionAllocations retrieves the allocation details for an IBKR transaction.
+// Fetches the transaction and its allocations, then processes and aggregates the data:
+//   - Separates fee allocations from trade allocations
+//   - Aggregates fees by portfolio ID and includes them in AllocatedCommission
+//   - Rounds monetary values to standard precision
+//   - Filters out fee transactions from the final response
+//
+// Parameters:
+//   - transactionID: The UUID of the IBKR transaction
+//
+// Returns the transaction allocation summary with portfolio-level details,
+// or an error if the transaction is not found or a database error occurs.
 func (s *IbkrService) GetTransactionAllocations(transactionID string) (model.IBKRAllocation, error) {
 
 	ibkrTransaction, err := s.ibkrRepo.GetIbkrTransaction(transactionID)
@@ -119,4 +137,82 @@ func (s *IbkrService) GetTransactionAllocations(transactionID string) (model.IBK
 	}
 
 	return allocationReturn, nil
+}
+
+// GetEligiblePortfolios finds portfolios eligible for allocating an IBKR transaction.
+// Matches the transaction's fund using a two-step process:
+//  1. First attempts to match by ISIN (most reliable identifier)
+//  2. If ISIN match fails, attempts to match by symbol
+//
+// Once the fund is found, retrieves all portfolios that hold this fund.
+// If the fund exists but is not assigned to any portfolios, a warning is included.
+//
+//   - Returns 200 OK with found=false if no fund match (not an error)
+//   - Uses nested match_info structure for compatibility
+//
+// Parameters:
+//   - transactionID: The UUID of the IBKR transaction
+//
+// Returns:
+//   - Response with matchInfo, portfolios, and optional warning
+//   - Only returns error for database failures, not for "fund not found"
+//   - ErrIBKRTransactionNotFound if the transaction doesn't exist
+func (s *IbkrService) GetEligiblePortfolios(transactionID string) (model.IBKREligiblePortfolioResponse, error) {
+	transaction, err := s.ibkrRepo.GetIbkrTransaction(transactionID)
+	if err != nil {
+		return model.IBKREligiblePortfolioResponse{}, err
+	}
+
+	// First we try to find the fund on ISIN as it's most reliable
+	fund, err := s.fundRepository.GetFundBySymbolOrIsin("", transaction.ISIN)
+	if err != nil && !errors.Is(err, apperrors.ErrFundNotFound) {
+		return model.IBKREligiblePortfolioResponse{}, err
+	}
+
+	matchedBy := ""
+	if fund.ID == "" {
+		// Second, we try on Symbol.
+		fund, err = s.fundRepository.GetFundBySymbolOrIsin(transaction.Symbol, "")
+		if err != nil && !errors.Is(err, apperrors.ErrFundNotFound) {
+			return model.IBKREligiblePortfolioResponse{}, err
+		}
+		if fund.ID == "" {
+			// No fund found - return success response with found=false
+			return model.IBKREligiblePortfolioResponse{
+				MatchInfo: model.FundMatchInfo{
+					Found:     false,
+					MatchedBy: "",
+				},
+				Portfolios: []model.Portfolio{},
+				Warning:    fmt.Sprintf("No fund found matching this transaction (Symbol: %s, ISIN: %s). Please add the fund to the system first.", transaction.Symbol, transaction.ISIN),
+			}, nil
+		}
+		matchedBy = "symbol"
+	} else {
+		matchedBy = "isin"
+	}
+
+	// Fund was found - get portfolios
+	portfolios, err := s.portfolioRepo.GetPortfoliosByFundID(fund.ID)
+	if err != nil {
+		return model.IBKREligiblePortfolioResponse{}, err
+	}
+
+	warning := ""
+	if len(portfolios) == 0 {
+		warning = fmt.Sprintf("Fund '%s' (%s) exists but is not assigned to any portfolio. Please add this fund to a portfolio first.", fund.Name, fund.Symbol)
+	}
+
+	return model.IBKREligiblePortfolioResponse{
+		MatchInfo: model.FundMatchInfo{
+			Found:      true,
+			MatchedBy:  matchedBy,
+			FundID:     fund.ID,
+			FundName:   fund.Name,
+			FundSymbol: fund.Symbol,
+			FundISIN:   fund.Isin,
+		},
+		Portfolios: portfolios,
+		Warning:    warning,
+	}, nil
 }

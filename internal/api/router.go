@@ -83,6 +83,7 @@ func NewRouter(
 			r.Get("/inbox", ibkrHandler.GetInbox)
 			r.Get("/inbox/count", ibkrHandler.GetInboxCount)
 			r.Get("/inbox/{transactionId:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}/allocations", ibkrHandler.GetTransactionAllocations)
+			r.Get("/inbox/{transactionId:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}/eligible-portfolios", ibkrHandler.GetEligiblePortfolios)
 		})
 	})
 

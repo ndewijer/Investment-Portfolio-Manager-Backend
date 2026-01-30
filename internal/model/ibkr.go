@@ -50,13 +50,18 @@ type IBKRInboxCount struct {
 	Count int `json:"count"`
 }
 
+// IBKRAllocation represents the allocation details for an IBKR transaction.
+// Contains the transaction status and a list of how the transaction was allocated across portfolios.
+// Used as the response payload for the transaction allocations endpoint.
 type IBKRAllocation struct {
 	IBKRTransactionID string                              `json:"ibkrTransactionId"`
 	Status            string                              `json:"status"`
 	Allocations       []IBKRTransactionAllocationResponse `json:"allocations"`
 }
 
-// returned to API
+// IBKRTransactionAllocationResponse represents a single portfolio allocation for an IBKR transaction.
+// Used in API responses to show how a transaction's amount, shares, and fees were allocated to a specific portfolio.
+// Fees are aggregated from separate fee transactions and included in the AllocatedCommission field.
 type IBKRTransactionAllocationResponse struct {
 	PortfolioID          string  `json:"portfolioID"`
 	PortfolioName        string  `json:"PortfolioName"`
@@ -66,7 +71,9 @@ type IBKRTransactionAllocationResponse struct {
 	AllocatedCommission  float64 `json:"allocatedCommission"`
 }
 
-// full datamodel of database
+// IBKRTransactionAllocation represents the full database model for an IBKR transaction allocation.
+// Stores the complete record of how an IBKR transaction was allocated to a portfolio,
+// including the created transaction reference and allocation type (e.g., "trade", "fee").
 type IBKRTransactionAllocation struct {
 	ID                   string
 	IBKRTransactionID    string
@@ -78,4 +85,24 @@ type IBKRTransactionAllocation struct {
 	TransactionID        string
 	Type                 string
 	CreatedAt            time.Time
+}
+
+// IBKREligiblePortfolioResponse represents the result of finding eligible portfolios for an IBKR transaction.
+// The response includes the matched fund details and a list of portfolios that hold this fund.
+// Matching is attempted first by ISIN (most reliable), then by symbol if ISIN match fails.
+// A warning is included if the fund exists but is not assigned to any portfolios.
+type IBKREligiblePortfolioResponse struct {
+	MatchInfo  FundMatchInfo `json:"matchInfo"`         // Information about how the fund was matched
+	Portfolios []Portfolio   `json:"portfolios"`        // List of portfolios that hold this fund
+	Warning    string        `json:"warning,omitempty"` // Warning message if fund not found or has no portfolios
+}
+
+// FundMatchInfo contains details about how a fund was matched to an IBKR transaction.
+type FundMatchInfo struct {
+	Found      bool   `json:"found"`                // Whether a matching fund was found
+	MatchedBy  string `json:"matchedBy"`            // How the fund was matched: "isin" or "symbol"
+	FundID     string `json:"fundId,omitempty"`     // The matched fund's ID
+	FundName   string `json:"fundName,omitempty"`   // The matched fund's name
+	FundSymbol string `json:"fundSymbol,omitempty"` // The matched fund's symbol
+	FundISIN   string `json:"fundIsin,omitempty"`   // The matched fund's ISIN
 }

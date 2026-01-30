@@ -145,6 +145,18 @@ func (h *IbkrHandler) GetInboxCount(w http.ResponseWriter, _ *http.Request) {
 	respondJSON(w, http.StatusOK, count)
 }
 
+// GetTransactionAllocations handles GET /api/ibkr/inbox/{transactionId}/allocations
+// Retrieves the allocation details for a specific IBKR transaction, showing how it was
+// distributed across portfolios including amounts, shares, and fees.
+//
+// Path parameters:
+//   - transactionId: UUID of the IBKR transaction
+//
+// Responses:
+//   - 200: Success with allocation details
+//   - 400: Invalid or missing transaction ID
+//   - 404: Transaction not found
+//   - 500: Internal server error
 func (h *IbkrHandler) GetTransactionAllocations(w http.ResponseWriter, r *http.Request) {
 
 	transactionID := chi.URLParam(r, "transactionId")
@@ -180,5 +192,59 @@ func (h *IbkrHandler) GetTransactionAllocations(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	respondJSON(w, http.StatusOK, response)
+}
+
+// GetEligiblePortfolios handles GET /api/ibkr/inbox/{transactionId}/eligible-portfolios
+// Finds portfolios eligible for allocating an IBKR transaction by matching the transaction's
+// fund via ISIN or symbol. Returns fund details and the list of portfolios that hold this fund.
+//
+// Note: This endpoint matches Python API behavior - returns 200 OK with match_info.found=false
+// when no fund is found (not 404). This allows clients to handle missing funds gracefully.
+//
+// Path parameters:
+//   - transactionId: UUID of the IBKR transaction
+//
+// Responses:
+//   - 200: Success with match_info, portfolios, and optional warning (even if fund not found)
+//   - 400: Invalid or missing transaction ID
+//   - 404: Transaction not found
+//   - 500: Internal server error
+func (h *IbkrHandler) GetEligiblePortfolios(w http.ResponseWriter, r *http.Request) {
+
+	transactionID := chi.URLParam(r, "transactionId")
+
+	if transactionID == "" {
+		respondJSON(w, http.StatusBadRequest, map[string]string{
+			"error": "transaction ID is required",
+		})
+		return
+	}
+
+	if err := validation.ValidateUUID(transactionID); err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{
+			"error":  "invalid Transaction ID format",
+			"detail": err.Error(),
+		})
+		return
+	}
+
+	response, err := h.ibkrService.GetEligiblePortfolios(transactionID)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrIBKRTransactionNotFound) {
+			respondJSON(w, http.StatusNotFound, map[string]string{
+				"error": "ibkr transaction does not exist",
+			})
+			return
+		}
+
+		respondJSON(w, http.StatusInternalServerError, map[string]string{
+			"error":  "failed to get eligible portfolios",
+			"detail": err.Error(),
+		})
+		return
+	}
+
+	// Always return 200 OK if fund is not found, Frontend uses match_info.found = false
 	respondJSON(w, http.StatusOK, response)
 }

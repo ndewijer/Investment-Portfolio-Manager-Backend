@@ -180,3 +180,53 @@ func (s *PortfolioRepository) GetPortfolioFundsOnPortfolioID(portfolios []model.
 
 	return fundsByPortfolio, portfolioFundToPortfolio, portfolioFundToFund, pfIDs, fundIDs, nil
 }
+
+// GetPortfoliosByFundID retrieves all portfolios that hold a specific fund.
+// Joins the portfolio and portfolio_fund tables to find portfolios where the fund is assigned.
+// Returns an empty slice if the fund is not assigned to any portfolios (not an error).
+//
+// Parameters:
+//   - fundID: The UUID of the fund
+//
+// Returns a slice of portfolios that hold this fund, or an error if the database query fails.
+func (s *PortfolioRepository) GetPortfoliosByFundID(fundID string) ([]model.Portfolio, error) {
+
+	fundQuery := `
+		SELECT p.id, p.name, p.description, p.is_archived, p.exclude_from_overview
+        FROM portfolio p
+		INNER JOIN portfolio_fund pf
+		ON pf.portfolio_id = p.id
+		WHERE pf.fund_id = ?
+	`
+
+	rows, err := s.db.Query(fundQuery, fundID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query portfolio_fund or portfolio table: %w", err)
+	}
+	defer rows.Close()
+
+	portfolios := []model.Portfolio{}
+
+	for rows.Next() {
+		var p model.Portfolio
+
+		err := rows.Scan(
+			&p.ID,
+			&p.Name,
+			&p.Description,
+			&p.IsArchived,
+			&p.ExcludeFromOverview,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan portfolio_fund or portfolio table results: %w", err)
+		}
+
+		portfolios = append(portfolios, p)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating portfolio_fund or portfolio table: %w", err)
+	}
+
+	return portfolios, nil
+}

@@ -130,6 +130,8 @@ func createRepoAndServices(db *sql.DB) (
 	ibkrService := service.NewIbkrService(
 		ibkrRepo,
 		portfolioRepo,
+		transactionService,
+		fundRepo,
 	)
 	materializedService := service.NewMaterializedService(
 		materializedRepo,
