@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/errors"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/repository"
 )
@@ -83,9 +82,6 @@ func (s *IbkrService) GetTransactionAllocations(transactionID string) (model.IBK
 	if err != nil {
 		return model.IBKRAllocation{}, err
 	}
-	if ibkrTransaction.ID == "" {
-		return model.IBKRAllocation{}, errors.ErrIBKRTransactionNotFound
-	}
 
 	allocationDetails, err := s.ibkrRepo.GetIbkrTransactionAllocations(transactionID)
 	if err != nil {
@@ -107,12 +103,12 @@ func (s *IbkrService) GetTransactionAllocations(transactionID string) (model.IBK
 		}
 
 		allocationDetailsResponse = append(allocationDetailsResponse, model.IBKRTransactionAllocationResponse{
-			PortfolioID:         allocation.PortfolioID,
-			PortfolioName:       allocation.PortfolioName,
-			AllocationPrcentage: allocation.AllocationPrcentage,
-			AllocatedAmount:     round(allocation.AllocatedAmount),
-			AllocatedShares:     round(allocation.AllocatedShares),
-			AllocatedCommission: round(feesByID[allocation.PortfolioID]),
+			PortfolioID:          allocation.PortfolioID,
+			PortfolioName:        allocation.PortfolioName,
+			AllocationPercentage: allocation.AllocationPercentage,
+			AllocatedAmount:      round(allocation.AllocatedAmount),
+			AllocatedShares:      round(allocation.AllocatedShares),
+			AllocatedCommission:  round(feesByID[allocation.PortfolioID]),
 		})
 	}
 

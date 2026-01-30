@@ -58,24 +58,24 @@ type IBKRAllocation struct {
 
 // returned to API
 type IBKRTransactionAllocationResponse struct {
-	PortfolioID         string  `json:"portfolioID"`
-	PortfolioName       string  `json:"PortfolioName"`
-	AllocationPrcentage float64 `json:"allocationPrcentage"`
-	AllocatedAmount     float64 `json:"allocatedAmount"`
-	AllocatedShares     float64 `json:"allocatedShares"`
-	AllocatedCommission float64 `json:"allocatedCommission"`
+	PortfolioID          string  `json:"portfolioID"`
+	PortfolioName        string  `json:"PortfolioName"`
+	AllocationPercentage float64 `json:"allocationPrcentage"`
+	AllocatedAmount      float64 `json:"allocatedAmount"`
+	AllocatedShares      float64 `json:"allocatedShares"`
+	AllocatedCommission  float64 `json:"allocatedCommission"`
 }
 
 // full datamodel of database
 type IBKRTransactionAllocation struct {
-	ID                  string
-	IBKRTransactionID   string
-	PortfolioID         string
-	PortfolioName       string
-	AllocationPrcentage float64
-	AllocatedAmount     float64
-	AllocatedShares     float64
-	TransactionID       string
-	Type                string
-	CreatedAt           time.Time
+	ID                   string
+	IBKRTransactionID    string
+	PortfolioID          string
+	PortfolioName        string
+	AllocationPercentage float64
+	AllocatedAmount      float64
+	AllocatedShares      float64
+	TransactionID        string
+	Type                 string
+	CreatedAt            time.Time
 }

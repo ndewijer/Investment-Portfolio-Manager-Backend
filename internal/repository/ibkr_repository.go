@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/errors"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 )
 
@@ -301,7 +302,7 @@ func (r *IbkrRepository) GetIbkrTransaction(transactionID string) (model.IBKRTra
 		&t.Status,
 		&t.ImportedAt)
 	if err == sql.ErrNoRows {
-		return model.IBKRTransaction{}, nil
+		return model.IBKRTransaction{}, errors.ErrIBKRTransactionNotFound
 	}
 	if err != nil {
 		return model.IBKRTransaction{}, err
@@ -340,7 +341,7 @@ func (r *IbkrRepository) GetIbkrTransactionAllocations(IBKRtransactionID string)
 			&ta.IBKRTransactionID,
 			&ta.PortfolioID,
 			&ta.PortfolioName,
-			&ta.AllocationPrcentage,
+			&ta.AllocationPercentage,
 			&ta.AllocatedAmount,
 			&ta.AllocatedShares,
 			&TransactionIDStr,

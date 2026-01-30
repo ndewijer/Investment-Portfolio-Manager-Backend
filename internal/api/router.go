@@ -72,7 +72,7 @@ func NewRouter(
 			transactionHandler := handlers.NewTransactionHandler(transactionService)
 			r.Get("/", transactionHandler.AllTransactions)
 			r.Get("/portfolio/{portfolioId:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", transactionHandler.TransactionPerPortfolio)
-			r.Get("/", transactionHandler.GetTransaction)
+			r.Get("/{transactionId:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", transactionHandler.GetTransaction)
 		})
 
 		r.Route("/ibkr", func(r chi.Router) {
