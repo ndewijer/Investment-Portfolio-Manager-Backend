@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	apperrors "github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/errors"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 )
 
@@ -88,7 +89,7 @@ func (s *PortfolioRepository) GetPortfolioOnID(portfolioID string) (model.Portfo
 		&p.ExcludeFromOverview,
 	)
 	if err == sql.ErrNoRows {
-		return model.Portfolio{}, fmt.Errorf("portfolio not found: %s", portfolioID)
+		return model.Portfolio{}, apperrors.ErrPortfolioNotFound
 	}
 	if err != nil {
 		return model.Portfolio{}, fmt.Errorf("failed to query portfolio: %w", err)

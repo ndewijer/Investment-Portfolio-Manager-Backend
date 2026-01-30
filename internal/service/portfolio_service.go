@@ -88,6 +88,7 @@ func (s *PortfolioService) GetPortfoliosForRequest(portfolioID string) ([]model.
 		if err != nil {
 			return []model.Portfolio{}, err
 		}
+
 		return []model.Portfolio{portfolio}, nil
 	}
 
