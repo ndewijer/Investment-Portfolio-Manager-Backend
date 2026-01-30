@@ -87,13 +87,22 @@ type IBKRTransactionAllocation struct {
 	CreatedAt            time.Time
 }
 
+// IBKREligiblePortfolioResponse represents the result of finding eligible portfolios for an IBKR transaction.
+// The response includes the matched fund details and a list of portfolios that hold this fund.
+// Matching is attempted first by ISIN (most reliable), then by symbol if ISIN match fails.
+// A warning is included if the fund exists but is not assigned to any portfolios.
 type IBKREligiblePortfolioResponse struct {
-	Found      bool        `json:"found"`
-	MatchedBy  string      `json:"matchedBy"`
-	FundID     string      `json:"fundId"`
-	FundName   string      `json:"fundName"`
-	FundSymbol string      `json:"fundSymbol"`
-	FundISIN   string      `json:"fundIsin"`
-	Portfolios []Portfolio `json:"portfolios"`
-	Warning    string      `json:"warning,omitempty"`
+	MatchInfo  FundMatchInfo `json:"matchInfo"`         // Information about how the fund was matched
+	Portfolios []Portfolio   `json:"portfolios"`        // List of portfolios that hold this fund
+	Warning    string        `json:"warning,omitempty"` // Warning message if fund not found or has no portfolios
+}
+
+// FundMatchInfo contains details about how a fund was matched to an IBKR transaction.
+type FundMatchInfo struct {
+	Found      bool   `json:"found"`                // Whether a matching fund was found
+	MatchedBy  string `json:"matchedBy"`            // How the fund was matched: "isin" or "symbol"
+	FundID     string `json:"fundId,omitempty"`     // The matched fund's ID
+	FundName   string `json:"fundName,omitempty"`   // The matched fund's name
+	FundSymbol string `json:"fundSymbol,omitempty"` // The matched fund's symbol
+	FundISIN   string `json:"fundIsin,omitempty"`   // The matched fund's ISIN
 }

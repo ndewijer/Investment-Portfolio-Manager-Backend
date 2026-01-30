@@ -181,9 +181,16 @@ func (s *PortfolioRepository) GetPortfolioFundsOnPortfolioID(portfolios []model.
 	return fundsByPortfolio, portfolioFundToPortfolio, portfolioFundToFund, pfIDs, fundIDs, nil
 }
 
-func (s *PortfolioRepository) GetPortfoliosOnFundID(fundID string) ([]model.Portfolio, error) {
+// GetPortfoliosByFundID retrieves all portfolios that hold a specific fund.
+// Joins the portfolio and portfolio_fund tables to find portfolios where the fund is assigned.
+// Returns an empty slice if the fund is not assigned to any portfolios (not an error).
+//
+// Parameters:
+//   - fundID: The UUID of the fund
+//
+// Returns a slice of portfolios that hold this fund, or an error if the database query fails.
+func (s *PortfolioRepository) GetPortfoliosByFundID(fundID string) ([]model.Portfolio, error) {
 
-	//#nosec G202 -- Safe: placeholders are generated programmatically, not from user input
 	fundQuery := `
 		SELECT p.id, p.name, p.description, p.is_archived, p.exclude_from_overview
         FROM portfolio p

@@ -195,6 +195,21 @@ func (h *IbkrHandler) GetTransactionAllocations(w http.ResponseWriter, r *http.R
 	respondJSON(w, http.StatusOK, response)
 }
 
+// GetEligiblePortfolios handles GET /api/ibkr/inbox/{transactionId}/eligible-portfolios
+// Finds portfolios eligible for allocating an IBKR transaction by matching the transaction's
+// fund via ISIN or symbol. Returns fund details and the list of portfolios that hold this fund.
+//
+// Note: This endpoint matches Python API behavior - returns 200 OK with match_info.found=false
+// when no fund is found (not 404). This allows clients to handle missing funds gracefully.
+//
+// Path parameters:
+//   - transactionId: UUID of the IBKR transaction
+//
+// Responses:
+//   - 200: Success with match_info, portfolios, and optional warning (even if fund not found)
+//   - 400: Invalid or missing transaction ID
+//   - 404: Transaction not found
+//   - 500: Internal server error
 func (h *IbkrHandler) GetEligiblePortfolios(w http.ResponseWriter, r *http.Request) {
 
 	transactionID := chi.URLParam(r, "transactionId")
@@ -224,11 +239,12 @@ func (h *IbkrHandler) GetEligiblePortfolios(w http.ResponseWriter, r *http.Reque
 		}
 
 		respondJSON(w, http.StatusInternalServerError, map[string]string{
-			"error":  "failed to get transaction allocations",
+			"error":  "failed to get eligible portfolios",
 			"detail": err.Error(),
 		})
 		return
 	}
 
+	// Always return 200 OK if fund is not found, Frontend uses match_info.found = false
 	respondJSON(w, http.StatusOK, response)
 }

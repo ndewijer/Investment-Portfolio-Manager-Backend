@@ -377,29 +377,43 @@ func (s *FundRepository) GetSymbol(symbol string) (*model.Symbol, error) {
 	return &sb, err
 }
 
-func (r *FundRepository) GetFundOnSymbolIsin(symbol, isin string) (model.Fund, error) {
+// GetFundBySymbolOrIsin retrieves a fund by matching either its symbol or ISIN.
+// At least one of symbol or isin must be provided.
+//
+// Symbol matching uses a special comparison that strips the exchange suffix:
+//   - Database symbol "AAPL.NASDAQ" will match input symbol "AAPL"
+//   - This is done using: substr(symbol, 1, instr(symbol || '.', '.') - 1)
+//   - Allows matching IBKR symbols (without exchange) to database symbols (with exchange)
+//
+// Parameters:
+//   - symbol: The fund symbol to match (exchange suffix will be stripped from database values)
+//   - isin: The fund ISIN to match (exact match)
+//
+// If both are provided, the query matches funds where EITHER the symbol OR isin matches.
+// Returns ErrFundNotFound if no matching fund is found.
+func (r *FundRepository) GetFundBySymbolOrIsin(symbol, isin string) (model.Fund, error) {
 
 	var query string
 	var args []any
-	if symbol != "" || isin != "" {
-		query = `
-			SELECT f.id, f.name, f.isin, f.symbol, f.currency, f.exchange, f.investment_type, f.dividend_type
-			FROM fund f
-			WHERE 1=1
+	if symbol == "" && isin == "" {
+		return model.Fund{}, fmt.Errorf("symbol or isin required")
+	}
+
+	query = `
+		SELECT f.id, f.name, f.isin, f.symbol, f.currency, f.exchange, f.investment_type, f.dividend_type
+		FROM fund f
+		WHERE 1=1
 		`
 
-		if symbol != "" && isin != "" {
-			query += " AND (substr(symbol, 1, instr(symbol || '.', '.') - 1) = ? OR f.isin = ?)"
-			args = append(args, symbol, isin)
-		} else if symbol != "" {
-			query += " AND substr(symbol, 1, instr(symbol || '.', '.') - 1) = ?"
-			args = append(args, symbol)
-		} else if isin != "" {
-			query += " AND f.isin = ?"
-			args = append(args, isin)
-		}
-	} else {
-		return model.Fund{}, fmt.Errorf("no isin or symbol defined.")
+	if symbol != "" && isin != "" {
+		query += " AND (substr(symbol, 1, instr(symbol || '.', '.') - 1) = ? OR f.isin = ?)"
+		args = append(args, symbol, isin)
+	} else if symbol != "" {
+		query += " AND substr(symbol, 1, instr(symbol || '.', '.') - 1) = ?"
+		args = append(args, symbol)
+	} else if isin != "" {
+		query += " AND f.isin = ?"
+		args = append(args, isin)
 	}
 
 	var f model.Fund
