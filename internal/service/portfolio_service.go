@@ -90,7 +90,6 @@ func (s *PortfolioService) GetPortfoliosForRequest(portfolioID string) ([]model.
 		}
 
 		return []model.Portfolio{portfolio}, nil
-
 	}
 
 	// Load all active portfolios
