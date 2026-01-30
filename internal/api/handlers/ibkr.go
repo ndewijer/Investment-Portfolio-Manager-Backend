@@ -1,9 +1,13 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 
+	"github.com/go-chi/chi/v5"
+	apperrors "github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/errors"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/service"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/validation"
 )
 
 // IbkrHandler handles HTTP requests for ibkr endpoints.
@@ -139,4 +143,42 @@ func (h *IbkrHandler) GetInboxCount(w http.ResponseWriter, _ *http.Request) {
 	}
 
 	respondJSON(w, http.StatusOK, count)
+}
+
+func (h *IbkrHandler) GetTransactionAllocations(w http.ResponseWriter, r *http.Request) {
+
+	transactionID := chi.URLParam(r, "transactionId")
+
+	if transactionID == "" {
+		respondJSON(w, http.StatusBadRequest, map[string]string{
+			"error": "transaction ID is required",
+		})
+		return
+	}
+
+	if err := validation.ValidateUUID(transactionID); err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{
+			"error":  "invalid Transaction ID format",
+			"detail": err.Error(),
+		})
+		return
+	}
+
+	response, err := h.ibkrService.GetTransactionAllocations(transactionID)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrIBKRTransactionNotFound) {
+			respondJSON(w, http.StatusNotFound, map[string]string{
+				"error": "ibkr transaction does not exist",
+			})
+			return
+		}
+
+		respondJSON(w, http.StatusInternalServerError, map[string]string{
+			"error":  "failed to get transaction allocations",
+			"detail": err.Error(),
+		})
+		return
+	}
+
+	respondJSON(w, http.StatusOK, response)
 }

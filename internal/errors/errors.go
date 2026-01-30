@@ -22,6 +22,8 @@ var (
 
 	// ErrPortfolioFundNotFound indicates that a portfolio-fund relationship does not exist.
 	ErrPortfolioFundNotFound = errors.New("portfolio-fund relationship not found")
+
+	ErrIBKRTransactionNotFound = errors.New("ibkr transaction not found")
 )
 
 // Business logic errors represent validation failures or constraint violations.

@@ -49,3 +49,33 @@ type IBKRTransaction struct {
 type IBKRInboxCount struct {
 	Count int `json:"count"`
 }
+
+type IBKRAllocation struct {
+	IBKRTransactionID string                              `json:"ibkrTransactionId"`
+	Status            string                              `json:"status"`
+	Allocations       []IBKRTransactionAllocationResponse `json:"allocations"`
+}
+
+// returned to API
+type IBKRTransactionAllocationResponse struct {
+	PortfolioID          string  `json:"portfolioID"`
+	PortfolioName        string  `json:"PortfolioName"`
+	AllocationPercentage float64 `json:"allocationPercentage"`
+	AllocatedAmount      float64 `json:"allocatedAmount"`
+	AllocatedShares      float64 `json:"allocatedShares"`
+	AllocatedCommission  float64 `json:"allocatedCommission"`
+}
+
+// full datamodel of database
+type IBKRTransactionAllocation struct {
+	ID                   string
+	IBKRTransactionID    string
+	PortfolioID          string
+	PortfolioName        string
+	AllocationPercentage float64
+	AllocatedAmount      float64
+	AllocatedShares      float64
+	TransactionID        string
+	Type                 string
+	CreatedAt            time.Time
+}

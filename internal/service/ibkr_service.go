@@ -75,3 +75,48 @@ func (s *IbkrService) GetInbox(status, transactionType string) ([]model.IBKRTran
 func (s *IbkrService) GetInboxCount() (model.IBKRInboxCount, error) {
 	return s.ibkrRepo.GetIbkrInboxCount()
 }
+
+func (s *IbkrService) GetTransactionAllocations(transactionID string) (model.IBKRAllocation, error) {
+
+	ibkrTransaction, err := s.ibkrRepo.GetIbkrTransaction(transactionID)
+	if err != nil {
+		return model.IBKRAllocation{}, err
+	}
+
+	allocationDetails, err := s.ibkrRepo.GetIbkrTransactionAllocations(transactionID)
+	if err != nil {
+		return model.IBKRAllocation{}, err
+	}
+
+	feesByID := make(map[string]float64)
+	for _, allocation := range allocationDetails {
+		if allocation.Type == "fee" {
+			feesByID[allocation.PortfolioID] += allocation.AllocatedAmount
+		}
+	}
+
+	allocationDetailsResponse := make([]model.IBKRTransactionAllocationResponse, 0, len(allocationDetails))
+
+	for _, allocation := range allocationDetails {
+		if allocation.Type == "fee" {
+			continue
+		}
+
+		allocationDetailsResponse = append(allocationDetailsResponse, model.IBKRTransactionAllocationResponse{
+			PortfolioID:          allocation.PortfolioID,
+			PortfolioName:        allocation.PortfolioName,
+			AllocationPercentage: allocation.AllocationPercentage,
+			AllocatedAmount:      round(allocation.AllocatedAmount),
+			AllocatedShares:      round(allocation.AllocatedShares),
+			AllocatedCommission:  round(feesByID[allocation.PortfolioID]),
+		})
+	}
+
+	allocationReturn := model.IBKRAllocation{
+		IBKRTransactionID: ibkrTransaction.ID,
+		Status:            ibkrTransaction.Status,
+		Allocations:       allocationDetailsResponse,
+	}
+
+	return allocationReturn, nil
+}
