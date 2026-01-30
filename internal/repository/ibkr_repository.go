@@ -275,3 +275,98 @@ func (r *IbkrRepository) GetIbkrInboxCount() (model.IBKRInboxCount, error) {
 
 	return count, err
 }
+
+func (r *IbkrRepository) GetIbkrTransaction(transactionID string) (model.IBKRTransaction, error) {
+
+	query := `
+        SELECT id, ibkr_transaction_id, transaction_date, symbol, isin, description, transaction_type, quantity, price, total_amount, currency, fees, status, imported_at
+		FROM ibkr_transaction
+		WHERE id = ?
+      `
+
+	t := model.IBKRTransaction{}
+	err := r.db.QueryRow(query, transactionID).Scan(
+		&t.ID,
+		&t.IBKRTransactionID,
+		&t.TransactionDate,
+		&t.Symbol,
+		&t.ISIN,
+		&t.Description,
+		&t.TransactionType,
+		&t.Quantity,
+		&t.Price,
+		&t.TotalAmount,
+		&t.Currency,
+		&t.Fees,
+		&t.Status,
+		&t.ImportedAt)
+	if err == sql.ErrNoRows {
+		return model.IBKRTransaction{}, nil
+	}
+	if err != nil {
+		return model.IBKRTransaction{}, err
+	}
+
+	return t, err
+}
+
+func (r *IbkrRepository) GetIbkrTransactionAllocations(IBKRtransactionID string) ([]model.IBKRTransactionAllocation, error) {
+
+	query := `
+        SELECT i.id, i.ibkr_transaction_id, i.portfolio_id, p.name, i.allocation_percentage, i.allocated_amount, i.allocated_shares, i.transaction_id, t.type, i.created_at
+		FROM ibkr_transaction_allocation i
+		INNER JOIN portfolio p
+		ON i.portfolio_id = p.id
+		INNER JOIN "transaction" t
+		on i.transaction_id = t.id
+		WHERE ibkr_transaction_id = ?
+      `
+
+	rows, err := r.db.Query(query, IBKRtransactionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query ibkr_transaction table: %w", err)
+	}
+	defer rows.Close()
+
+	allocations := []model.IBKRTransactionAllocation{}
+
+	for rows.Next() {
+		var TransactionIDStr sql.NullString
+		var CreatedAtStr string
+		var ta model.IBKRTransactionAllocation
+
+		err := rows.Scan(
+			&ta.ID,
+			&ta.IBKRTransactionID,
+			&ta.PortfolioID,
+			&ta.PortfolioName,
+			&ta.AllocationPrcentage,
+			&ta.AllocatedAmount,
+			&ta.AllocatedShares,
+			&TransactionIDStr,
+			&ta.Type,
+			&CreatedAtStr,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan ibkr_transaction table results: %w", err)
+		}
+
+		if TransactionIDStr.Valid {
+			ta.TransactionID = TransactionIDStr.String
+		}
+
+		ta.CreatedAt, err = ParseTime(CreatedAtStr)
+		if err != nil || ta.CreatedAt.IsZero() {
+			return nil, fmt.Errorf("failed to parse date: %w", err)
+		}
+
+		allocations = append(allocations, ta)
+
+	}
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating ibkr_transaction table: %w", err)
+	}
+
+	return allocations, nil
+
+}

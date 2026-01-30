@@ -72,7 +72,7 @@ func NewRouter(
 			transactionHandler := handlers.NewTransactionHandler(transactionService)
 			r.Get("/", transactionHandler.AllTransactions)
 			r.Get("/portfolio/{portfolioId:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", transactionHandler.TransactionPerPortfolio)
-			r.Get("/{transactionId:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", transactionHandler.GetTransaction)
+			r.Get("/", transactionHandler.GetTransaction)
 		})
 
 		r.Route("/ibkr", func(r chi.Router) {
@@ -82,6 +82,7 @@ func NewRouter(
 			r.Get("/dividend/pending", ibkrHandler.GetPendingDividends)
 			r.Get("/inbox", ibkrHandler.GetInbox)
 			r.Get("/inbox/count", ibkrHandler.GetInboxCount)
+			r.Get("/inbox/{transactionId:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}/allocations", ibkrHandler.GetTransactionAllocations)
 		})
 	})
 

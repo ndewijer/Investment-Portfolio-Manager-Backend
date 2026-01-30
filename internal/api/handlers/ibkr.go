@@ -3,7 +3,9 @@ package handlers
 import (
 	"net/http"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/service"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/validation"
 )
 
 // IbkrHandler handles HTTP requests for ibkr endpoints.
@@ -139,4 +141,28 @@ func (h *IbkrHandler) GetInboxCount(w http.ResponseWriter, _ *http.Request) {
 	}
 
 	respondJSON(w, http.StatusOK, count)
+}
+
+func (h *IbkrHandler) GetTransactionAllocations(w http.ResponseWriter, r *http.Request) {
+
+	transactionID := chi.URLParam(r, "transactionId")
+
+	if transactionID == "" {
+		respondJSON(w, http.StatusBadRequest, map[string]string{
+			"error": "transaction ID is required",
+		})
+		return
+	}
+
+	if err := validation.ValidateUUID(transactionID); err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{
+			"error":  "invalid Transaction ID format",
+			"detail": err.Error(),
+		})
+		return
+	}
+
+	response, _ := h.ibkrService.GetTransactionAllocations(transactionID)
+
+	respondJSON(w, http.StatusOK, response)
 }
