@@ -92,9 +92,9 @@ This backend aims to replicate all 73 endpoints from the Python backend. Below i
 │   ├── GET     /inbox/{transactionId}                     ⬜ Get IBKR transaction details
 │   ├── DELETE  /inbox/{transactionId}                     ⬜ Delete IBKR transaction
 │   ├── POST    /inbox/{transactionId}/allocate            ⬜ Allocate IBKR transaction to portfolios
-│   ├── GET     /inbox/{transactionId}/allocations         ⬜ Get allocation details for a processed IBKR transaction
+│   ├── GET     /inbox/{transactionId}/allocations         ✅ Get allocation details for a processed IBKR transaction
 │   ├── PUT     /inbox/{transactionId}/allocations         ⬜ Modify allocation percentages for a processed IBKR transaction
-│   ├── GET     /inbox/{transactionId}/eligible-portfolios ⬜ Get eligible portfolios for allocating this transaction
+│   ├── GET     /inbox/{transactionId}/eligible-portfolios ✅ Get eligible portfolios for allocating this transaction
 │   ├── POST    /inbox/{transactionId}/ignore              ⬜ Mark IBKR transaction as ignored
 │   ├── POST    /inbox/{transactionId}/match-dividend      ⬜ Match IBKR dividend transaction to existing dividend records
 │   ├── POST    /inbox/{transactionId}/unallocate          ⬜ Unallocate a processed IBKR transaction

@@ -50,13 +50,18 @@ type IBKRInboxCount struct {
 	Count int `json:"count"`
 }
 
+// IBKRAllocation represents the allocation details for an IBKR transaction.
+// Contains the transaction status and a list of how the transaction was allocated across portfolios.
+// Used as the response payload for the transaction allocations endpoint.
 type IBKRAllocation struct {
 	IBKRTransactionID string                              `json:"ibkrTransactionId"`
 	Status            string                              `json:"status"`
 	Allocations       []IBKRTransactionAllocationResponse `json:"allocations"`
 }
 
-// returned to API
+// IBKRTransactionAllocationResponse represents a single portfolio allocation for an IBKR transaction.
+// Used in API responses to show how a transaction's amount, shares, and fees were allocated to a specific portfolio.
+// Fees are aggregated from separate fee transactions and included in the AllocatedCommission field.
 type IBKRTransactionAllocationResponse struct {
 	PortfolioID          string  `json:"portfolioID"`
 	PortfolioName        string  `json:"PortfolioName"`
@@ -66,7 +71,9 @@ type IBKRTransactionAllocationResponse struct {
 	AllocatedCommission  float64 `json:"allocatedCommission"`
 }
 
-// full datamodel of database
+// IBKRTransactionAllocation represents the full database model for an IBKR transaction allocation.
+// Stores the complete record of how an IBKR transaction was allocated to a portfolio,
+// including the created transaction reference and allocation type (e.g., "trade", "fee").
 type IBKRTransactionAllocation struct {
 	ID                   string
 	IBKRTransactionID    string
@@ -78,4 +85,15 @@ type IBKRTransactionAllocation struct {
 	TransactionID        string
 	Type                 string
 	CreatedAt            time.Time
+}
+
+type IBKREligiblePortfolioResponse struct {
+	Found      bool        `json:"found"`
+	MatchedBy  string      `json:"matchedBy"`
+	FundID     string      `json:"fundId"`
+	FundName   string      `json:"fundName"`
+	FundSymbol string      `json:"fundSymbol"`
+	FundISIN   string      `json:"fundIsin"`
+	Portfolios []Portfolio `json:"portfolios"`
+	Warning    string      `json:"warning,omitempty"`
 }

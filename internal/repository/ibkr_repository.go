@@ -277,6 +277,13 @@ func (r *IbkrRepository) GetIbkrInboxCount() (model.IBKRInboxCount, error) {
 	return count, err
 }
 
+// GetIbkrTransaction retrieves a single IBKR transaction by its ID.
+// Returns ErrIBKRTransactionNotFound if the transaction does not exist.
+//
+// Parameters:
+//   - transactionID: The UUID of the IBKR transaction to retrieve
+//
+// Returns the transaction details or an error if not found or database error occurs.
 func (r *IbkrRepository) GetIbkrTransaction(transactionID string) (model.IBKRTransaction, error) {
 
 	query := `
@@ -311,6 +318,15 @@ func (r *IbkrRepository) GetIbkrTransaction(transactionID string) (model.IBKRTra
 	return t, err
 }
 
+// GetIbkrTransactionAllocations retrieves all allocation records for a specific IBKR transaction.
+// Joins with portfolio and transaction tables to include portfolio names and transaction types.
+// Returns allocations for both the main transaction and any associated fee transactions.
+//
+// Parameters:
+//   - IBKRtransactionID: The UUID of the IBKR transaction
+//
+// Returns a slice of allocations with full details including portfolio names and transaction types,
+// or an error if the database query fails.
 func (r *IbkrRepository) GetIbkrTransactionAllocations(IBKRtransactionID string) ([]model.IBKRTransactionAllocation, error) {
 
 	query := `

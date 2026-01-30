@@ -130,10 +130,14 @@ func NewTestIbkrService(t *testing.T, db *sql.DB) *service.IbkrService {
 	t.Helper()
 
 	ibkrRepo := repository.NewIbkrRepository(db)
+	transactionService := service.NewTransactionService(repository.NewTransactionRepository(db))
+	fundRepo := repository.NewFundRepository(db)
 
 	return service.NewIbkrService(
 		ibkrRepo,
 		repository.NewPortfolioRepository(db),
+		transactionService,
+		fundRepo,
 	)
 }
 

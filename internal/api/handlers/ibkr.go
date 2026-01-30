@@ -145,6 +145,18 @@ func (h *IbkrHandler) GetInboxCount(w http.ResponseWriter, _ *http.Request) {
 	respondJSON(w, http.StatusOK, count)
 }
 
+// GetTransactionAllocations handles GET /api/ibkr/inbox/{transactionId}/allocations
+// Retrieves the allocation details for a specific IBKR transaction, showing how it was
+// distributed across portfolios including amounts, shares, and fees.
+//
+// Path parameters:
+//   - transactionId: UUID of the IBKR transaction
+//
+// Responses:
+//   - 200: Success with allocation details
+//   - 400: Invalid or missing transaction ID
+//   - 404: Transaction not found
+//   - 500: Internal server error
 func (h *IbkrHandler) GetTransactionAllocations(w http.ResponseWriter, r *http.Request) {
 
 	transactionID := chi.URLParam(r, "transactionId")
@@ -165,6 +177,44 @@ func (h *IbkrHandler) GetTransactionAllocations(w http.ResponseWriter, r *http.R
 	}
 
 	response, err := h.ibkrService.GetTransactionAllocations(transactionID)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrIBKRTransactionNotFound) {
+			respondJSON(w, http.StatusNotFound, map[string]string{
+				"error": "ibkr transaction does not exist",
+			})
+			return
+		}
+
+		respondJSON(w, http.StatusInternalServerError, map[string]string{
+			"error":  "failed to get transaction allocations",
+			"detail": err.Error(),
+		})
+		return
+	}
+
+	respondJSON(w, http.StatusOK, response)
+}
+
+func (h *IbkrHandler) GetEligiblePortfolios(w http.ResponseWriter, r *http.Request) {
+
+	transactionID := chi.URLParam(r, "transactionId")
+
+	if transactionID == "" {
+		respondJSON(w, http.StatusBadRequest, map[string]string{
+			"error": "transaction ID is required",
+		})
+		return
+	}
+
+	if err := validation.ValidateUUID(transactionID); err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{
+			"error":  "invalid Transaction ID format",
+			"detail": err.Error(),
+		})
+		return
+	}
+
+	response, err := h.ibkrService.GetEligiblePortfolios(transactionID)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrIBKRTransactionNotFound) {
 			respondJSON(w, http.StatusNotFound, map[string]string{
