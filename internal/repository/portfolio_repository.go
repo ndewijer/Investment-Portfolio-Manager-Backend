@@ -1,10 +1,12 @@
 package repository
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"strings"
 
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/errors"
 	apperrors "github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/errors"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 )
@@ -13,6 +15,7 @@ import (
 // It handles retrieving portfolio metadata and their associated fund relationships.
 type PortfolioRepository struct {
 	db *sql.DB
+	tx *sql.Tx
 }
 
 // NewPortfolioRepository creates a new PortfolioRepository with the provided database connection.
@@ -20,10 +23,31 @@ func NewPortfolioRepository(db *sql.DB) *PortfolioRepository {
 	return &PortfolioRepository{db: db}
 }
 
+func (r *PortfolioRepository) WithTx(tx *sql.Tx) *PortfolioRepository {
+	return &PortfolioRepository{
+		db: r.db,
+		tx: tx,
+	}
+}
+
+func (r *PortfolioRepository) getQuerier() interface {
+	Query(query string, args ...any) (*sql.Rows, error)
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	QueryRow(query string, args ...any) *sql.Row
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+	Exec(query string, args ...any) (sql.Result, error)
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+} {
+	if r.tx != nil {
+		return r.tx
+	}
+	return r.db
+}
+
 // GetPortfolios retrieves portfolios from the database based on filter criteria.
 // The filter allows control over whether archived and overview-excluded portfolios are included.
 // Returns an empty slice if no portfolios match the filter criteria.
-func (s *PortfolioRepository) GetPortfolios(filter model.PortfolioFilter) ([]model.Portfolio, error) {
+func (r *PortfolioRepository) GetPortfolios(filter model.PortfolioFilter) ([]model.Portfolio, error) {
 	query := `
           SELECT id, name, description, is_archived, exclude_from_overview
           FROM portfolio
@@ -41,7 +65,7 @@ func (s *PortfolioRepository) GetPortfolios(filter model.PortfolioFilter) ([]mod
 		args = append(args, 0)
 	}
 
-	rows, err := s.db.Query(query, args...)
+	rows, err := r.db.Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query portfolios table: %w", err)
 	}
@@ -73,7 +97,7 @@ func (s *PortfolioRepository) GetPortfolios(filter model.PortfolioFilter) ([]mod
 	return portfolios, nil
 }
 
-func (s *PortfolioRepository) GetPortfolioOnID(portfolioID string) (model.Portfolio, error) {
+func (r *PortfolioRepository) GetPortfolioOnID(portfolioID string) (model.Portfolio, error) {
 	query := `
           SELECT id, name, description, is_archived, exclude_from_overview
           FROM portfolio
@@ -81,7 +105,7 @@ func (s *PortfolioRepository) GetPortfolioOnID(portfolioID string) (model.Portfo
       `
 	var p model.Portfolio
 
-	err := s.db.QueryRow(query, portfolioID).Scan(
+	err := r.db.QueryRow(query, portfolioID).Scan(
 		&p.ID,
 		&p.Name,
 		&p.Description,
@@ -110,7 +134,7 @@ func (s *PortfolioRepository) GetPortfolioOnID(portfolioID string) (model.Portfo
 //   - error: any error encountered during the query
 //
 // If the input portfolios slice is empty, returns all nil values.
-func (s *PortfolioRepository) GetPortfolioFundsOnPortfolioID(portfolios []model.Portfolio) (map[string][]model.Fund, map[string]string, map[string]string, []string, []string, error) {
+func (r *PortfolioRepository) GetPortfolioFundsOnPortfolioID(portfolios []model.Portfolio) (map[string][]model.Fund, map[string]string, map[string]string, []string, []string, error) {
 	if len(portfolios) == 0 {
 		return nil, nil, nil, nil, nil, nil
 	}
@@ -135,7 +159,7 @@ func (s *PortfolioRepository) GetPortfolioFundsOnPortfolioID(portfolios []model.
 		fundArgs[i] = p.ID
 	}
 
-	rows, err := s.db.Query(fundQuery, fundArgs...)
+	rows, err := r.db.Query(fundQuery, fundArgs...)
 	if err != nil {
 		return nil, nil, nil, nil, nil, fmt.Errorf("failed to query portfolio_fund or funds table: %w", err)
 	}
@@ -189,7 +213,7 @@ func (s *PortfolioRepository) GetPortfolioFundsOnPortfolioID(portfolios []model.
 //   - fundID: The UUID of the fund
 //
 // Returns a slice of portfolios that hold this fund, or an error if the database query fails.
-func (s *PortfolioRepository) GetPortfoliosByFundID(fundID string) ([]model.Portfolio, error) {
+func (r *PortfolioRepository) GetPortfoliosByFundID(fundID string) ([]model.Portfolio, error) {
 
 	fundQuery := `
 		SELECT p.id, p.name, p.description, p.is_archived, p.exclude_from_overview
@@ -199,7 +223,7 @@ func (s *PortfolioRepository) GetPortfoliosByFundID(fundID string) ([]model.Port
 		WHERE pf.fund_id = ?
 	`
 
-	rows, err := s.db.Query(fundQuery, fundID)
+	rows, err := r.db.Query(fundQuery, fundID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query portfolio_fund or portfolio table: %w", err)
 	}
@@ -229,4 +253,76 @@ func (s *PortfolioRepository) GetPortfoliosByFundID(fundID string) ([]model.Port
 	}
 
 	return portfolios, nil
+}
+
+func (r *PortfolioRepository) InsertPortfolio(ctx context.Context, p *model.Portfolio) error {
+	query := `
+        INSERT INTO portfolio (id, name, description, is_archived, exclude_from_overview)
+        VALUES (?, ?, ?, ?, ?)
+    `
+
+	_, err := r.getQuerier().ExecContext(ctx, query,
+		p.ID,
+		p.Name,
+		p.Description,
+		p.IsArchived,
+		p.ExcludeFromOverview,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to insert portfolio: %w", err)
+	}
+
+	return nil
+}
+
+func (r *PortfolioRepository) UpdatePortfolio(ctx context.Context, p *model.Portfolio) error {
+	query := `
+        UPDATE portfolio
+        SET name = ?, description = ?, is_archived = ?, exclude_from_overview = ?
+        WHERE id = ?
+    `
+
+	result, err := r.getQuerier().ExecContext(ctx, query,
+		p.Name,
+		p.Description,
+		p.IsArchived,
+		p.ExcludeFromOverview,
+		p.ID,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to update portfolio: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return errors.ErrPortfolioNotFound
+	}
+
+	return nil
+}
+
+func (r *PortfolioRepository) DeletePortfolio(ctx context.Context, portfolioID string) error {
+	query := `DELETE FROM portfolio WHERE id = ?`
+
+	result, err := r.getQuerier().ExecContext(ctx, query, portfolioID)
+	if err != nil {
+		return fmt.Errorf("failed to delete portfolio: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return errors.ErrPortfolioNotFound
+	}
+
+	return nil
 }

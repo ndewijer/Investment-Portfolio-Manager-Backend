@@ -134,14 +134,14 @@ func TestPortfolioService_GetAllPortfolios_TableDriven(t *testing.T) {
 		},
 		{
 			name: "single active portfolio",
-			setupData: func(t *testing.T, b *testutil.PortfolioBuilder) *testutil.PortfolioBuilder {
+			setupData: func(_ *testing.T, b *testutil.PortfolioBuilder) *testutil.PortfolioBuilder {
 				return b.WithName("Single Portfolio")
 			},
 			expectedCount: 1,
 		},
 		{
 			name: "single archived portfolio",
-			setupData: func(t *testing.T, b *testutil.PortfolioBuilder) *testutil.PortfolioBuilder {
+			setupData: func(_ *testing.T, b *testutil.PortfolioBuilder) *testutil.PortfolioBuilder {
 				return b.WithName("Archived").Archived()
 			},
 			expectedCount: 1,

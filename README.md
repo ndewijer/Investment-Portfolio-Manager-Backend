@@ -33,12 +33,12 @@ This backend aims to replicate all 73 endpoints from the Python backend. Below i
 │
 ├── /portfolio (5/14 endpoints) 🚧
 │   ├── GET    /                                ✅ List all portfolios
-│   ├── POST   /                                ⬜ Create portfolio
+│   ├── POST   /                                ✅ Create portfolio
 │   ├── GET    /{id}                            ✅ Get portfolio by ID
-│   ├── PUT    /{id}                            ⬜ Update portfolio
-│   ├── DELETE /{id}                            ⬜ Delete portfolio
-│   ├── POST   /{id}/archive                    ⬜ Archive portfolio
-│   ├── POST   /{id}/unarchive                  ⬜ Unarchive portfolio
+│   ├── PUT    /{id}                            ✅ Update portfolio
+│   ├── DELETE /{id}                            ✅ Delete portfolio
+│   ├── POST   /{id}/archive                    ✅ Archive portfolio
+│   ├── POST   /{id}/unarchive                  ✅ Unarchive portfolio
 │   ├── GET    /summary                         ✅ Portfolio summary
 │   ├── GET    /history                         ✅ Portfolio history
 │   ├── GET    /{id}/fund-history               ✅ MOVED TO FUND/HISTORY/

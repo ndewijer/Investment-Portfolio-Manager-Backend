@@ -23,7 +23,7 @@ func NewFundRepository(db *sql.DB) *FundRepository {
 
 // GetFund retrieves all funds from the database.
 // Returns an empty slice if no funds are found.
-func (s *FundRepository) GetFund(fundID string) ([]model.Fund, error) {
+func (r *FundRepository) GetFund(fundID string) ([]model.Fund, error) {
 	query := `
         SELECT f.id, f.name, f.isin, f.symbol, f.currency, f.exchange, f.investment_type, f.dividend_type, fp.price
 		FROM fund f
@@ -42,7 +42,7 @@ func (s *FundRepository) GetFund(fundID string) ([]model.Fund, error) {
 		args = append(args, fundID)
 	}
 
-	rows, err := s.db.Query(query, args...)
+	rows, err := r.db.Query(query, args...)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to query fund table: %w", err)
@@ -81,7 +81,7 @@ func (s *FundRepository) GetFund(fundID string) ([]model.Fund, error) {
 
 // GetFunds retrieves fund records for the given fund IDs.
 // Returns a slice of Fund objects containing metadata like name, ISIN, symbol, currency, etc.
-func (s *FundRepository) GetFunds(fundIDs []string) ([]model.Fund, error) {
+func (r *FundRepository) GetFunds(fundIDs []string) ([]model.Fund, error) {
 	fundPlaceholders := make([]string, len(fundIDs))
 	for i := range fundPlaceholders {
 		fundPlaceholders[i] = "?"
@@ -99,7 +99,7 @@ func (s *FundRepository) GetFunds(fundIDs []string) ([]model.Fund, error) {
 		fundArgs[i] = id
 	}
 
-	rows, err := s.db.Query(fundQuery, fundArgs...)
+	rows, err := r.db.Query(fundQuery, fundArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query fund table: %w", err)
 	}
@@ -146,7 +146,7 @@ func (s *FundRepository) GetFunds(fundIDs []string) ([]model.Fund, error) {
 //   - "DESC": newest first - efficient for latest-price lookups
 //
 // Returns a map of fundID -> []FundPrice, grouped by fund and sorted by date according to sortOrder.
-func (s *FundRepository) GetFundPrice(fundIDs []string, startDate, endDate time.Time, ascending bool) (map[string][]model.FundPrice, error) {
+func (r *FundRepository) GetFundPrice(fundIDs []string, startDate, endDate time.Time, ascending bool) (map[string][]model.FundPrice, error) {
 
 	if startDate.After(endDate) {
 		return nil, fmt.Errorf("startDate (%s) must be before or equal to endDate (%s)",
@@ -182,7 +182,7 @@ func (s *FundRepository) GetFundPrice(fundIDs []string, startDate, endDate time.
 	fundPriceArgs = append(fundPriceArgs, startDate.Format("2006-01-02"))
 	fundPriceArgs = append(fundPriceArgs, endDate.Format("2006-01-02"))
 
-	rows, err := s.db.Query(fundPriceQuery, fundPriceArgs...)
+	rows, err := r.db.Query(fundPriceQuery, fundPriceArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query fund_price table: %w", err)
 	}
@@ -222,7 +222,7 @@ func (s *FundRepository) GetFundPrice(fundIDs []string, startDate, endDate time.
 // GetPortfolioFunds retrieves all funds associated with a portfolio.
 // If PortfolioID is empty, returns funds across all portfolios.
 // Returns basic fund metadata from the portfolio_fund and fund tables.
-func (s *FundRepository) GetPortfolioFunds(PortfolioID string) ([]model.PortfolioFund, error) {
+func (r *FundRepository) GetPortfolioFunds(PortfolioID string) ([]model.PortfolioFund, error) {
 
 	// Retrieve all funds based on returned portfolio_fund IDs
 	fundQuery := `
@@ -241,7 +241,7 @@ func (s *FundRepository) GetPortfolioFunds(PortfolioID string) ([]model.Portfoli
 		fundArgs = append(fundArgs, PortfolioID)
 	}
 
-	rows, err := s.db.Query(fundQuery, fundArgs...)
+	rows, err := r.db.Query(fundQuery, fundArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve portfolio funds via portfolio_fund JOIN (portfolio_id=%s): %w", PortfolioID, err)
 	}
@@ -276,7 +276,7 @@ func (s *FundRepository) GetPortfolioFunds(PortfolioID string) ([]model.Portfoli
 // GetAllPortfolioFundListings retrieves all portfolio-fund relationships with metadata.
 // Returns a listing of all funds across all portfolios with basic information.
 // Used for the GET /api/portfolio/funds endpoint.
-func (s *FundRepository) GetAllPortfolioFundListings() ([]model.PortfolioFundListing, error) {
+func (r *FundRepository) GetAllPortfolioFundListings() ([]model.PortfolioFundListing, error) {
 	query := `
 		SELECT
 			pf.id,
@@ -292,7 +292,7 @@ func (s *FundRepository) GetAllPortfolioFundListings() ([]model.PortfolioFundLis
 		ORDER BY p.name ASC, f.name ASC
 	`
 
-	rows, err := s.db.Query(query)
+	rows, err := r.db.Query(query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query portfolio_fund listings: %w", err)
 	}
@@ -326,7 +326,7 @@ func (s *FundRepository) GetAllPortfolioFundListings() ([]model.PortfolioFundLis
 // GetSymbol retrieves symbol information by ticker symbol from the symbol_info table.
 // Returns nil, nil if the symbol is not found.
 // Returns nil, error if a database error occurs.
-func (s *FundRepository) GetSymbol(symbol string) (*model.Symbol, error) {
+func (r *FundRepository) GetSymbol(symbol string) (*model.Symbol, error) {
 	if symbol == "" {
 		return nil, nil
 	}
@@ -339,7 +339,7 @@ func (s *FundRepository) GetSymbol(symbol string) (*model.Symbol, error) {
 
 	var sb model.Symbol
 	var exchangeStr, currencyStr, isinStr, dataSource, lastUpdatedStr sql.NullString
-	err := s.db.QueryRow(query, symbol).Scan(
+	err := r.db.QueryRow(query, symbol).Scan(
 		&sb.ID,
 		&sb.Symbol,
 		&sb.Name,

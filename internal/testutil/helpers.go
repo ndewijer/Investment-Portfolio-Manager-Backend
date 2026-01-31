@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"math/rand"
 	"testing"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/repository"
@@ -141,11 +140,6 @@ func NewTestIbkrService(t *testing.T, db *sql.DB) *service.IbkrService {
 	)
 }
 
-func init() {
-	// Seed random number generator for test helpers
-	rand.Seed(time.Now().UnixNano())
-}
-
 // MakeID generates a UUID string for use in tests.
 //
 // Example usage:
@@ -213,16 +207,7 @@ func randomAlphanumeric(length int) string {
 	const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	result := make([]byte, length)
 	for i := range result {
-		result[i] = charset[rand.Intn(len(charset))]
-	}
-	return string(result)
-}
-
-// randomNumeric generates a random numeric string of specified length.
-func randomNumeric(length int) string {
-	const charset = "0123456789"
-	result := make([]byte, length)
-	for i := range result {
+		//nolint:gosec // G404: Using math/rand for test data generation is acceptable
 		result[i] = charset[rand.Intn(len(charset))]
 	}
 	return string(result)
@@ -243,15 +228,18 @@ var (
 
 // RandomCurrency returns a random currency from CommonCurrencies.
 func RandomCurrency() string {
+	//nolint:gosec // G404: Using math/rand for test data generation is acceptable
 	return CommonCurrencies[rand.Intn(len(CommonCurrencies))]
 }
 
 // RandomExchange returns a random exchange from CommonExchanges.
 func RandomExchange() string {
+	//nolint:gosec // G404: Using math/rand for test data generation is acceptable
 	return CommonExchanges[rand.Intn(len(CommonExchanges))]
 }
 
 // RandomCountryPrefix returns a random country prefix from CommonCountryPrefixes.
 func RandomCountryPrefix() string {
+	//nolint:gosec // G404: Using math/rand for test data generation is acceptable
 	return CommonCountryPrefixes[rand.Intn(len(CommonCountryPrefixes))]
 }
