@@ -1,6 +1,11 @@
 package service
 
 import (
+	"context"
+	"fmt"
+
+	"github.com/google/uuid"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/request"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/repository"
 )
@@ -97,4 +102,65 @@ func (s *PortfolioService) GetPortfoliosForRequest(portfolioID string) ([]model.
 		IncludeArchived: false,
 		IncludeExcluded: false,
 	})
+}
+
+func (s *PortfolioService) CreatePortfolio(ctx context.Context, req request.CreatePortfolioRequest) (*model.Portfolio, error) {
+	portfolio := &model.Portfolio{
+		ID:                  uuid.New().String(),
+		Name:                req.Name,
+		Description:         req.Description,
+		IsArchived:          false,
+		ExcludeFromOverview: req.ExcludeFromOverview,
+	}
+
+	if err := s.portfolioRepo.InsertPortfolio(ctx, portfolio); err != nil {
+		return nil, fmt.Errorf("failed to create portfolio: %w", err)
+	}
+
+	return portfolio, nil
+}
+
+func (s *PortfolioService) UpdatePortfolio(
+	ctx context.Context,
+	id string,
+	req request.UpdatePortfolioRequest,
+) (*model.Portfolio, error) {
+	portfolio, err := s.portfolioRepo.GetPortfolioOnID(id)
+	if err != nil {
+		return nil, err
+	}
+
+	if req.Name != nil {
+		portfolio.Name = *req.Name
+	}
+	if req.Description != nil {
+		portfolio.Description = *req.Description
+	}
+	if req.IsArchived != nil {
+		portfolio.IsArchived = *req.IsArchived
+	}
+	if req.ExcludeFromOverview != nil {
+		portfolio.ExcludeFromOverview = *req.ExcludeFromOverview
+	}
+
+	if err := s.portfolioRepo.UpdatePortfolio(ctx, &portfolio); err != nil {
+		return nil, fmt.Errorf("failed to update portfolio: %w", err)
+	}
+
+	return &portfolio, nil
+}
+
+func (s *PortfolioService) DeletePortfolio(ctx context.Context, id string) error {
+
+	_, err := s.portfolioRepo.GetPortfolioOnID(id)
+	if err != nil {
+		return err
+	}
+
+	err = s.portfolioRepo.DeletePortfolio(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

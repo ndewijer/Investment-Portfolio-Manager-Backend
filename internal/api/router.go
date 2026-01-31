@@ -51,6 +51,11 @@ func NewRouter(
 			r.Get("/funds", portfolioHandler.PortfolioFunds)
 			r.Get("/funds/{portfolioId:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", portfolioHandler.GetPortfolioFunds)
 			r.Get("/{portfolioId:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", portfolioHandler.GetPortfolio)
+			r.Post("/", portfolioHandler.CreatePortfolio)
+			r.Put("/{portfolioId:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", portfolioHandler.UpdatePortfolio)
+			r.Post("/{portfolioId:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}/archive", portfolioHandler.ArchivePortfolio)
+			r.Post("/{portfolioId:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}/unarchive", portfolioHandler.UnarchivePortfolio)
+			r.Delete("/{portfolioId:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", portfolioHandler.DeletePortfolio)
 		})
 
 		r.Route("/fund", func(r chi.Router) {

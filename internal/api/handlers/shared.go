@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 )
@@ -15,4 +16,20 @@ func respondJSON(w http.ResponseWriter, status int, data interface{}) {
 			log.Printf("Failed to encode JSON: %v", err)
 		}
 	}
+}
+
+func parseJSON[T any](r *http.Request) (T, error) {
+	var req T
+
+	// Limit body size (prevent memory exhaustion attacks)
+	r.Body = http.MaxBytesReader(nil, r.Body, 1<<20) // 1MB max
+
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields() // Strict parsing
+
+	if err := decoder.Decode(&req); err != nil {
+		return req, fmt.Errorf("invalid JSON: %w", err)
+	}
+
+	return req, nil
 }
