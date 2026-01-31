@@ -102,7 +102,8 @@ func (h *PortfolioHandler) GetPortfolio(w http.ResponseWriter, r *http.Request) 
 	// Should return exactly one portfolio
 	if len(history) == 0 || len(history[0].Portfolios) == 0 {
 		// Portfolio exists but has no transactions - return zero values
-		portfolio, _ := h.portfolioService.GetPortfolio(portfolioID) // noerrcheck - portfoliovalidation for this has been done already by earlier steps.
+		//nolint:errcheck // Portfolio validation already performed by earlier steps
+		portfolio, _ := h.portfolioService.GetPortfolio(portfolioID)
 		respondJSON(w, http.StatusOK, model.PortfolioSummary{
 			ID:          portfolio.ID,
 			Name:        portfolio.Name,
