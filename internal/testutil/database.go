@@ -2,6 +2,7 @@ package testutil
 
 import (
 	"database/sql"
+	"fmt"
 	"testing"
 
 	_ "modernc.org/sqlite" // Test Package
@@ -332,8 +333,8 @@ func CleanDatabase(t *testing.T, db *sql.DB) {
 	}
 
 	for _, table := range tables {
-		//nolint:gosec // G202: Table names are from hardcoded slice, no SQL injection risk
-		query := "DELETE FROM " + table
+		//nolint:gosec // G201: Table names are from hardcoded slice, no SQL injection risk. Sprintf to handle "transaction" table
+		query := fmt.Sprintf("DELETE FROM \"%s\"", table)
 		if _, err := db.Exec(query); err != nil {
 			t.Fatalf("Failed to clean table %s: %v", table, err)
 		}
@@ -351,7 +352,8 @@ func CountRows(t *testing.T, db *sql.DB, table string) int {
 	t.Helper()
 
 	var count int
-	query := "SELECT COUNT(*) FROM " + table
+	//nolint:gosec // G201: Table names are from hardcoded slice, no SQL injection risk. Sprintf to handle "transaction" table
+	query := fmt.Sprintf("SELECT COUNT(*) FROM \"%s\"", table)
 	err := db.QueryRow(query).Scan(&count)
 	if err != nil {
 		t.Fatalf("Failed to count rows in %s: %v", table, err)

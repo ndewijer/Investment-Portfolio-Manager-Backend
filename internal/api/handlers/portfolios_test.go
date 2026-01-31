@@ -3,8 +3,10 @@ package handlers_test
 import (
 	"database/sql"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -1829,8 +1831,864 @@ func TestPortfolioHandler_GetPortfolioFunds(t *testing.T) {
 	})
 }
 
-// TODO: Add more handler tests as you implement endpoints:
-// - TestPortfolioHandler_CreatePortfolio (POST /api/portfolio)
-// - TestPortfolioHandler_UpdatePortfolio (PUT /api/portfolio/:id)
-// - TestPortfolioHandler_DeletePortfolio (DELETE /api/portfolio/:id)
-// etc.
+// TestPortfolioHandler_CreatePortfolio tests the CreatePortfolio endpoint.
+//
+// WHY: This endpoint creates new portfolios and is critical for the application.
+// Testing ensures proper validation, error handling, and successful creation flow.
+//
+//nolint:gocyclo // Comprehensive integration test with multiple subtests
+func TestPortfolioHandler_CreatePortfolio(t *testing.T) {
+
+	setupHandler := func(t *testing.T) (*handlers.PortfolioHandler, *sql.DB) {
+		t.Helper()
+		db := testutil.SetupTestDB(t)
+		ps := testutil.NewTestPortfolioService(t, db)
+		fs := testutil.NewTestFundService(t, db)
+		ms := testutil.NewTestMaterializedService(t, db)
+		return handlers.NewPortfolioHandler(ps, fs, ms), db
+	}
+
+	// Happy path: Create portfolio with all fields
+	t.Run("creates portfolio successfully with all fields", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		reqBody := `{
+			"name": "My Portfolio",
+			"description": "Test portfolio description",
+			"excludeFromOverview": true
+		}`
+		req := httptest.NewRequest(http.MethodPost, "/api/portfolio", strings.NewReader(reqBody))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		handler.CreatePortfolio(w, req)
+
+		if w.Code != http.StatusCreated {
+			t.Errorf("Expected 201, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var response model.Portfolio
+		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if response.Name != "My Portfolio" {
+			t.Errorf("Expected name 'My Portfolio', got '%s'", response.Name)
+		}
+		if response.Description != "Test portfolio description" {
+			t.Errorf("Expected description 'Test portfolio description', got '%s'", response.Description)
+		}
+		if !response.ExcludeFromOverview {
+			t.Error("Expected ExcludeFromOverview to be true")
+		}
+		if response.ID == "" {
+			t.Error("Expected ID to be generated")
+		}
+		if response.IsArchived {
+			t.Error("Expected IsArchived to be false by default")
+		}
+
+		// Verify it was actually created in the database
+		testutil.AssertRowCount(t, db, "portfolio", 1)
+	})
+
+	// Happy path: Create portfolio with minimal fields
+	t.Run("creates portfolio with only required fields", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		reqBody := `{
+			"name": "Minimal Portfolio"
+		}`
+		req := httptest.NewRequest(http.MethodPost, "/api/portfolio", strings.NewReader(reqBody))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		handler.CreatePortfolio(w, req)
+
+		if w.Code != http.StatusCreated {
+			t.Errorf("Expected 201, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var response model.Portfolio
+		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if response.Name != "Minimal Portfolio" {
+			t.Errorf("Expected name 'Minimal Portfolio', got '%s'", response.Name)
+		}
+		if response.Description != "" {
+			t.Errorf("Expected empty description, got '%s'", response.Description)
+		}
+		if response.ExcludeFromOverview {
+			t.Error("Expected ExcludeFromOverview to be false by default")
+		}
+
+		testutil.AssertRowCount(t, db, "portfolio", 1)
+	})
+
+	// Input validation: Invalid JSON
+	t.Run("returns 400 for invalid JSON", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		reqBody := `{invalid json`
+		req := httptest.NewRequest(http.MethodPost, "/api/portfolio", strings.NewReader(reqBody))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		handler.CreatePortfolio(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d", w.Code)
+		}
+
+		var response map[string]string
+		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if response["error"] != "invalid request body" {
+			t.Errorf("Expected 'invalid request body' error, got '%s'", response["error"])
+		}
+	})
+
+	// Input validation: Empty name
+	t.Run("returns 400 for empty name", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		reqBody := `{
+			"name": "",
+			"description": "Test"
+		}`
+		req := httptest.NewRequest(http.MethodPost, "/api/portfolio", strings.NewReader(reqBody))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		handler.CreatePortfolio(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d", w.Code)
+		}
+
+		var response map[string]string
+		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if response["error"] != "validation failed" {
+			t.Errorf("Expected 'validation failed' error, got '%s'", response["error"])
+		}
+	})
+
+	// Input validation: Unknown fields
+	t.Run("returns 400 for unknown fields", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		reqBody := `{
+			"name": "Test",
+			"unknownField": "should fail"
+		}`
+		req := httptest.NewRequest(http.MethodPost, "/api/portfolio", strings.NewReader(reqBody))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		handler.CreatePortfolio(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d", w.Code)
+		}
+	})
+
+	// Database error
+	t.Run("returns 500 on database error", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		db.Close() // Force error
+
+		reqBody := `{
+			"name": "Test Portfolio"
+		}`
+		req := httptest.NewRequest(http.MethodPost, "/api/portfolio", strings.NewReader(reqBody))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		handler.CreatePortfolio(w, req)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Errorf("Expected 500, got %d", w.Code)
+		}
+
+		var response map[string]string
+		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if response["error"] != "failed to create portfolio" {
+			t.Errorf("Expected 'failed to create portfolio' error, got '%s'", response["error"])
+		}
+	})
+}
+
+// TestPortfolioHandler_UpdatePortfolio tests the UpdatePortfolio endpoint.
+//
+// WHY: This endpoint updates existing portfolios and is critical for maintaining portfolio data.
+// Testing ensures proper validation, partial updates, error handling, and successful update flow.
+//
+//nolint:gocyclo // Comprehensive integration test with multiple subtests
+func TestPortfolioHandler_UpdatePortfolio(t *testing.T) {
+	setupHandler := func(t *testing.T) (*handlers.PortfolioHandler, *sql.DB) {
+		t.Helper()
+		db := testutil.SetupTestDB(t)
+		ps := testutil.NewTestPortfolioService(t, db)
+		fs := testutil.NewTestFundService(t, db)
+		ms := testutil.NewTestMaterializedService(t, db)
+		return handlers.NewPortfolioHandler(ps, fs, ms), db
+	}
+
+	// Happy path: Update all fields
+	t.Run("updates portfolio successfully with all fields", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		portfolio := testutil.NewPortfolio().
+			WithName("Original Name").
+			WithDescription("Original Description").
+			WithExcludeFromOverview(false).
+			Build(t, db)
+
+		reqBody := `{
+			"name": "Updated Name",
+			"description": "Updated Description",
+			"excludeFromOverview": true
+		}`
+		req := httptest.NewRequest(http.MethodPut, "/api/portfolio/"+portfolio.ID, strings.NewReader(reqBody))
+		req.Header.Set("Content-Type", "application/json")
+		req = testutil.NewRequestWithURLParams(
+			http.MethodPut,
+			"/api/portfolio/"+portfolio.ID,
+			map[string]string{"portfolioId": portfolio.ID},
+		)
+		req.Body = io.NopCloser(strings.NewReader(reqBody))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		handler.UpdatePortfolio(w, req)
+
+		if w.Code != http.StatusCreated {
+			t.Errorf("Expected 201, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var response model.Portfolio
+		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if response.Name != "Updated Name" {
+			t.Errorf("Expected name 'Updated Name', got '%s'", response.Name)
+		}
+		if response.Description != "Updated Description" {
+			t.Errorf("Expected description 'Updated Description', got '%s'", response.Description)
+		}
+		if !response.ExcludeFromOverview {
+			t.Error("Expected ExcludeFromOverview to be true")
+		}
+	})
+
+	// Happy path: Partial update (name only)
+	t.Run("updates only name field", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		portfolio := testutil.NewPortfolio().
+			WithName("Original Name").
+			WithDescription("Original Description").
+			Build(t, db)
+
+		reqBody := `{
+			"name": "New Name"
+		}`
+		req := testutil.NewRequestWithURLParams(
+			http.MethodPut,
+			"/api/portfolio/"+portfolio.ID,
+			map[string]string{"portfolioId": portfolio.ID},
+		)
+		req.Body = io.NopCloser(strings.NewReader(reqBody))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		handler.UpdatePortfolio(w, req)
+
+		if w.Code != http.StatusCreated {
+			t.Errorf("Expected 201, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var response model.Portfolio
+		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if response.Name != "New Name" {
+			t.Errorf("Expected name 'New Name', got '%s'", response.Name)
+		}
+		// Description should remain unchanged
+		if response.Description != "Original Description" {
+			t.Errorf("Expected description to remain 'Original Description', got '%s'", response.Description)
+		}
+	})
+
+	// Input validation: Invalid portfolio ID
+	t.Run("returns 400 for invalid portfolio ID", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		reqBody := `{"name": "Test"}`
+		req := testutil.NewRequestWithURLParams(
+			http.MethodPut,
+			"/api/portfolio/invalid-id",
+			map[string]string{"portfolioId": "invalid-id"},
+		)
+		req.Body = io.NopCloser(strings.NewReader(reqBody))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		handler.UpdatePortfolio(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d", w.Code)
+		}
+
+		var response map[string]string
+		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if response["error"] != "invalid portfolio ID format" {
+			t.Errorf("Expected 'invalid portfolio ID format' error, got '%s'", response["error"])
+		}
+	})
+
+	// Resource not found
+	t.Run("returns 404 when portfolio doesn't exist", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		nonExistentID := testutil.MakeID()
+		reqBody := `{"name": "Test"}`
+		req := testutil.NewRequestWithURLParams(
+			http.MethodPut,
+			"/api/portfolio/"+nonExistentID,
+			map[string]string{"portfolioId": nonExistentID},
+		)
+		req.Body = io.NopCloser(strings.NewReader(reqBody))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		handler.UpdatePortfolio(w, req)
+
+		if w.Code != http.StatusNotFound {
+			t.Errorf("Expected 404, got %d", w.Code)
+		}
+
+		var response map[string]string
+		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if response["error"] != "Portfolio not found" {
+			t.Errorf("Expected 'Portfolio not found' error, got '%s'", response["error"])
+		}
+	})
+
+	// Input validation: Invalid JSON
+	t.Run("returns 400 for invalid JSON", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		portfolio := testutil.NewPortfolio().Build(t, db)
+
+		reqBody := `{invalid json`
+		req := testutil.NewRequestWithURLParams(
+			http.MethodPut,
+			"/api/portfolio/"+portfolio.ID,
+			map[string]string{"portfolioId": portfolio.ID},
+		)
+		req.Body = io.NopCloser(strings.NewReader(reqBody))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		handler.UpdatePortfolio(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d", w.Code)
+		}
+
+		var response map[string]string
+		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if response["error"] != "invalid request body" {
+			t.Errorf("Expected 'invalid request body' error, got '%s'", response["error"])
+		}
+	})
+
+	// Database error
+	t.Run("returns 500 on database error", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		db.Close() // Force error
+
+		reqBody := `{"name": "Test"}`
+		req := testutil.NewRequestWithURLParams(
+			http.MethodPut,
+			"/api/portfolio/"+portfolio.ID,
+			map[string]string{"portfolioId": portfolio.ID},
+		)
+		req.Body = io.NopCloser(strings.NewReader(reqBody))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		handler.UpdatePortfolio(w, req)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Errorf("Expected 500, got %d", w.Code)
+		}
+	})
+}
+
+// TestPortfolioHandler_DeletePortfolio tests the DeletePortfolio endpoint.
+//
+// WHY: This endpoint deletes portfolios and is critical for data management.
+// Testing ensures proper validation, cascading deletes, and error handling.
+//
+//nolint:gocyclo // Comprehensive integration test with multiple subtests
+func TestPortfolioHandler_DeletePortfolio(t *testing.T) {
+	setupHandler := func(t *testing.T) (*handlers.PortfolioHandler, *sql.DB) {
+		t.Helper()
+		db := testutil.SetupTestDB(t)
+		ps := testutil.NewTestPortfolioService(t, db)
+		fs := testutil.NewTestFundService(t, db)
+		ms := testutil.NewTestMaterializedService(t, db)
+		return handlers.NewPortfolioHandler(ps, fs, ms), db
+	}
+
+	// Happy path: Delete portfolio
+	t.Run("deletes portfolio successfully", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		testutil.AssertRowCount(t, db, "portfolio", 1)
+
+		req := testutil.NewRequestWithURLParams(
+			http.MethodDelete,
+			"/api/portfolio/"+portfolio.ID,
+			map[string]string{"portfolioId": portfolio.ID},
+		)
+		w := httptest.NewRecorder()
+
+		handler.DeletePortfolio(w, req)
+
+		if w.Code != http.StatusNoContent {
+			t.Errorf("Expected 204, got %d: %s", w.Code, w.Body.String())
+		}
+
+		// Verify it was actually deleted from the database
+		testutil.AssertRowCount(t, db, "portfolio", 0)
+	})
+
+	// Happy path: Cascading delete
+	t.Run("deletes portfolio and cascades to related data", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		fund := testutil.NewFund().Build(t, db)
+		pfID := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+		testutil.NewTransaction(pfID).Build(t, db)
+
+		testutil.AssertRowCount(t, db, "portfolio", 1)
+		testutil.AssertRowCount(t, db, "portfolio_fund", 1)
+		testutil.AssertRowCount(t, db, "transaction", 1)
+
+		req := testutil.NewRequestWithURLParams(
+			http.MethodDelete,
+			"/api/portfolio/"+portfolio.ID,
+			map[string]string{"portfolioId": portfolio.ID},
+		)
+		w := httptest.NewRecorder()
+
+		handler.DeletePortfolio(w, req)
+
+		if w.Code != http.StatusNoContent {
+			t.Errorf("Expected 204, got %d", w.Code)
+		}
+
+		// Verify cascading delete
+		testutil.AssertRowCount(t, db, "portfolio", 0)
+		testutil.AssertRowCount(t, db, "portfolio_fund", 0)
+		testutil.AssertRowCount(t, db, "transaction", 0)
+	})
+
+	// Input validation: Invalid portfolio ID
+	t.Run("returns 400 for invalid portfolio ID", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		req := testutil.NewRequestWithURLParams(
+			http.MethodDelete,
+			"/api/portfolio/invalid-id",
+			map[string]string{"portfolioId": "invalid-id"},
+		)
+		w := httptest.NewRecorder()
+
+		handler.DeletePortfolio(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d", w.Code)
+		}
+
+		var response map[string]string
+		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if response["error"] != "invalid portfolio ID format" {
+			t.Errorf("Expected 'invalid portfolio ID format' error, got '%s'", response["error"])
+		}
+	})
+
+	// Resource not found
+	t.Run("returns 404 when portfolio doesn't exist", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		nonExistentID := testutil.MakeID()
+		req := testutil.NewRequestWithURLParams(
+			http.MethodDelete,
+			"/api/portfolio/"+nonExistentID,
+			map[string]string{"portfolioId": nonExistentID},
+		)
+		w := httptest.NewRecorder()
+
+		handler.DeletePortfolio(w, req)
+
+		if w.Code != http.StatusNotFound {
+			t.Errorf("Expected 404, got %d", w.Code)
+		}
+
+		var response map[string]string
+		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if response["error"] != "Portfolio not found" {
+			t.Errorf("Expected 'Portfolio not found' error, got '%s'", response["error"])
+		}
+	})
+
+	// Database error
+	t.Run("returns 500 on database error", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		db.Close() // Force error
+
+		req := testutil.NewRequestWithURLParams(
+			http.MethodDelete,
+			"/api/portfolio/"+portfolio.ID,
+			map[string]string{"portfolioId": portfolio.ID},
+		)
+		w := httptest.NewRecorder()
+
+		handler.DeletePortfolio(w, req)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Errorf("Expected 500, got %d", w.Code)
+		}
+	})
+}
+
+// TestPortfolioHandler_ArchivePortfolio tests the ArchivePortfolio endpoint.
+//
+// WHY: This endpoint archives portfolios, which is a common workflow for hiding
+// inactive portfolios without deleting historical data.
+func TestPortfolioHandler_ArchivePortfolio(t *testing.T) {
+	setupHandler := func(t *testing.T) (*handlers.PortfolioHandler, *sql.DB) {
+		t.Helper()
+		db := testutil.SetupTestDB(t)
+		ps := testutil.NewTestPortfolioService(t, db)
+		fs := testutil.NewTestFundService(t, db)
+		ms := testutil.NewTestMaterializedService(t, db)
+		return handlers.NewPortfolioHandler(ps, fs, ms), db
+	}
+
+	// Happy path: Archive portfolio
+	t.Run("archives portfolio successfully", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		portfolio := testutil.NewPortfolio().
+			WithIsArchived(false).
+			Build(t, db)
+
+		req := testutil.NewRequestWithURLParams(
+			http.MethodPost,
+			"/api/portfolio/"+portfolio.ID+"/archive",
+			map[string]string{"portfolioId": portfolio.ID},
+		)
+		w := httptest.NewRecorder()
+
+		handler.ArchivePortfolio(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var response model.Portfolio
+		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if !response.IsArchived {
+			t.Error("Expected IsArchived to be true")
+		}
+		if response.ID != portfolio.ID {
+			t.Errorf("Expected ID %s, got %s", portfolio.ID, response.ID)
+		}
+	})
+
+	// Idempotency: Archive already archived portfolio
+	t.Run("archiving already archived portfolio succeeds", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		portfolio := testutil.NewPortfolio().
+			WithIsArchived(true).
+			Build(t, db)
+
+		req := testutil.NewRequestWithURLParams(
+			http.MethodPost,
+			"/api/portfolio/"+portfolio.ID+"/archive",
+			map[string]string{"portfolioId": portfolio.ID},
+		)
+		w := httptest.NewRecorder()
+
+		handler.ArchivePortfolio(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected 200, got %d", w.Code)
+		}
+
+		var response model.Portfolio
+		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if !response.IsArchived {
+			t.Error("Expected IsArchived to remain true")
+		}
+	})
+
+	// Input validation: Invalid portfolio ID
+	t.Run("returns 400 for invalid portfolio ID", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		req := testutil.NewRequestWithURLParams(
+			http.MethodPost,
+			"/api/portfolio/invalid-id/archive",
+			map[string]string{"portfolioId": "invalid-id"},
+		)
+		w := httptest.NewRecorder()
+
+		handler.ArchivePortfolio(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d", w.Code)
+		}
+
+		var response map[string]string
+		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if response["error"] != "invalid portfolio ID format" {
+			t.Errorf("Expected 'invalid portfolio ID format' error, got '%s'", response["error"])
+		}
+	})
+
+	// Resource not found
+	t.Run("returns 404 when portfolio doesn't exist", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		nonExistentID := testutil.MakeID()
+		req := testutil.NewRequestWithURLParams(
+			http.MethodPost,
+			"/api/portfolio/"+nonExistentID+"/archive",
+			map[string]string{"portfolioId": nonExistentID},
+		)
+		w := httptest.NewRecorder()
+
+		handler.ArchivePortfolio(w, req)
+
+		if w.Code != http.StatusNotFound {
+			t.Errorf("Expected 404, got %d", w.Code)
+		}
+
+		var response map[string]string
+		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if response["error"] != "portfolio not found" {
+			t.Errorf("Expected 'portfolio not found' error, got '%s'", response["error"])
+		}
+	})
+
+	// Database error
+	t.Run("returns 500 on database error", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		db.Close() // Force error
+
+		req := testutil.NewRequestWithURLParams(
+			http.MethodPost,
+			"/api/portfolio/"+portfolio.ID+"/archive",
+			map[string]string{"portfolioId": portfolio.ID},
+		)
+		w := httptest.NewRecorder()
+
+		handler.ArchivePortfolio(w, req)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Errorf("Expected 500, got %d", w.Code)
+		}
+	})
+}
+
+// TestPortfolioHandler_UnarchivePortfolio tests the UnarchivePortfolio endpoint.
+//
+// WHY: This endpoint unarchives portfolios, allowing users to restore archived
+// portfolios back to active status.
+func TestPortfolioHandler_UnarchivePortfolio(t *testing.T) {
+	setupHandler := func(t *testing.T) (*handlers.PortfolioHandler, *sql.DB) {
+		t.Helper()
+		db := testutil.SetupTestDB(t)
+		ps := testutil.NewTestPortfolioService(t, db)
+		fs := testutil.NewTestFundService(t, db)
+		ms := testutil.NewTestMaterializedService(t, db)
+		return handlers.NewPortfolioHandler(ps, fs, ms), db
+	}
+
+	// Happy path: Unarchive portfolio
+	t.Run("unarchives portfolio successfully", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		portfolio := testutil.NewPortfolio().
+			WithIsArchived(true).
+			Build(t, db)
+
+		req := testutil.NewRequestWithURLParams(
+			http.MethodPost,
+			"/api/portfolio/"+portfolio.ID+"/unarchive",
+			map[string]string{"portfolioId": portfolio.ID},
+		)
+		w := httptest.NewRecorder()
+
+		handler.UnarchivePortfolio(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var response model.Portfolio
+		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if response.IsArchived {
+			t.Error("Expected IsArchived to be false")
+		}
+		if response.ID != portfolio.ID {
+			t.Errorf("Expected ID %s, got %s", portfolio.ID, response.ID)
+		}
+	})
+
+	// Idempotency: Unarchive already unarchived portfolio
+	t.Run("unarchiving already active portfolio succeeds", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		portfolio := testutil.NewPortfolio().
+			WithIsArchived(false).
+			Build(t, db)
+
+		req := testutil.NewRequestWithURLParams(
+			http.MethodPost,
+			"/api/portfolio/"+portfolio.ID+"/unarchive",
+			map[string]string{"portfolioId": portfolio.ID},
+		)
+		w := httptest.NewRecorder()
+
+		handler.UnarchivePortfolio(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected 200, got %d", w.Code)
+		}
+
+		var response model.Portfolio
+		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if response.IsArchived {
+			t.Error("Expected IsArchived to remain false")
+		}
+	})
+
+	// Input validation: Invalid portfolio ID
+	t.Run("returns 400 for invalid portfolio ID", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		req := testutil.NewRequestWithURLParams(
+			http.MethodPost,
+			"/api/portfolio/invalid-id/unarchive",
+			map[string]string{"portfolioId": "invalid-id"},
+		)
+		w := httptest.NewRecorder()
+
+		handler.UnarchivePortfolio(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d", w.Code)
+		}
+
+		var response map[string]string
+		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if response["error"] != "invalid portfolio ID format" {
+			t.Errorf("Expected 'invalid portfolio ID format' error, got '%s'", response["error"])
+		}
+	})
+
+	// Resource not found
+	t.Run("returns 404 when portfolio doesn't exist", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		nonExistentID := testutil.MakeID()
+		req := testutil.NewRequestWithURLParams(
+			http.MethodPost,
+			"/api/portfolio/"+nonExistentID+"/unarchive",
+			map[string]string{"portfolioId": nonExistentID},
+		)
+		w := httptest.NewRecorder()
+
+		handler.UnarchivePortfolio(w, req)
+
+		if w.Code != http.StatusNotFound {
+			t.Errorf("Expected 404, got %d", w.Code)
+		}
+
+		var response map[string]string
+		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if response["error"] != "portfolio not found" {
+			t.Errorf("Expected 'portfolio not found' error, got '%s'", response["error"])
+		}
+	})
+
+	// Database error
+	t.Run("returns 500 on database error", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		db.Close() // Force error
+
+		req := testutil.NewRequestWithURLParams(
+			http.MethodPost,
+			"/api/portfolio/"+portfolio.ID+"/unarchive",
+			map[string]string{"portfolioId": portfolio.ID},
+		)
+		w := httptest.NewRecorder()
+
+		handler.UnarchivePortfolio(w, req)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Errorf("Expected 500, got %d", w.Code)
+		}
+	})
+}

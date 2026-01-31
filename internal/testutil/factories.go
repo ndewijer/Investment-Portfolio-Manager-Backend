@@ -58,6 +58,18 @@ func (b *PortfolioBuilder) WithDescription(desc string) *PortfolioBuilder {
 	return b
 }
 
+// WithIsArchived sets a custom description.
+func (b *PortfolioBuilder) WithIsArchived(archived bool) *PortfolioBuilder {
+	b.IsArchived = archived
+	return b
+}
+
+// WithExcludeFromOverview sets a custom description.
+func (b *PortfolioBuilder) WithExcludeFromOverview(exclude bool) *PortfolioBuilder {
+	b.IsArchived = exclude
+	return b
+}
+
 // Archived marks the portfolio as archived.
 func (b *PortfolioBuilder) Archived() *PortfolioBuilder {
 	b.IsArchived = true
