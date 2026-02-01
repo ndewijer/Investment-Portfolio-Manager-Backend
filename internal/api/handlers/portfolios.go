@@ -367,7 +367,7 @@ func (h *PortfolioHandler) UpdatePortfolio(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	respondJSON(w, http.StatusCreated, portfolio)
+	respondJSON(w, http.StatusOK, portfolio)
 }
 
 func (h *PortfolioHandler) DeletePortfolio(w http.ResponseWriter, r *http.Request) {

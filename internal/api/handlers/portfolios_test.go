@@ -2068,8 +2068,8 @@ func TestPortfolioHandler_UpdatePortfolio(t *testing.T) {
 
 		handler.UpdatePortfolio(w, req)
 
-		if w.Code != http.StatusCreated {
-			t.Errorf("Expected 201, got %d: %s", w.Code, w.Body.String())
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
 		}
 
 		var response model.Portfolio
@@ -2110,8 +2110,8 @@ func TestPortfolioHandler_UpdatePortfolio(t *testing.T) {
 
 		handler.UpdatePortfolio(w, req)
 
-		if w.Code != http.StatusCreated {
-			t.Errorf("Expected 201, got %d: %s", w.Code, w.Body.String())
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
 		}
 
 		var response model.Portfolio
