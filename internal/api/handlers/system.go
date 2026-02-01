@@ -3,6 +3,7 @@ package handlers
 import (
 	"net/http"
 
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/response"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/service"
 )
 
@@ -29,21 +30,21 @@ type HealthResponse struct {
 func (h *SystemHandler) Health(w http.ResponseWriter, _ *http.Request) {
 	// Check database health
 	if err := h.systemService.CheckHealth(); err != nil {
-		response := HealthResponse{
+		health := HealthResponse{
 			Status:   "unhealthy",
 			Database: "disconnected",
 			Error:    err.Error(),
 		}
-		respondJSON(w, http.StatusServiceUnavailable, response)
+		response.RespondError(w, http.StatusServiceUnavailable, "unhealthy", health)
 		return
 	}
 
 	// System is healthy
-	response := HealthResponse{
+	health := HealthResponse{
 		Status:   "healthy",
 		Database: "connected",
 	}
-	respondJSON(w, http.StatusOK, response)
+	response.RespondJSON(w, http.StatusOK, health)
 }
 
 // VersionInfoResponse represents the version check response containing application
@@ -65,15 +66,12 @@ type VersionInfoResponse struct {
 func (h *SystemHandler) Version(w http.ResponseWriter, _ *http.Request) {
 	version, err := h.systemService.CheckVersion()
 	if err != nil {
-		errorResponse := map[string]string{
-			"error":  "failed to get version information",
-			"detail": err.Error(),
-		}
-		respondJSON(w, http.StatusInternalServerError, errorResponse)
+
+		response.RespondError(w, http.StatusInternalServerError, "failed to get version information", err.Error())
 		return
 	}
 
-	response := VersionInfoResponse{
+	versionResponse := VersionInfoResponse{
 		AppVersion:       version.AppVersion,
 		DbVersion:        version.DbVersion,
 		Features:         version.Features,
@@ -81,5 +79,5 @@ func (h *SystemHandler) Version(w http.ResponseWriter, _ *http.Request) {
 		MigrationMessage: version.MigrationMessage,
 	}
 
-	respondJSON(w, http.StatusOK, response)
+	response.RespondJSON(w, http.StatusOK, versionResponse)
 }

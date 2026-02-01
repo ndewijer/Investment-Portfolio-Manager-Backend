@@ -4,8 +4,8 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/response"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/service"
-	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/validation"
 )
 
 // DividendHandler handles HTTP requests for dividend endpoints.
@@ -32,15 +32,11 @@ func (h *DividendHandler) GetAllDividends(w http.ResponseWriter, _ *http.Request
 
 	dividends, err := h.dividendService.GetAllDividends()
 	if err != nil {
-		errorResponse := map[string]string{
-			"error":  "failed to retrieve dividends",
-			"detail": err.Error(),
-		}
-		respondJSON(w, http.StatusInternalServerError, errorResponse)
+		response.RespondError(w, http.StatusInternalServerError, "failed to retrieve dividends", err.Error())
 		return
 	}
 
-	respondJSON(w, http.StatusOK, dividends)
+	response.RespondJSON(w, http.StatusOK, dividends)
 }
 
 // DividendPerPortfolio handles GET requests to retrieve all dividends for a specific portfolio.
@@ -54,29 +50,15 @@ func (h *DividendHandler) DividendPerPortfolio(w http.ResponseWriter, r *http.Re
 
 	portfolioID := chi.URLParam(r, "portfolioId")
 	if portfolioID == "" {
-		respondJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "portfolio ID is required",
-		})
-		return
-	}
-
-	if err := validation.ValidateUUID(portfolioID); err != nil {
-		respondJSON(w, http.StatusBadRequest, map[string]string{
-			"error":  "invalid portfolio ID format",
-			"detail": err.Error(),
-		})
+		response.RespondError(w, http.StatusBadRequest, "portfolio ID is required", "")
 		return
 	}
 
 	dividends, err := h.dividendService.GetDividendFund(portfolioID)
 	if err != nil {
-		errorResponse := map[string]string{
-			"error":  "failed to retrieve dividends",
-			"detail": err.Error(),
-		}
-		respondJSON(w, http.StatusInternalServerError, errorResponse)
+		response.RespondError(w, http.StatusInternalServerError, "failed to retrieve dividends", err.Error())
 		return
 	}
 
-	respondJSON(w, http.StatusOK, dividends)
+	response.RespondJSON(w, http.StatusOK, dividends)
 }

@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/request"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/response"
 	apperrors "github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/errors"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/service"
@@ -40,15 +42,12 @@ func (h *PortfolioHandler) Portfolios(w http.ResponseWriter, _ *http.Request) {
 
 	portfolios, err := h.portfolioService.GetAllPortfolios()
 	if err != nil {
-		errorResponse := map[string]string{
-			"error":  "failed to retrieve portfolios",
-			"detail": err.Error(),
-		}
-		respondJSON(w, http.StatusInternalServerError, errorResponse)
+
+		response.RespondError(w, http.StatusInternalServerError, "failed to retrieve portfolios", err.Error())
 		return
 	}
 
-	respondJSON(w, http.StatusOK, portfolios)
+	response.RespondJSON(w, http.StatusOK, portfolios)
 }
 
 // GetPortfolio handles GET requests to retrieve a single portfolio with its current summary.
@@ -62,17 +61,7 @@ func (h *PortfolioHandler) GetPortfolio(w http.ResponseWriter, r *http.Request) 
 	portfolioID := chi.URLParam(r, "portfolioId")
 
 	if portfolioID == "" {
-		respondJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "portfolio ID is required",
-		})
-		return
-	}
-
-	if err := validation.ValidateUUID(portfolioID); err != nil {
-		respondJSON(w, http.StatusBadRequest, map[string]string{
-			"error":  "invalid portfolio ID format",
-			"detail": err.Error(),
-		})
+		response.RespondError(w, http.StatusBadRequest, "portfolio ID is required", "")
 		return
 	}
 
@@ -84,24 +73,20 @@ func (h *PortfolioHandler) GetPortfolio(w http.ResponseWriter, r *http.Request) 
 	history, err := h.materializedService.GetPortfolioHistoryWithFallback(startDate, endDate, portfolioID)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrPortfolioNotFound) {
-			respondJSON(w, http.StatusNotFound, map[string]string{
-				"error": "portfolio does not exist",
-			})
+			response.RespondError(w, http.StatusNotFound, "portfolio does not exist", err.Error())
 			return
 		}
 
-		respondJSON(w, http.StatusInternalServerError, map[string]string{
-			"error":  "failed to get portfolio summary",
-			"detail": err.Error(),
-		})
+		response.RespondError(w, http.StatusInternalServerError, "failed to get portfolio summary", err.Error())
 		return
 	}
 
 	// Should return exactly one portfolio
 	if len(history) == 0 || len(history[0].Portfolios) == 0 {
 		// Portfolio exists but has no transactions - return zero values
+		//nolint:errcheck // Portfolio validation already performed by earlier steps
 		portfolio, _ := h.portfolioService.GetPortfolio(portfolioID)
-		respondJSON(w, http.StatusOK, model.PortfolioSummary{
+		response.RespondJSON(w, http.StatusOK, model.PortfolioSummary{
 			ID:          portfolio.ID,
 			Name:        portfolio.Name,
 			Description: portfolio.Description,
@@ -111,7 +96,7 @@ func (h *PortfolioHandler) GetPortfolio(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Return the single portfolio summary
-	respondJSON(w, http.StatusOK, history[len(history)-1].Portfolios[0])
+	response.RespondJSON(w, http.StatusOK, history[len(history)-1].Portfolios[0])
 }
 
 // PortfolioSummary handles GET requests to retrieve current portfolio summaries.
@@ -130,19 +115,16 @@ func (h *PortfolioHandler) PortfolioSummary(w http.ResponseWriter, _ *http.Reque
 	endDate := time.Now()
 	portfolioSummary, err := h.materializedService.GetPortfolioHistoryWithFallback(startDate, endDate, "")
 	if err != nil {
-		errorResponse := map[string]string{
-			"error":  "failed to get portfolio summary",
-			"detail": err.Error(),
-		}
-		respondJSON(w, http.StatusInternalServerError, errorResponse)
+
+		response.RespondError(w, http.StatusInternalServerError, "failed to get portfolio summary", err.Error())
 		return
 	}
 	if len(portfolioSummary) == 0 {
-		respondJSON(w, http.StatusOK, []model.PortfolioSummary{})
+		response.RespondJSON(w, http.StatusOK, []model.PortfolioSummary{})
 		return
 	}
 
-	respondJSON(w, http.StatusOK, portfolioSummary[len(portfolioSummary)-1].Portfolios)
+	response.RespondJSON(w, http.StatusOK, portfolioSummary[len(portfolioSummary)-1].Portfolios)
 }
 
 // PortfolioHistory handles GET requests to retrieve historical portfolio valuations.
@@ -164,24 +146,18 @@ func (h *PortfolioHandler) PortfolioSummary(w http.ResponseWriter, _ *http.Reque
 func (h *PortfolioHandler) PortfolioHistory(w http.ResponseWriter, r *http.Request) {
 	startDate, endDate, err := parseDateParams(r)
 	if err != nil {
-		respondJSON(w, http.StatusBadRequest, map[string]string{
-			"error":  "Invalid date parameters",
-			"detail": err.Error(),
-		})
+		response.RespondError(w, http.StatusBadRequest, "Invalid date parameters", err.Error())
 		return
 	}
 
 	portfolioHistory, err := h.materializedService.GetPortfolioHistoryWithFallback(startDate, endDate, "")
 	if err != nil {
-		errorResponse := map[string]string{
-			"error":  "failed to get portfolio history",
-			"detail": err.Error(),
-		}
-		respondJSON(w, http.StatusInternalServerError, errorResponse)
+
+		response.RespondError(w, http.StatusInternalServerError, "failed to get portfolio history", err.Error())
 		return
 	}
 
-	respondJSON(w, http.StatusOK, portfolioHistory)
+	response.RespondJSON(w, http.StatusOK, portfolioHistory)
 }
 
 // parseDateParams extracts and validates start_date and end_date from query parameters.
@@ -222,11 +198,8 @@ func parseDateParams(r *http.Request) (time.Time, time.Time, error) {
 func (h *PortfolioHandler) PortfolioFunds(w http.ResponseWriter, _ *http.Request) {
 	listings, err := h.fundService.GetAllPortfolioFundListings()
 	if err != nil {
-		errorResponse := map[string]string{
-			"error":  "failed to retrieve portfolio funds",
-			"detail": err.Error(),
-		}
-		respondJSON(w, http.StatusInternalServerError, errorResponse)
+
+		response.RespondError(w, http.StatusInternalServerError, "failed to retrieve portfolio funds", err.Error())
 		return
 	}
 
@@ -234,7 +207,7 @@ func (h *PortfolioHandler) PortfolioFunds(w http.ResponseWriter, _ *http.Request
 		listings = []model.PortfolioFundListing{}
 	}
 
-	respondJSON(w, http.StatusOK, listings)
+	response.RespondJSON(w, http.StatusOK, listings)
 }
 
 // GetPortfolioFunds handles GET requests to retrieve all funds for a specific portfolio.
@@ -248,35 +221,176 @@ func (h *PortfolioHandler) GetPortfolioFunds(w http.ResponseWriter, r *http.Requ
 
 	portfolioID := chi.URLParam(r, "portfolioId")
 	if portfolioID == "" {
-		respondJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "portfolio ID is required",
-		})
-		return
-	}
-
-	if err := validation.ValidateUUID(portfolioID); err != nil {
-		respondJSON(w, http.StatusBadRequest, map[string]string{
-			"error":  "invalid portfolio ID format",
-			"detail": err.Error(),
-		})
+		response.RespondError(w, http.StatusBadRequest, "portfolio ID is required", "")
 		return
 	}
 
 	portfolioFunds, err := h.fundService.GetPortfolioFunds(portfolioID)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrPortfolioNotFound) {
-			respondJSON(w, http.StatusNotFound, map[string]string{
-				"error": "portfolio does not exist",
-			})
+			response.RespondError(w, http.StatusNotFound, "portfolio does not exist", apperrors.ErrPortfolioNotFound.Error())
 			return
 		}
 
-		respondJSON(w, http.StatusInternalServerError, map[string]string{
-			"error":  "failed to get portfolio funds",
-			"detail": err.Error(),
-		})
+		response.RespondError(w, http.StatusInternalServerError, "failed to get portfolio funds", err.Error())
 		return
 	}
 
-	respondJSON(w, http.StatusOK, portfolioFunds)
+	response.RespondJSON(w, http.StatusOK, portfolioFunds)
+}
+
+// CreatePortfolio handles POST requests to create a new portfolio.
+// Creates a portfolio with the provided name, description, and settings.
+//
+// Endpoint: POST /api/portfolio
+// Request: JSON body with CreatePortfolioRequest (name required, description and excludeFromOverview optional)
+// Response: 201 Created with created portfolio including generated ID
+// Error: 400 Bad Request if JSON is invalid or validation fails
+// Error: 500 Internal Server Error if creation fails
+func (h *PortfolioHandler) CreatePortfolio(w http.ResponseWriter, r *http.Request) {
+	req, err := parseJSON[request.CreatePortfolioRequest](r)
+	if err != nil {
+
+		response.RespondError(w, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
+
+	if err := validation.ValidateCreatePortfolio(req); err != nil {
+
+		response.RespondError(w, http.StatusBadRequest, "validation failed", err.Error())
+		return
+	}
+
+	portfolio, err := h.portfolioService.CreatePortfolio(r.Context(), req)
+	if err != nil {
+
+		response.RespondError(w, http.StatusInternalServerError, "failed to create portfolio", err.Error())
+		return
+	}
+
+	response.RespondJSON(w, http.StatusCreated, portfolio)
+}
+
+// UpdatePortfolio handles PUT requests to update an existing portfolio.
+// Supports partial updates - only provided fields will be updated.
+//
+// Endpoint: PUT /api/portfolio/{portfolioId}
+// Request: JSON body with UpdatePortfolioRequest (all fields optional)
+// Response: 200 OK with updated portfolio
+// Error: 400 Bad Request if portfolio ID is invalid, JSON is invalid, or validation fails
+// Error: 404 Not Found if portfolio doesn't exist
+// Error: 500 Internal Server Error if update fails
+func (h *PortfolioHandler) UpdatePortfolio(w http.ResponseWriter, r *http.Request) {
+	portfolioID := chi.URLParam(r, "portfolioId")
+
+	req, err := parseJSON[request.UpdatePortfolioRequest](r)
+	if err != nil {
+
+		response.RespondError(w, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
+
+	if err := validation.ValidateUpdatePortfolio(req); err != nil {
+
+		response.RespondError(w, http.StatusBadRequest, "validation failed", err.Error())
+		return
+	}
+
+	portfolio, err := h.portfolioService.UpdatePortfolio(r.Context(), portfolioID, req)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrPortfolioNotFound) {
+
+			response.RespondError(w, http.StatusNotFound, "portfolio not found", err.Error())
+			return
+		}
+
+		response.RespondError(w, http.StatusInternalServerError, "failed to update portfolio", err.Error())
+		return
+	}
+
+	response.RespondJSON(w, http.StatusOK, portfolio)
+}
+
+// DeletePortfolio handles DELETE requests to delete a portfolio.
+// Permanently deletes the portfolio and all related data (cascading delete).
+//
+// Endpoint: DELETE /api/portfolio/{portfolioId}
+// Response: 204 No Content on successful deletion
+// Error: 400 Bad Request if portfolio ID is invalid
+// Error: 404 Not Found if portfolio doesn't exist
+// Error: 500 Internal Server Error if deletion fails
+func (h *PortfolioHandler) DeletePortfolio(w http.ResponseWriter, r *http.Request) {
+	portfolioID := chi.URLParam(r, "portfolioId")
+
+	err := h.portfolioService.DeletePortfolio(r.Context(), portfolioID)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrPortfolioNotFound) {
+
+			response.RespondError(w, http.StatusNotFound, "portfolio not found", err.Error())
+			return
+		}
+
+		response.RespondError(w, http.StatusInternalServerError, "failed to delete portfolio", err.Error())
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent) // 204 No Content
+}
+
+// ArchivePortfolio handles POST requests to archive a portfolio.
+// Archives the portfolio by setting IsArchived to true.
+//
+// Endpoint: POST /api/portfolio/{portfolioId}/archive
+// Response: 200 OK with updated portfolio
+// Error: 400 Bad Request if portfolio ID is invalid
+// Error: 404 Not Found if portfolio doesn't exist
+// Error: 500 Internal Server Error if update fails
+func (h *PortfolioHandler) ArchivePortfolio(w http.ResponseWriter, r *http.Request) {
+	portfolioID := chi.URLParam(r, "portfolioId")
+
+	isArchived := true
+	req := request.UpdatePortfolioRequest{
+		IsArchived: &isArchived,
+	}
+
+	portfolio, err := h.portfolioService.UpdatePortfolio(r.Context(), portfolioID, req)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrPortfolioNotFound) {
+			response.RespondError(w, http.StatusNotFound, "portfolio not found", err.Error())
+			return
+		}
+		response.RespondError(w, http.StatusInternalServerError, "failed to archive portfolio", err.Error())
+		return
+	}
+
+	response.RespondJSON(w, http.StatusOK, portfolio)
+}
+
+// UnarchivePortfolio handles POST requests to unarchive a portfolio.
+// Unarchives the portfolio by setting IsArchived to false.
+//
+// Endpoint: POST /api/portfolio/{portfolioId}/unarchive
+// Response: 200 OK with updated portfolio
+// Error: 400 Bad Request if portfolio ID is invalid
+// Error: 404 Not Found if portfolio doesn't exist
+// Error: 500 Internal Server Error if update fails
+func (h *PortfolioHandler) UnarchivePortfolio(w http.ResponseWriter, r *http.Request) {
+	portfolioID := chi.URLParam(r, "portfolioId")
+
+	isArchived := false
+	req := request.UpdatePortfolioRequest{
+		IsArchived: &isArchived,
+	}
+
+	portfolio, err := h.portfolioService.UpdatePortfolio(r.Context(), portfolioID, req)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrPortfolioNotFound) {
+			response.RespondError(w, http.StatusNotFound, "portfolio not found", err.Error())
+			return
+		}
+		response.RespondError(w, http.StatusInternalServerError, "failed to unarchive portfolio", err.Error())
+		return
+	}
+
+	response.RespondJSON(w, http.StatusOK, portfolio)
 }

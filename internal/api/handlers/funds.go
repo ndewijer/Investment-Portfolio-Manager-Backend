@@ -5,6 +5,9 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/response"
+	apperrors "github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/errors"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/service"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/validation"
 )
@@ -38,15 +41,11 @@ func (h *FundHandler) GetAllFunds(w http.ResponseWriter, _ *http.Request) {
 
 	funds, err := h.fundService.GetFund("")
 	if err != nil {
-		errorResponse := map[string]string{
-			"error":  "failed to retrieve funds",
-			"detail": err.Error(),
-		}
-		respondJSON(w, http.StatusInternalServerError, errorResponse)
+		response.RespondError(w, http.StatusInternalServerError, "failed to retrieve funds", err.Error())
 		return
 	}
 
-	respondJSON(w, http.StatusOK, funds)
+	response.RespondJSON(w, http.StatusOK, funds)
 }
 
 // GetFund handles GET requests to retrieve a single fund by ID.
@@ -62,40 +61,27 @@ func (h *FundHandler) GetFund(w http.ResponseWriter, r *http.Request) {
 	fundID := chi.URLParam(r, "fundId")
 
 	if fundID == "" {
-		respondJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "fund ID is required",
-		})
+		response.RespondError(w, http.StatusBadRequest, "fund ID is required", "")
 		return
 	}
 
 	if err := validation.ValidateUUID(fundID); err != nil {
-		respondJSON(w, http.StatusBadRequest, map[string]string{
-			"error":  "invalid fund ID format",
-			"detail": err.Error(),
-		})
+		response.RespondError(w, http.StatusBadRequest, "invalid fund ID format", err.Error())
 		return
 	}
 
 	funds, err := h.fundService.GetFund(fundID)
 	if err != nil {
-		errorResponse := map[string]string{
-			"error":  "failed to retrieve funds",
-			"detail": err.Error(),
-		}
-		respondJSON(w, http.StatusInternalServerError, errorResponse)
+		response.RespondError(w, http.StatusInternalServerError, "failed to retrieve funds", err.Error())
 		return
 	}
 
 	if len(funds) == 0 {
-		errorResponse := map[string]string{
-			"error":  "Fund not found",
-			"detail": "No fund found with the given ID",
-		}
-		respondJSON(w, http.StatusNotFound, errorResponse)
+		response.RespondError(w, http.StatusNotFound, "Fund not found", apperrors.ErrFundNotFound.Error())
 		return
 	}
 
-	respondJSON(w, http.StatusOK, funds[0])
+	response.RespondJSON(w, http.StatusOK, funds[0])
 }
 
 // GetSymbol handles GET requests to retrieve symbol information by ticker symbol.
@@ -109,23 +95,17 @@ func (h *FundHandler) GetSymbol(w http.ResponseWriter, r *http.Request) {
 
 	symbol := chi.URLParam(r, "symbol")
 	if symbol == "" {
-		respondJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "Symbol is required",
-		})
+		response.RespondError(w, http.StatusBadRequest, "Symbol is required", "")
 		return
 	}
 
 	symbolresponse, err := h.fundService.GetSymbol(symbol)
 	if err != nil {
-		errorResponse := map[string]string{
-			"error":  "failed to retrieve symbol",
-			"detail": err.Error(),
-		}
-		respondJSON(w, http.StatusInternalServerError, errorResponse)
+		response.RespondError(w, http.StatusInternalServerError, "failed to retrieve symbol", err.Error())
 		return
 	}
 
-	respondJSON(w, http.StatusOK, symbolresponse)
+	response.RespondJSON(w, http.StatusOK, symbolresponse)
 }
 
 // GetFundHistory handles GET requests to retrieve historical fund data for a portfolio.
@@ -143,41 +123,24 @@ func (h *FundHandler) GetFundHistory(w http.ResponseWriter, r *http.Request) {
 	portfolioID := chi.URLParam(r, "portfolioId")
 
 	if portfolioID == "" {
-		respondJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "portfolio ID is required",
-		})
-		return
-	}
-
-	if err := validation.ValidateUUID(portfolioID); err != nil {
-		respondJSON(w, http.StatusBadRequest, map[string]string{
-			"error":  "invalid portfolio ID format",
-			"detail": err.Error(),
-		})
+		response.RespondError(w, http.StatusBadRequest, "portfolio ID is required", "")
 		return
 	}
 
 	// Parse date parameters
 	startDate, endDate, err := parseDateParams(r)
 	if err != nil {
-		respondJSON(w, http.StatusBadRequest, map[string]string{
-			"error":  "Invalid date parameters",
-			"detail": err.Error(),
-		})
+		response.RespondError(w, http.StatusBadRequest, "Invalid date parameters", err.Error())
 		return
 	}
 
 	fundHistory, err := h.materializedService.GetFundHistoryWithFallback(portfolioID, startDate, endDate)
 	if err != nil {
-		errorResponse := map[string]string{
-			"error":  "failed to retrieve fund history",
-			"detail": err.Error(),
-		}
-		respondJSON(w, http.StatusInternalServerError, errorResponse)
+		response.RespondError(w, http.StatusInternalServerError, "failed to retrieve fund history", err.Error())
 		return
 	}
 
-	respondJSON(w, http.StatusOK, fundHistory)
+	response.RespondJSON(w, http.StatusOK, fundHistory)
 }
 
 // GetFundPrices handles GET requests to retrieve historical price data for a fund.
@@ -192,17 +155,12 @@ func (h *FundHandler) GetFundPrices(w http.ResponseWriter, r *http.Request) {
 	fundID := chi.URLParam(r, "fundId")
 
 	if fundID == "" {
-		respondJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "portfolio ID is required",
-		})
+		response.RespondError(w, http.StatusBadRequest, "portfolio ID is required", "")
 		return
 	}
 
 	if err := validation.ValidateUUID(fundID); err != nil {
-		respondJSON(w, http.StatusBadRequest, map[string]string{
-			"error":  "invalid portfolio ID format",
-			"detail": err.Error(),
-		})
+		response.RespondError(w, http.StatusBadRequest, "invalid portfolio ID format", err.Error())
 		return
 	}
 
@@ -214,13 +172,9 @@ func (h *FundHandler) GetFundPrices(w http.ResponseWriter, r *http.Request) {
 
 	funds, err := h.fundService.LoadFundPrices([]string{fundID}, startDate, endDate, false)
 	if err != nil {
-		errorResponse := map[string]string{
-			"error":  "failed to retrieve funds",
-			"detail": err.Error(),
-		}
-		respondJSON(w, http.StatusInternalServerError, errorResponse)
+		response.RespondError(w, http.StatusInternalServerError, "failed to retrieve funds", err.Error())
 		return
 	}
 
-	respondJSON(w, http.StatusOK, funds[fundID])
+	response.RespondJSON(w, http.StatusOK, funds[fundID])
 }

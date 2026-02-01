@@ -8,7 +8,7 @@ type Portfolio struct {
 	Name                string `json:"name"`
 	Description         string `json:"description"`
 	IsArchived          bool   `json:"isArchived"`
-	ExcludeFromOverview bool   `json:"exclude_from_overview"`
+	ExcludeFromOverview bool   `json:"excludeFromOverview"`
 }
 
 // PortfolioFilter for querying portfolios
