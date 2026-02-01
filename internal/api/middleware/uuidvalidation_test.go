@@ -13,7 +13,7 @@ import (
 func TestValidatePortfolioIDMiddleware(t *testing.T) {
 	t.Run("passes through valid UUID", func(t *testing.T) {
 		handlerCalled := false
-		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			handlerCalled = true
 			w.WriteHeader(http.StatusOK)
 		})
@@ -38,7 +38,7 @@ func TestValidatePortfolioIDMiddleware(t *testing.T) {
 
 	t.Run("returns 400 for invalid UUID", func(t *testing.T) {
 		handlerCalled := false
-		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		next := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 			handlerCalled = true
 		})
 
@@ -62,7 +62,7 @@ func TestValidatePortfolioIDMiddleware(t *testing.T) {
 
 	t.Run("returns 400 for empty UUID", func(t *testing.T) {
 		handlerCalled := false
-		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		next := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 			handlerCalled = true
 		})
 
