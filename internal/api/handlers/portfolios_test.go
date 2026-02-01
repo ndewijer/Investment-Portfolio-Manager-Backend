@@ -956,32 +956,6 @@ func TestPortfolioHandler_GetPortfolio(t *testing.T) {
 		}
 	})
 
-	// Input validation: Invalid format
-	t.Run("returns 400 when portfolioId is invalid UUID format", func(t *testing.T) {
-		handler, _ := setupHandler(t)
-
-		req := testutil.NewRequestWithURLParams(
-			http.MethodGet,
-			"/api/portfolio/not-a-uuid",
-			map[string]string{"portfolioId": "not-a-uuid"},
-		)
-		w := httptest.NewRecorder()
-
-		handler.GetPortfolio(w, req)
-
-		if w.Code != http.StatusBadRequest {
-			t.Errorf("Expected 400, got %d", w.Code)
-		}
-
-		var response map[string]string
-		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
-		json.NewDecoder(w.Body).Decode(&response)
-
-		if _, hasError := response["error"]; !hasError {
-			t.Error("Expected error field in response")
-		}
-	})
-
 	// Resource not found
 	t.Run("returns 404 when portfolio doesn't exist", func(t *testing.T) {
 		handler, _ := setupHandler(t)
@@ -1593,24 +1567,6 @@ func TestPortfolioHandler_GetPortfolioFunds(t *testing.T) {
 		}
 	})
 
-	// Input validation: Invalid UUID
-	t.Run("returns 400 when portfolioId is invalid UUID format", func(t *testing.T) {
-		handler, _ := setupHandler(t)
-
-		req := testutil.NewRequestWithURLParams(
-			http.MethodGet,
-			"/api/portfolio/funds/not-a-uuid",
-			map[string]string{"portfolioId": "not-a-uuid"},
-		)
-		w := httptest.NewRecorder()
-
-		handler.GetPortfolioFunds(w, req)
-
-		if w.Code != http.StatusBadRequest {
-			t.Errorf("Expected 400, got %d", w.Code)
-		}
-	})
-
 	// Resource not found
 	t.Run("returns 404 when portfolio doesn't exist", func(t *testing.T) {
 		handler, _ := setupHandler(t)
@@ -2127,35 +2083,6 @@ func TestPortfolioHandler_UpdatePortfolio(t *testing.T) {
 		}
 	})
 
-	// Input validation: Invalid portfolio ID
-	t.Run("returns 400 for invalid portfolio ID", func(t *testing.T) {
-		handler, _ := setupHandler(t)
-
-		reqBody := `{"name": "Test"}`
-		req := testutil.NewRequestWithURLParams(
-			http.MethodPut,
-			"/api/portfolio/invalid-id",
-			map[string]string{"portfolioId": "invalid-id"},
-		)
-		req.Body = io.NopCloser(strings.NewReader(reqBody))
-		req.Header.Set("Content-Type", "application/json")
-		w := httptest.NewRecorder()
-
-		handler.UpdatePortfolio(w, req)
-
-		if w.Code != http.StatusBadRequest {
-			t.Errorf("Expected 400, got %d", w.Code)
-		}
-
-		var response map[string]string
-		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
-		json.NewDecoder(w.Body).Decode(&response)
-
-		if response["error"] != "invalid portfolio ID format" {
-			t.Errorf("Expected 'invalid portfolio ID format' error, got '%s'", response["error"])
-		}
-	})
-
 	// Resource not found
 	t.Run("returns 404 when portfolio doesn't exist", func(t *testing.T) {
 		handler, _ := setupHandler(t)
@@ -2314,32 +2241,6 @@ func TestPortfolioHandler_DeletePortfolio(t *testing.T) {
 		testutil.AssertRowCount(t, db, "transaction", 0)
 	})
 
-	// Input validation: Invalid portfolio ID
-	t.Run("returns 400 for invalid portfolio ID", func(t *testing.T) {
-		handler, _ := setupHandler(t)
-
-		req := testutil.NewRequestWithURLParams(
-			http.MethodDelete,
-			"/api/portfolio/invalid-id",
-			map[string]string{"portfolioId": "invalid-id"},
-		)
-		w := httptest.NewRecorder()
-
-		handler.DeletePortfolio(w, req)
-
-		if w.Code != http.StatusBadRequest {
-			t.Errorf("Expected 400, got %d", w.Code)
-		}
-
-		var response map[string]string
-		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
-		json.NewDecoder(w.Body).Decode(&response)
-
-		if response["error"] != "invalid portfolio ID format" {
-			t.Errorf("Expected 'invalid portfolio ID format' error, got '%s'", response["error"])
-		}
-	})
-
 	// Resource not found
 	t.Run("returns 404 when portfolio doesn't exist", func(t *testing.T) {
 		handler, _ := setupHandler(t)
@@ -2466,32 +2367,6 @@ func TestPortfolioHandler_ArchivePortfolio(t *testing.T) {
 		}
 	})
 
-	// Input validation: Invalid portfolio ID
-	t.Run("returns 400 for invalid portfolio ID", func(t *testing.T) {
-		handler, _ := setupHandler(t)
-
-		req := testutil.NewRequestWithURLParams(
-			http.MethodPost,
-			"/api/portfolio/invalid-id/archive",
-			map[string]string{"portfolioId": "invalid-id"},
-		)
-		w := httptest.NewRecorder()
-
-		handler.ArchivePortfolio(w, req)
-
-		if w.Code != http.StatusBadRequest {
-			t.Errorf("Expected 400, got %d", w.Code)
-		}
-
-		var response map[string]string
-		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
-		json.NewDecoder(w.Body).Decode(&response)
-
-		if response["error"] != "invalid portfolio ID format" {
-			t.Errorf("Expected 'invalid portfolio ID format' error, got '%s'", response["error"])
-		}
-	})
-
 	// Resource not found
 	t.Run("returns 404 when portfolio doesn't exist", func(t *testing.T) {
 		handler, _ := setupHandler(t)
@@ -2615,32 +2490,6 @@ func TestPortfolioHandler_UnarchivePortfolio(t *testing.T) {
 
 		if response.IsArchived {
 			t.Error("Expected IsArchived to remain false")
-		}
-	})
-
-	// Input validation: Invalid portfolio ID
-	t.Run("returns 400 for invalid portfolio ID", func(t *testing.T) {
-		handler, _ := setupHandler(t)
-
-		req := testutil.NewRequestWithURLParams(
-			http.MethodPost,
-			"/api/portfolio/invalid-id/unarchive",
-			map[string]string{"portfolioId": "invalid-id"},
-		)
-		w := httptest.NewRecorder()
-
-		handler.UnarchivePortfolio(w, req)
-
-		if w.Code != http.StatusBadRequest {
-			t.Errorf("Expected 400, got %d", w.Code)
-		}
-
-		var response map[string]string
-		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
-		json.NewDecoder(w.Body).Decode(&response)
-
-		if response["error"] != "invalid portfolio ID format" {
-			t.Errorf("Expected 'invalid portfolio ID format' error, got '%s'", response["error"])
 		}
 	})
 

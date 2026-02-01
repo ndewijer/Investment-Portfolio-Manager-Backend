@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/response"
 	apperrors "github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/errors"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/service"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/validation"
@@ -34,11 +35,11 @@ func NewIbkrHandler(ibkrService *service.IbkrService) *IbkrHandler {
 func (h *IbkrHandler) GetConfig(w http.ResponseWriter, _ *http.Request) {
 	config, err := h.ibkrService.GetIbkrConfig()
 	if err != nil {
-		respondJSON(w, http.StatusInternalServerError, errorResponse("failed to retrieve ibkr config", err.Error()))
+		response.RespondError(w, http.StatusInternalServerError, "failed to retrieve ibkr config", err.Error())
 		return
 	}
 
-	respondJSON(w, http.StatusOK, config)
+	response.RespondJSON(w, http.StatusOK, config)
 }
 
 // GetActivePortfolios handles GET requests to retrieve all active portfolios for IBKR import allocation.
@@ -50,11 +51,11 @@ func (h *IbkrHandler) GetConfig(w http.ResponseWriter, _ *http.Request) {
 func (h *IbkrHandler) GetActivePortfolios(w http.ResponseWriter, _ *http.Request) {
 	config, err := h.ibkrService.GetActivePortfolios()
 	if err != nil {
-		respondJSON(w, http.StatusInternalServerError, errorResponse("failed to retrieve portfolios", err.Error()))
+		response.RespondError(w, http.StatusInternalServerError, "failed to retrieve portfolios", err.Error())
 		return
 	}
 
-	respondJSON(w, http.StatusOK, config)
+	response.RespondJSON(w, http.StatusOK, config)
 }
 
 // GetPendingDividends handles GET requests to retrieve dividend records awaiting processing.
@@ -75,11 +76,11 @@ func (h *IbkrHandler) GetPendingDividends(w http.ResponseWriter, r *http.Request
 	pendingDividend, err := h.ibkrService.GetPendingDividends(symbol, isin)
 
 	if err != nil {
-		respondJSON(w, http.StatusInternalServerError, errorResponse("failed to retrieve pending dividend", err.Error()))
+		response.RespondError(w, http.StatusInternalServerError, "failed to retrieve pending dividend", err.Error())
 		return
 	}
 
-	respondJSON(w, http.StatusOK, pendingDividend)
+	response.RespondJSON(w, http.StatusOK, pendingDividend)
 }
 
 // GetInbox handles GET requests to retrieve IBKR imported transactions from the inbox.
@@ -99,11 +100,11 @@ func (h *IbkrHandler) GetInbox(w http.ResponseWriter, r *http.Request) {
 	inbox, err := h.ibkrService.GetInbox(status, transactionType)
 
 	if err != nil {
-		respondJSON(w, http.StatusInternalServerError, errorResponse("failed to retrieve inbox transactions", err.Error()))
+		response.RespondError(w, http.StatusInternalServerError, "failed to retrieve inbox transactions", err.Error())
 		return
 	}
 
-	respondJSON(w, http.StatusOK, inbox)
+	response.RespondJSON(w, http.StatusOK, inbox)
 }
 
 // GetInboxCount handles GET requests to retrieve the count of IBKR imported transactions.
@@ -118,11 +119,11 @@ func (h *IbkrHandler) GetInboxCount(w http.ResponseWriter, _ *http.Request) {
 	count, err := h.ibkrService.GetInboxCount()
 
 	if err != nil {
-		respondJSON(w, http.StatusInternalServerError, errorResponse("failed to retrieve inbox transactions", err.Error()))
+		response.RespondError(w, http.StatusInternalServerError, "failed to retrieve inbox transactions", err.Error())
 		return
 	}
 
-	respondJSON(w, http.StatusOK, count)
+	response.RespondJSON(w, http.StatusOK, count)
 }
 
 // GetTransactionAllocations handles GET /api/ibkr/inbox/{transactionId}/allocations
@@ -142,29 +143,27 @@ func (h *IbkrHandler) GetTransactionAllocations(w http.ResponseWriter, r *http.R
 	transactionID := chi.URLParam(r, "transactionId")
 
 	if transactionID == "" {
-		respondJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "transaction ID is required",
-		})
+		response.RespondError(w, http.StatusBadRequest, "transaction ID is required", "")
 		return
 	}
 
 	if err := validation.ValidateUUID(transactionID); err != nil {
-		respondJSON(w, http.StatusBadRequest, errorResponse("invalid Transaction ID format", err.Error()))
+		response.RespondError(w, http.StatusBadRequest, "invalid Transaction ID format", err.Error())
 		return
 	}
 
-	response, err := h.ibkrService.GetTransactionAllocations(transactionID)
+	transactionAllocations, err := h.ibkrService.GetTransactionAllocations(transactionID)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrIBKRTransactionNotFound) {
-			respondJSON(w, http.StatusNotFound, errorResponse("ibkr transaction does not exist", err.Error()))
+			response.RespondError(w, http.StatusNotFound, "ibkr transaction does not exist", err.Error())
 			return
 		}
 
-		respondJSON(w, http.StatusInternalServerError, errorResponse("failed to get transaction allocations", err.Error()))
+		response.RespondError(w, http.StatusInternalServerError, "failed to get transaction allocations", err.Error())
 		return
 	}
 
-	respondJSON(w, http.StatusOK, response)
+	response.RespondJSON(w, http.StatusOK, transactionAllocations)
 }
 
 // GetEligiblePortfolios handles GET /api/ibkr/inbox/{transactionId}/eligible-portfolios
@@ -187,28 +186,26 @@ func (h *IbkrHandler) GetEligiblePortfolios(w http.ResponseWriter, r *http.Reque
 	transactionID := chi.URLParam(r, "transactionId")
 
 	if transactionID == "" {
-		respondJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "transaction ID is required",
-		})
+		response.RespondError(w, http.StatusBadRequest, "transaction ID is required", "")
 		return
 	}
 
 	if err := validation.ValidateUUID(transactionID); err != nil {
-		respondJSON(w, http.StatusBadRequest, errorResponse("invalid Transaction ID format", err.Error()))
+		response.RespondError(w, http.StatusBadRequest, "invalid Transaction ID format", err.Error())
 		return
 	}
 
-	response, err := h.ibkrService.GetEligiblePortfolios(transactionID)
+	eligiblePortfolios, err := h.ibkrService.GetEligiblePortfolios(transactionID)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrIBKRTransactionNotFound) {
-			respondJSON(w, http.StatusNotFound, errorResponse("ibkr transaction does not exist", err.Error()))
+			response.RespondError(w, http.StatusNotFound, "ibkr transaction does not exist", err.Error())
 			return
 		}
 
-		respondJSON(w, http.StatusInternalServerError, errorResponse("failed to get eligible portfolios", err.Error()))
+		response.RespondError(w, http.StatusInternalServerError, "failed to get eligible portfolios", err.Error())
 		return
 	}
 
 	// Always return 200 OK if fund is not found, Frontend uses match_info.found = false
-	respondJSON(w, http.StatusOK, response)
+	response.RespondJSON(w, http.StatusOK, eligiblePortfolios)
 }

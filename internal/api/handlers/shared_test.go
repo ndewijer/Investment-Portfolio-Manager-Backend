@@ -3,6 +3,8 @@ package handlers
 import (
 	"net/http/httptest"
 	"testing"
+
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/response"
 )
 
 // TestRespondJSON tests the respondJSON helper function.
@@ -13,7 +15,7 @@ func TestRespondJSON(t *testing.T) {
 		w := httptest.NewRecorder()
 		data := map[string]string{"message": "success"}
 
-		respondJSON(w, 200, data)
+		response.RespondJSON(w, 200, data)
 
 		if w.Code != 200 {
 			t.Errorf("Expected status 200, got %d", w.Code)
@@ -27,7 +29,7 @@ func TestRespondJSON(t *testing.T) {
 	t.Run("handles nil data without error", func(t *testing.T) {
 		w := httptest.NewRecorder()
 
-		respondJSON(w, 204, nil)
+		response.RespondJSON(w, 204, nil)
 
 		if w.Code != 204 {
 			t.Errorf("Expected status 204, got %d", w.Code)
@@ -43,7 +45,7 @@ func TestRespondJSON(t *testing.T) {
 		}
 
 		// Should not panic, just log the error
-		respondJSON(w, 200, data)
+		response.RespondJSON(w, 200, data)
 
 		// Status should still be set even if encoding fails
 		if w.Code != 200 {
@@ -63,7 +65,7 @@ func TestRespondJSON(t *testing.T) {
 			"value": "data",
 		}
 
-		respondJSON(w, 200, data)
+		response.RespondJSON(w, 200, data)
 
 		if w.Body.Len() == 0 {
 			t.Error("Expected response body to contain JSON data")

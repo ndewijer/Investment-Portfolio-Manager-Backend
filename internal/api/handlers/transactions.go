@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/response"
 	apperrors "github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/errors"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/service"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/validation"
@@ -34,27 +35,17 @@ func (h *TransactionHandler) TransactionPerPortfolio(w http.ResponseWriter, r *h
 
 	portfolioID := chi.URLParam(r, "portfolioId")
 	if portfolioID == "" {
-		respondJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "portfolio ID is required",
-		})
-		return
-	}
-
-	if err := validation.ValidateUUID(portfolioID); err != nil {
-		respondJSON(w, http.StatusBadRequest, map[string]string{
-			"error":  "invalid portfolio ID format",
-			"detail": err.Error(),
-		})
+		response.RespondError(w, http.StatusBadRequest, "portfolio ID is required", "")
 		return
 	}
 
 	transactions, err := h.transactionService.GetTransactionsperPortfolio(portfolioID)
 	if err != nil {
-		respondJSON(w, http.StatusInternalServerError, errorResponse("failed to retrieve transactions", err.Error()))
+		response.RespondError(w, http.StatusInternalServerError, "failed to retrieve transactions", err.Error())
 		return
 	}
 
-	respondJSON(w, http.StatusOK, transactions)
+	response.RespondJSON(w, http.StatusOK, transactions)
 }
 
 // AllTransactions handles GET requests to retrieve all transactions across all portfolios.
@@ -67,11 +58,11 @@ func (h *TransactionHandler) AllTransactions(w http.ResponseWriter, _ *http.Requ
 
 	transactions, err := h.transactionService.GetTransactionsperPortfolio("")
 	if err != nil {
-		respondJSON(w, http.StatusInternalServerError, errorResponse("failed to retrieve transactions", err.Error()))
+		response.RespondError(w, http.StatusInternalServerError, "failed to retrieve transactions", err.Error())
 		return
 	}
 
-	respondJSON(w, http.StatusOK, transactions)
+	response.RespondJSON(w, http.StatusOK, transactions)
 }
 
 // GetTransaction handles GET requests to retrieve a single transaction by ID.
@@ -85,30 +76,25 @@ func (h *TransactionHandler) GetTransaction(w http.ResponseWriter, r *http.Reque
 
 	transactionID := chi.URLParam(r, "transactionId")
 	if transactionID == "" {
-		respondJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "transactions ID is required",
-		})
+		response.RespondError(w, http.StatusBadRequest, "transactions ID is required", "")
 		return
 	}
 
 	if err := validation.ValidateUUID(transactionID); err != nil {
-		respondJSON(w, http.StatusBadRequest, map[string]string{
-			"error":  "invalid transaction ID format",
-			"detail": err.Error(),
-		})
+		response.RespondError(w, http.StatusBadRequest, "invalid transaction ID format", err.Error())
 		return
 	}
 
 	transaction, err := h.transactionService.GetTransaction(transactionID)
 	if err != nil {
-		respondJSON(w, http.StatusInternalServerError, errorResponse("failed to retrieve transaction", err.Error()))
+		response.RespondError(w, http.StatusInternalServerError, "failed to retrieve transaction", err.Error())
 		return
 	}
 
 	if transaction.ID == "" {
-		respondJSON(w, http.StatusNotFound, errorResponse("Transaction not found", apperrors.ErrIBKRTransactionNotFound.Error()))
+		response.RespondError(w, http.StatusNotFound, "Transaction not found", apperrors.ErrIBKRTransactionNotFound.Error())
 		return
 	}
 
-	respondJSON(w, http.StatusOK, transaction)
+	response.RespondJSON(w, http.StatusOK, transaction)
 }

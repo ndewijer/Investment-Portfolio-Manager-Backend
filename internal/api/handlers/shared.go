@@ -3,21 +3,12 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 )
 
-// respondJSON sends a JSON response with the given status code
-func respondJSON(w http.ResponseWriter, status int, data interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	if data != nil {
-		if err := json.NewEncoder(w).Encode(data); err != nil {
-			log.Printf("Failed to encode JSON: %v", err)
-		}
-	}
-}
-
+// parseJSON parses a JSON request body into the specified type T.
+// Includes security protections: 1MB body size limit and strict parsing (rejects unknown fields).
+// Returns an error if the JSON is malformed or exceeds the size limit.
 func parseJSON[T any](r *http.Request) (T, error) {
 	var req T
 
@@ -32,11 +23,4 @@ func parseJSON[T any](r *http.Request) (T, error) {
 	}
 
 	return req, nil
-}
-
-func errorResponse(err, detail string) map[string]string {
-	return map[string]string{
-		"error":  err,
-		"detail": detail,
-	}
 }
