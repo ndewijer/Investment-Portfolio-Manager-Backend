@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+
+	apperrors "github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/errors"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/service"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/validation"
 )
@@ -38,11 +40,7 @@ func (h *FundHandler) GetAllFunds(w http.ResponseWriter, _ *http.Request) {
 
 	funds, err := h.fundService.GetFund("")
 	if err != nil {
-		errorResponse := map[string]string{
-			"error":  "failed to retrieve funds",
-			"detail": err.Error(),
-		}
-		respondJSON(w, http.StatusInternalServerError, errorResponse)
+		respondJSON(w, http.StatusInternalServerError, errorResponse("failed to retrieve funds", err.Error()))
 		return
 	}
 
@@ -69,29 +67,18 @@ func (h *FundHandler) GetFund(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := validation.ValidateUUID(fundID); err != nil {
-		respondJSON(w, http.StatusBadRequest, map[string]string{
-			"error":  "invalid fund ID format",
-			"detail": err.Error(),
-		})
+		respondJSON(w, http.StatusBadRequest, errorResponse("invalid fund ID format", err.Error()))
 		return
 	}
 
 	funds, err := h.fundService.GetFund(fundID)
 	if err != nil {
-		errorResponse := map[string]string{
-			"error":  "failed to retrieve funds",
-			"detail": err.Error(),
-		}
-		respondJSON(w, http.StatusInternalServerError, errorResponse)
+		respondJSON(w, http.StatusInternalServerError, errorResponse("failed to retrieve funds", err.Error()))
 		return
 	}
 
 	if len(funds) == 0 {
-		errorResponse := map[string]string{
-			"error":  "Fund not found",
-			"detail": "No fund found with the given ID",
-		}
-		respondJSON(w, http.StatusNotFound, errorResponse)
+		respondJSON(w, http.StatusNotFound, errorResponse("Fund not found", apperrors.ErrFundNotFound.Error()))
 		return
 	}
 
@@ -117,11 +104,7 @@ func (h *FundHandler) GetSymbol(w http.ResponseWriter, r *http.Request) {
 
 	symbolresponse, err := h.fundService.GetSymbol(symbol)
 	if err != nil {
-		errorResponse := map[string]string{
-			"error":  "failed to retrieve symbol",
-			"detail": err.Error(),
-		}
-		respondJSON(w, http.StatusInternalServerError, errorResponse)
+		respondJSON(w, http.StatusInternalServerError, errorResponse("failed to retrieve symbol", err.Error()))
 		return
 	}
 
@@ -150,30 +133,20 @@ func (h *FundHandler) GetFundHistory(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := validation.ValidateUUID(portfolioID); err != nil {
-		respondJSON(w, http.StatusBadRequest, map[string]string{
-			"error":  "invalid portfolio ID format",
-			"detail": err.Error(),
-		})
+		respondJSON(w, http.StatusBadRequest, errorResponse("invalid portfolio ID format", err.Error()))
 		return
 	}
 
 	// Parse date parameters
 	startDate, endDate, err := parseDateParams(r)
 	if err != nil {
-		respondJSON(w, http.StatusBadRequest, map[string]string{
-			"error":  "Invalid date parameters",
-			"detail": err.Error(),
-		})
+		respondJSON(w, http.StatusBadRequest, errorResponse("Invalid date parameters", err.Error()))
 		return
 	}
 
 	fundHistory, err := h.materializedService.GetFundHistoryWithFallback(portfolioID, startDate, endDate)
 	if err != nil {
-		errorResponse := map[string]string{
-			"error":  "failed to retrieve fund history",
-			"detail": err.Error(),
-		}
-		respondJSON(w, http.StatusInternalServerError, errorResponse)
+		respondJSON(w, http.StatusInternalServerError, errorResponse("failed to retrieve fund history", err.Error()))
 		return
 	}
 
@@ -199,10 +172,7 @@ func (h *FundHandler) GetFundPrices(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := validation.ValidateUUID(fundID); err != nil {
-		respondJSON(w, http.StatusBadRequest, map[string]string{
-			"error":  "invalid portfolio ID format",
-			"detail": err.Error(),
-		})
+		respondJSON(w, http.StatusBadRequest, errorResponse("invalid portfolio ID format", err.Error()))
 		return
 	}
 
@@ -214,11 +184,7 @@ func (h *FundHandler) GetFundPrices(w http.ResponseWriter, r *http.Request) {
 
 	funds, err := h.fundService.LoadFundPrices([]string{fundID}, startDate, endDate, false)
 	if err != nil {
-		errorResponse := map[string]string{
-			"error":  "failed to retrieve funds",
-			"detail": err.Error(),
-		}
-		respondJSON(w, http.StatusInternalServerError, errorResponse)
+		respondJSON(w, http.StatusInternalServerError, errorResponse("failed to retrieve funds", err.Error()))
 		return
 	}
 

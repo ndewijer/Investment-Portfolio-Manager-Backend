@@ -33,3 +33,10 @@ func parseJSON[T any](r *http.Request) (T, error) {
 
 	return req, nil
 }
+
+func errorResponse(err, detail string) map[string]string {
+	return map[string]string{
+		"error":  err,
+		"detail": detail,
+	}
+}

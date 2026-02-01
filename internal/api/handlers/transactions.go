@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	apperrors "github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/errors"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/service"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/validation"
 )
@@ -49,11 +50,7 @@ func (h *TransactionHandler) TransactionPerPortfolio(w http.ResponseWriter, r *h
 
 	transactions, err := h.transactionService.GetTransactionsperPortfolio(portfolioID)
 	if err != nil {
-		errorResponse := map[string]string{
-			"error":  "failed to retrieve transactions",
-			"detail": err.Error(),
-		}
-		respondJSON(w, http.StatusInternalServerError, errorResponse)
+		respondJSON(w, http.StatusInternalServerError, errorResponse("failed to retrieve transactions", err.Error()))
 		return
 	}
 
@@ -70,11 +67,7 @@ func (h *TransactionHandler) AllTransactions(w http.ResponseWriter, _ *http.Requ
 
 	transactions, err := h.transactionService.GetTransactionsperPortfolio("")
 	if err != nil {
-		errorResponse := map[string]string{
-			"error":  "failed to retrieve transactions",
-			"detail": err.Error(),
-		}
-		respondJSON(w, http.StatusInternalServerError, errorResponse)
+		respondJSON(w, http.StatusInternalServerError, errorResponse("failed to retrieve transactions", err.Error()))
 		return
 	}
 
@@ -108,20 +101,12 @@ func (h *TransactionHandler) GetTransaction(w http.ResponseWriter, r *http.Reque
 
 	transaction, err := h.transactionService.GetTransaction(transactionID)
 	if err != nil {
-		errorResponse := map[string]string{
-			"error":  "failed to retrieve transaction",
-			"detail": err.Error(),
-		}
-		respondJSON(w, http.StatusInternalServerError, errorResponse)
+		respondJSON(w, http.StatusInternalServerError, errorResponse("failed to retrieve transaction", err.Error()))
 		return
 	}
 
 	if transaction.ID == "" {
-		errorResponse := map[string]string{
-			"error":  "Transaction not found",
-			"detail": "No transaction found with the given ID",
-		}
-		respondJSON(w, http.StatusNotFound, errorResponse)
+		respondJSON(w, http.StatusNotFound, errorResponse("Transaction not found", apperrors.ErrIBKRTransactionNotFound.Error()))
 		return
 	}
 

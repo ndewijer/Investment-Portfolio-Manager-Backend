@@ -2181,8 +2181,8 @@ func TestPortfolioHandler_UpdatePortfolio(t *testing.T) {
 		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
 		json.NewDecoder(w.Body).Decode(&response)
 
-		if response["error"] != "Portfolio not found" {
-			t.Errorf("Expected 'Portfolio not found' error, got '%s'", response["error"])
+		if response["error"] != "portfolio not found" {
+			t.Errorf("Expected 'portfolio not found' error, got '%s'", response["error"])
 		}
 	})
 
@@ -2362,8 +2362,8 @@ func TestPortfolioHandler_DeletePortfolio(t *testing.T) {
 		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
 		json.NewDecoder(w.Body).Decode(&response)
 
-		if response["error"] != "Portfolio not found" {
-			t.Errorf("Expected 'Portfolio not found' error, got '%s'", response["error"])
+		if response["error"] != "portfolio not found" {
+			t.Errorf("Expected 'portfolio not found' error, got '%s'", response["error"])
 		}
 	})
 

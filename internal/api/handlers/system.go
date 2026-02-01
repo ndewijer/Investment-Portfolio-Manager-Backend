@@ -65,11 +65,8 @@ type VersionInfoResponse struct {
 func (h *SystemHandler) Version(w http.ResponseWriter, _ *http.Request) {
 	version, err := h.systemService.CheckVersion()
 	if err != nil {
-		errorResponse := map[string]string{
-			"error":  "failed to get version information",
-			"detail": err.Error(),
-		}
-		respondJSON(w, http.StatusInternalServerError, errorResponse)
+
+		respondJSON(w, http.StatusInternalServerError, errorResponse("failed to get version information", err.Error()))
 		return
 	}
 

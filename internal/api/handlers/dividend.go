@@ -32,11 +32,7 @@ func (h *DividendHandler) GetAllDividends(w http.ResponseWriter, _ *http.Request
 
 	dividends, err := h.dividendService.GetAllDividends()
 	if err != nil {
-		errorResponse := map[string]string{
-			"error":  "failed to retrieve dividends",
-			"detail": err.Error(),
-		}
-		respondJSON(w, http.StatusInternalServerError, errorResponse)
+		respondJSON(w, http.StatusInternalServerError, errorResponse("failed to retrieve dividends", err.Error()))
 		return
 	}
 
@@ -61,20 +57,13 @@ func (h *DividendHandler) DividendPerPortfolio(w http.ResponseWriter, r *http.Re
 	}
 
 	if err := validation.ValidateUUID(portfolioID); err != nil {
-		respondJSON(w, http.StatusBadRequest, map[string]string{
-			"error":  "invalid portfolio ID format",
-			"detail": err.Error(),
-		})
+		respondJSON(w, http.StatusBadRequest, errorResponse("invalid portfolio ID format", err.Error()))
 		return
 	}
 
 	dividends, err := h.dividendService.GetDividendFund(portfolioID)
 	if err != nil {
-		errorResponse := map[string]string{
-			"error":  "failed to retrieve dividends",
-			"detail": err.Error(),
-		}
-		respondJSON(w, http.StatusInternalServerError, errorResponse)
+		respondJSON(w, http.StatusInternalServerError, errorResponse("failed to retrieve dividends", err.Error()))
 		return
 	}
 
