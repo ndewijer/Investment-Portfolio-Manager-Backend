@@ -2639,6 +2639,62 @@ func TestPortfolioHandler_CreatePortfolioFundHandler(t *testing.T) {
 		}
 	})
 
+	// Invalid Portfolio UUID
+	t.Run("returns 400 when portfolioId param is a faulty UUID", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		nonExistentID := testutil.MakeID()
+		reqBody := `{
+			"portfolioId": "failtyUUID",
+			"fundId": "` + nonExistentID + `"
+		}`
+
+		req := httptest.NewRequest(http.MethodPut, "/api/portfolio/fund", strings.NewReader(reqBody))
+		w := httptest.NewRecorder()
+
+		handler.CreatePortfolioFund(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400 for empty portfolioId, got %d", w.Code)
+		}
+
+		var response map[string]string
+		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if response["error"] != "validation failed" {
+			t.Errorf("Expected 'validation failed' error, got '%s'", response["error"])
+		}
+	})
+
+	// Invalid Fund UUID
+	t.Run("returns 400 when fundId param is a faulty UUID", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		nonExistentID := testutil.MakeID()
+		reqBody := `{
+			"portfolioId": "` + nonExistentID + `",
+			"fundId": "failtyUUID"
+		}`
+
+		req := httptest.NewRequest(http.MethodPut, "/api/portfolio/fund", strings.NewReader(reqBody))
+		w := httptest.NewRecorder()
+
+		handler.CreatePortfolioFund(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400 for empty fundId, got %d", w.Code)
+		}
+
+		var response map[string]string
+		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if response["error"] != "validation failed" {
+			t.Errorf("Expected 'validation failed' error, got '%s'", response["error"])
+		}
+	})
+
 	// Invalid Portfolio
 	t.Run("invalid portfolio id", func(t *testing.T) {
 		handler, db := setupHandler(t)

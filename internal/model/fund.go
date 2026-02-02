@@ -15,7 +15,7 @@ type Fund struct {
 	LatestPrice    float64 `json:"latest_price"`
 }
 
-// PortfolioFund represends a portfoliofund record from the database
+// PortfolioFund represends a portfolio_fund record from the database
 type PortfolioFund struct {
 	ID          string
 	PortfolioID string

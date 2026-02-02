@@ -61,3 +61,15 @@ func ValidateUpdatePortfolio(req request.UpdatePortfolioRequest) error {
 	}
 	return nil
 }
+
+func ValidateCreatePortfolioFund(req request.CreatePortfolioFundRequest) error {
+	fundErr := ValidateUUID(req.FundID)
+	if fundErr != nil {
+		return fundErr
+	}
+	portfolioErr := ValidateUUID(req.PortfolioID)
+	if portfolioErr != nil {
+		return portfolioErr
+	}
+	return nil
+}
