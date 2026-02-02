@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/errors"
+	apperrors "github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/errors"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 )
 
@@ -51,12 +52,15 @@ func (r *FundRepository) GetFund(fundID string) ([]model.Fund, error) {
 	query := `
         SELECT f.id, f.name, f.isin, f.symbol, f.currency, f.exchange, f.investment_type, f.dividend_type, fp.price
 		FROM fund f
-		INNER JOIN fund_price fp ON f.id = fp.fund_id
-		INNER JOIN (
-			SELECT fund_id, MAX(date) as latest_date
-			FROM fund_price
-			GROUP BY fund_id
-		) latest ON fp.fund_id = latest.fund_id AND fp.date = latest.latest_date
+		LEFT JOIN (
+			SELECT fp.fund_id, fp.price, fp.date
+			FROM fund_price fp
+			INNER JOIN (
+				SELECT fund_id, MAX(date) as latest_date
+				FROM fund_price
+				GROUP BY fund_id
+			) latest ON fp.fund_id = latest.fund_id AND fp.date = latest.latest_date
+		)  fp ON f.id = fp.fund_id
       `
 
 	var args []any
@@ -77,6 +81,7 @@ func (r *FundRepository) GetFund(fundID string) ([]model.Fund, error) {
 
 	for rows.Next() {
 		var f model.Fund
+		var priceStr sql.NullFloat64
 
 		err := rows.Scan(
 
@@ -88,16 +93,25 @@ func (r *FundRepository) GetFund(fundID string) ([]model.Fund, error) {
 			&f.Exchange,
 			&f.InvestmentType,
 			&f.DividendType,
-			&f.LatestPrice,
+			&priceStr,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan fund table results: %w", err)
 		}
+
+		if priceStr.Valid {
+			f.LatestPrice = priceStr.Float64
+		}
+
 		funds = append(funds, f)
 	}
 
 	if err = rows.Err(); err != nil {
 		return nil, fmt.Errorf("error iterating fund table: %w", err)
+	}
+
+	if fundID != "" && len(funds) == 0 {
+		return nil, apperrors.ErrFundNotFound
 	}
 
 	return funds, nil
