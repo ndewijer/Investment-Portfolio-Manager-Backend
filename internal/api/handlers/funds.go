@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"time"
 
@@ -58,7 +59,7 @@ func (h *FundHandler) GetAllFunds(w http.ResponseWriter, _ *http.Request) {
 // Error: 500 Internal Server Error if retrieval fails
 func (h *FundHandler) GetFund(w http.ResponseWriter, r *http.Request) {
 
-	fundID := chi.URLParam(r, "fundId")
+	fundID := chi.URLParam(r, "uuid")
 
 	if fundID == "" {
 		response.RespondError(w, http.StatusBadRequest, "fund ID is required", "")
@@ -72,12 +73,12 @@ func (h *FundHandler) GetFund(w http.ResponseWriter, r *http.Request) {
 
 	funds, err := h.fundService.GetFund(fundID)
 	if err != nil {
-		response.RespondError(w, http.StatusInternalServerError, "failed to retrieve funds", err.Error())
-		return
-	}
 
-	if len(funds) == 0 {
-		response.RespondError(w, http.StatusNotFound, "Fund not found", apperrors.ErrFundNotFound.Error())
+		if errors.Is(err, apperrors.ErrFundNotFound) {
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrFundNotFound.Error(), err.Error())
+		}
+
+		response.RespondError(w, http.StatusInternalServerError, "failed to retrieve funds", err.Error())
 		return
 	}
 

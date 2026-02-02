@@ -162,25 +162,27 @@ func CreateExcludedPortfolio(t *testing.T, db *sql.DB, name string) model.Portfo
 //	    WithCurrency("USD").
 //	    Build(t, db)
 type FundBuilder struct {
-	ID       string
-	Name     string
-	ISIN     string
-	Symbol   string
-	Currency string
-	Exchange string
-	FundType string
+	ID             string
+	Name           string
+	ISIN           string
+	Symbol         string
+	Currency       string
+	Exchange       string
+	InvestmentType string
+	DividendType   string
 }
 
 // NewFund creates a FundBuilder with sensible defaults.
 func NewFund() *FundBuilder {
 	return &FundBuilder{
-		ID:       MakeID(),
-		Name:     MakeFundName("Test Fund"),
-		ISIN:     MakeISIN("US"),
-		Symbol:   MakeSymbol("TEST"),
-		Currency: "USD",
-		Exchange: "NASDAQ",
-		FundType: "ETF",
+		ID:             MakeID(),
+		Name:           MakeFundName("Test Fund"),
+		ISIN:           MakeISIN("US"),
+		Symbol:         MakeSymbol("TEST"),
+		Currency:       "USD",
+		Exchange:       "NASDAQ",
+		InvestmentType: "STOCK",
+		DividendType:   "NONE",
 	}
 }
 
@@ -214,9 +216,15 @@ func (b *FundBuilder) WithExchange(exchange string) *FundBuilder {
 	return b
 }
 
-// WithType sets the fund type.
-func (b *FundBuilder) WithType(fundType string) *FundBuilder {
-	b.FundType = fundType
+// WithInvestementType sets the investment type.
+func (b *FundBuilder) WithInvestementType(investmentType string) *FundBuilder {
+	b.InvestmentType = investmentType
+	return b
+}
+
+// WithDividendType sets the dividend type.
+func (b *FundBuilder) WithDividendType(dividendType string) *FundBuilder {
+	b.DividendType = dividendType
 	return b
 }
 
@@ -229,10 +237,7 @@ func (b *FundBuilder) Build(t *testing.T, db *sql.DB) model.Fund {
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
-	investmentType := "fund"
-	dividendType := "none"
-
-	_, err := db.Exec(query, b.ID, b.Name, b.ISIN, b.Symbol, b.Currency, b.Exchange, investmentType, dividendType)
+	_, err := db.Exec(query, b.ID, b.Name, b.ISIN, b.Symbol, b.Currency, b.Exchange, b.InvestmentType, b.DividendType)
 	if err != nil {
 		t.Fatalf("Failed to create test fund: %v", err)
 	}
@@ -244,8 +249,8 @@ func (b *FundBuilder) Build(t *testing.T, db *sql.DB) model.Fund {
 		Symbol:         b.Symbol,
 		Currency:       b.Currency,
 		Exchange:       b.Exchange,
-		InvestmentType: investmentType,
-		DividendType:   dividendType,
+		InvestmentType: b.InvestmentType,
+		DividendType:   b.DividendType,
 	}
 }
 
@@ -613,4 +618,93 @@ func (b *RealizedGainLossBuilder) Build(t *testing.T, db *sql.DB) model.Realized
 		RealizedGainLoss: b.RealizedGainLoss,
 		CreatedAt:        time.Now(),
 	}
+}
+
+// SymbolInfoBuilder provides a fluent interface for creating test Symbols.
+//
+// Example usage:
+//
+//	Symbol := testutil.NewSymbol().
+//	    WithSymbol("AAPL").
+//	    WithName("Apple").
+//	    Build(t, db)
+type SymbolInfoBuilder struct {
+	ID       string
+	Symbol   string
+	Name     string
+	Exchange string
+	Currency string
+	Isin     string
+}
+
+// NewSymbol creates a SymbolInfoBuilder with sensible defaults.
+func NewSymbol() *SymbolInfoBuilder {
+	return &SymbolInfoBuilder{
+		ID:       MakeID(),
+		Symbol:   MakeSymbol("TEST"),
+		Name:     MakeSymbolName("Test Symbol"),
+		Exchange: "NASDAQ",
+		Currency: "USD",
+		Isin:     MakeISIN("US"),
+	}
+}
+
+// WithName sets a custom name.
+func (b *SymbolInfoBuilder) WithName(name string) *SymbolInfoBuilder {
+	b.Name = name
+	return b
+}
+
+// WithISIN sets a custom ISIN.
+func (b *SymbolInfoBuilder) WithISIN(isin string) *SymbolInfoBuilder {
+	b.Isin = isin
+	return b
+}
+
+// WithSymbol sets a custom symbol.
+func (b *SymbolInfoBuilder) WithSymbol(symbol string) *SymbolInfoBuilder {
+	b.Symbol = symbol
+	return b
+}
+
+// WithCurrency sets the currency.
+func (b *SymbolInfoBuilder) WithCurrency(currency string) *SymbolInfoBuilder {
+	b.Currency = currency
+	return b
+}
+
+// WithExchange sets the exchange.
+func (b *SymbolInfoBuilder) WithExchange(exchange string) *SymbolInfoBuilder {
+	b.Exchange = exchange
+	return b
+}
+
+// Build creates the Symbol in the database and returns it.
+func (b *SymbolInfoBuilder) Build(t *testing.T, db *sql.DB) model.Symbol {
+	t.Helper()
+
+	query := `
+		INSERT INTO symbol_info (id, symbol, name, exchange, currency, isin)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`
+
+	_, err := db.Exec(query, b.ID, b.Symbol, b.Name, b.Exchange, b.Currency, b.Isin)
+	if err != nil {
+		t.Fatalf("Failed to create test Symbol: %v", err)
+	}
+
+	return model.Symbol{
+		ID:       b.ID,
+		Symbol:   b.Symbol,
+		Name:     b.Name,
+		Exchange: b.Exchange,
+		Currency: b.Currency,
+		Isin:     b.Isin,
+	}
+}
+
+// CreateSymbol creates a Symbol with the given symbol and default values.
+func CreateSymbol(t *testing.T, db *sql.DB, symbol string) model.Symbol {
+	t.Helper()
+	return NewSymbol().WithSymbol(symbol).Build(t, db)
 }

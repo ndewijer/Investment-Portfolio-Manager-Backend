@@ -202,6 +202,19 @@ func MakeFundName(base string) string {
 	return base + " " + randomAlphanumeric(6)
 }
 
+// MakeSymbolName generates a unique fund name for testing.
+//
+// Example usage:
+//
+//	name := testutil.MakeSymbolName("Tech Symbol")
+//	// Returns: "Tech Symbol XYZ789"
+func MakeSymbolName(base string) string {
+	if base == "" {
+		base = "Symbol"
+	}
+	return base + " " + randomAlphanumeric(6)
+}
+
 // randomAlphanumeric generates a random alphanumeric string of specified length.
 func randomAlphanumeric(length int) string {
 	const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"

@@ -377,6 +377,7 @@ func (r *FundRepository) GetSymbol(symbol string) (*model.Symbol, error) {
 
 	var sb model.Symbol
 	var exchangeStr, currencyStr, isinStr, dataSource, lastUpdatedStr sql.NullString
+	var isValidstr sql.NullBool
 	err := r.db.QueryRow(query, symbol).Scan(
 		&sb.ID,
 		&sb.Symbol,
@@ -386,7 +387,7 @@ func (r *FundRepository) GetSymbol(symbol string) (*model.Symbol, error) {
 		&isinStr,
 		&lastUpdatedStr,
 		&dataSource,
-		&sb.IsValid,
+		&isValidstr,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -410,6 +411,9 @@ func (r *FundRepository) GetSymbol(symbol string) (*model.Symbol, error) {
 	}
 	if dataSource.Valid {
 		sb.DataSource = dataSource.String
+	}
+	if isValidstr.Valid {
+		sb.IsValid = isValidstr.Bool
 	}
 
 	return &sb, err
