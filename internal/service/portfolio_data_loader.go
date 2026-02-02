@@ -49,7 +49,7 @@ func NewDataLoaderService(
 //   - Realized gains: RealizedGainsByPortfolio
 //   - Mappings: PortfolioFundToPortfolio, PortfolioFundToFund
 type PortfolioData struct {
-	PortfolioFunds           []model.PortfolioFund
+	PortfolioFunds           []model.PortfolioFundResponse
 	PFIDs                    []string
 	FundIDs                  []string
 	OldestTransactionDate    time.Time
@@ -129,7 +129,7 @@ func (s *DataLoaderService) LoadForPortfolios(
 	if err != nil {
 		return nil, fmt.Errorf("failed to load portfolio funds: %w", err)
 	}
-	var portfolioFunds []model.PortfolioFund
+	var portfolioFunds []model.PortfolioFundResponse
 	if len(portfolios) == 1 {
 		portfolioFunds, err = s.fundRepo.GetPortfolioFunds(portfolios[0].ID)
 		if err != nil {

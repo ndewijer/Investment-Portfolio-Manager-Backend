@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/handlers"
+	apperrors "github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/errors"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/testutil"
 )
@@ -359,10 +360,10 @@ func TestPortfolioHandler_PortfolioSummary(t *testing.T) {
 		// Create test data: portfolio, fund, and transactions
 		portfolio := testutil.NewPortfolio().WithName("Test Portfolio").Build(t, db)
 		fund := testutil.NewFund().WithSymbol("AAPL").Build(t, db)
-		pfID := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+		pf := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
 
 		// Create buy transaction: 100 shares at $10
-		testutil.NewTransaction(pfID).
+		testutil.NewTransaction(pf.ID).
 			WithType("buy").
 			WithShares(100).
 			WithCostPerShare(10.0).
@@ -448,14 +449,14 @@ func TestPortfolioHandler_PortfolioSummary(t *testing.T) {
 		// Create active portfolio
 		activePortfolio := testutil.NewPortfolio().WithName("Active").Build(t, db)
 		fund := testutil.NewFund().Build(t, db)
-		pfID := testutil.NewPortfolioFund(activePortfolio.ID, fund.ID).Build(t, db)
-		testutil.NewTransaction(pfID).Build(t, db)
+		pf := testutil.NewPortfolioFund(activePortfolio.ID, fund.ID).Build(t, db)
+		testutil.NewTransaction(pf.ID).Build(t, db)
 		testutil.NewFundPrice(fund.ID).Build(t, db)
 
 		// Create archived portfolio
 		archivedPortfolio := testutil.NewPortfolio().WithName("Archived").Archived().Build(t, db)
-		pfID2 := testutil.NewPortfolioFund(archivedPortfolio.ID, fund.ID).Build(t, db)
-		testutil.NewTransaction(pfID2).Build(t, db)
+		pf2 := testutil.NewPortfolioFund(archivedPortfolio.ID, fund.ID).Build(t, db)
+		testutil.NewTransaction(pf2.ID).Build(t, db)
 
 		// Create HTTP request
 		req := httptest.NewRequest(http.MethodGet, "/api/portfolio/summary", nil)
@@ -496,14 +497,14 @@ func TestPortfolioHandler_PortfolioSummary(t *testing.T) {
 		// Create normal portfolio
 		normalPortfolio := testutil.NewPortfolio().WithName("Normal").Build(t, db)
 		fund := testutil.NewFund().Build(t, db)
-		pfID := testutil.NewPortfolioFund(normalPortfolio.ID, fund.ID).Build(t, db)
-		testutil.NewTransaction(pfID).Build(t, db)
+		pf := testutil.NewPortfolioFund(normalPortfolio.ID, fund.ID).Build(t, db)
+		testutil.NewTransaction(pf.ID).Build(t, db)
 		testutil.NewFundPrice(fund.ID).Build(t, db)
 
 		// Create excluded portfolio
 		excludedPortfolio := testutil.NewPortfolio().WithName("Excluded").ExcludedFromOverview().Build(t, db)
-		pfID2 := testutil.NewPortfolioFund(excludedPortfolio.ID, fund.ID).Build(t, db)
-		testutil.NewTransaction(pfID2).Build(t, db)
+		pf2 := testutil.NewPortfolioFund(excludedPortfolio.ID, fund.ID).Build(t, db)
+		testutil.NewTransaction(pf2.ID).Build(t, db)
 
 		// Create HTTP request
 		req := httptest.NewRequest(http.MethodGet, "/api/portfolio/summary", nil)
@@ -538,17 +539,17 @@ func TestPortfolioHandler_PortfolioSummary(t *testing.T) {
 		// Create portfolio and fund
 		portfolio := testutil.NewPortfolio().Build(t, db)
 		fund := testutil.NewFund().Build(t, db)
-		pfID := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+		pf := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
 
 		// Buy 100 shares at $10
-		testutil.NewTransaction(pfID).
+		testutil.NewTransaction(pf.ID).
 			WithType("buy").
 			WithShares(100).
 			WithCostPerShare(10.0).
 			Build(t, db)
 
 		// Sell 30 shares at $15
-		sellTx := testutil.NewTransaction(pfID).
+		sellTx := testutil.NewTransaction(pf.ID).
 			WithType("sell").
 			WithShares(30).
 			WithCostPerShare(15.0).
@@ -635,10 +636,10 @@ func TestPortfolioHandler_PortfolioSummary(t *testing.T) {
 		// Create portfolio and fund
 		portfolio := testutil.NewPortfolio().WithName("Dividend Test Portfolio").Build(t, db)
 		fund := testutil.NewFund().Build(t, db)
-		pfID := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+		pf := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
 
 		// Buy 100 shares at $10
-		testutil.NewTransaction(pfID).
+		testutil.NewTransaction(pf.ID).
 			WithType("buy").
 			WithShares(100).
 			WithCostPerShare(10.0).
@@ -646,7 +647,7 @@ func TestPortfolioHandler_PortfolioSummary(t *testing.T) {
 			Build(t, db)
 
 		// Add dividend: 100 shares * $0.50 = $50
-		testutil.NewDividend(fund.ID, pfID).
+		testutil.NewDividend(fund.ID, pf.ID).
 			WithSharesOwned(100).
 			WithDividendPerShare(0.50).
 			Build(t, db)
@@ -698,10 +699,10 @@ func TestPortfolioHandler_PortfolioSummary(t *testing.T) {
 		// Create portfolio and fund
 		portfolio := testutil.NewPortfolio().Build(t, db)
 		fund := testutil.NewFund().Build(t, db)
-		pfID := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+		pf := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
 
 		// Buy 100 shares at $10
-		testutil.NewTransaction(pfID).
+		testutil.NewTransaction(pf.ID).
 			WithType("buy").
 			WithShares(100).
 			WithCostPerShare(10.0).
@@ -709,14 +710,14 @@ func TestPortfolioHandler_PortfolioSummary(t *testing.T) {
 			Build(t, db)
 
 		// Dividend reinvestment: buy 5 shares at $10
-		reinvestTx := testutil.NewTransaction(pfID).
+		reinvestTx := testutil.NewTransaction(pf.ID).
 			WithType("dividend").
 			WithShares(5).
 			WithCostPerShare(10.0).
 			Build(t, db)
 
 		// Dividend record with reinvestment
-		testutil.NewDividend(fund.ID, pfID).
+		testutil.NewDividend(fund.ID, pf.ID).
 			WithSharesOwned(100).
 			WithDividendPerShare(0.50).
 			WithReinvestmentTransaction(reinvestTx.ID).
@@ -798,9 +799,9 @@ func TestPortfolioHandler_PortfolioSummary(t *testing.T) {
 		// Create portfolio with transaction but no prices
 		portfolio := testutil.NewPortfolio().Build(t, db)
 		fund := testutil.NewFund().Build(t, db)
-		pfID := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+		pf := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
 
-		testutil.NewTransaction(pfID).
+		testutil.NewTransaction(pf.ID).
 			WithShares(100).
 			WithCostPerShare(10.0).
 			Build(t, db)
@@ -897,10 +898,10 @@ func TestPortfolioHandler_GetPortfolio(t *testing.T) {
 		// Create test data
 		portfolio := testutil.NewPortfolio().WithName("Test Portfolio").Build(t, db)
 		fund := testutil.NewFund().WithSymbol("AAPL").Build(t, db)
-		pfID := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+		pf := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
 
 		// Buy 100 shares at $10
-		testutil.NewTransaction(pfID).
+		testutil.NewTransaction(pf.ID).
 			WithType("buy").
 			WithShares(100).
 			WithCostPerShare(10.0).
@@ -913,7 +914,7 @@ func TestPortfolioHandler_GetPortfolio(t *testing.T) {
 		req := testutil.NewRequestWithURLParams(
 			http.MethodGet,
 			"/api/portfolio/"+portfolio.ID,
-			map[string]string{"portfolioId": portfolio.ID},
+			map[string]string{"uuid": portfolio.ID},
 		)
 		w := httptest.NewRecorder()
 
@@ -964,7 +965,7 @@ func TestPortfolioHandler_GetPortfolio(t *testing.T) {
 		req := testutil.NewRequestWithURLParams(
 			http.MethodGet,
 			"/api/portfolio/"+validID,
-			map[string]string{"portfolioId": validID},
+			map[string]string{"uuid": validID},
 		)
 		w := httptest.NewRecorder()
 
@@ -988,7 +989,7 @@ func TestPortfolioHandler_GetPortfolio(t *testing.T) {
 		req := testutil.NewRequestWithURLParams(
 			http.MethodGet,
 			"/api/portfolio/"+portfolio.ID,
-			map[string]string{"portfolioId": portfolio.ID},
+			map[string]string{"uuid": portfolio.ID},
 		)
 		w := httptest.NewRecorder()
 
@@ -1018,7 +1019,7 @@ func TestPortfolioHandler_GetPortfolio(t *testing.T) {
 		req := testutil.NewRequestWithURLParams(
 			http.MethodGet,
 			"/api/portfolio/",
-			map[string]string{"portfolioId": ""},
+			map[string]string{"uuid": ""},
 		)
 		w := httptest.NewRecorder()
 
@@ -1047,7 +1048,7 @@ func TestPortfolioHandler_GetPortfolio(t *testing.T) {
 		req := testutil.NewRequestWithURLParams(
 			http.MethodGet,
 			"/api/portfolio/"+portfolio.ID,
-			map[string]string{"portfolioId": portfolio.ID},
+			map[string]string{"uuid": portfolio.ID},
 		)
 		w := httptest.NewRecorder()
 
@@ -1118,12 +1119,12 @@ func TestPortfolioHandler_PortfolioHistory(t *testing.T) {
 		// Create test data
 		portfolio := testutil.NewPortfolio().WithName("History Test").Build(t, db)
 		fund := testutil.NewFund().Build(t, db)
-		pfID := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+		pf := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
 
 		// Transaction on 2024-06-01
 		//nolint:errcheck // Test data setup with hardcoded valid date format
 		txDate, _ := time.Parse("2006-01-02", "2024-06-01")
-		testutil.NewTransaction(pfID).
+		testutil.NewTransaction(pf.ID).
 			WithShares(100).
 			WithCostPerShare(10.0).
 			WithDate(txDate).
@@ -1172,8 +1173,8 @@ func TestPortfolioHandler_PortfolioHistory(t *testing.T) {
 		// Create minimal test data
 		portfolio := testutil.NewPortfolio().Build(t, db)
 		fund := testutil.NewFund().Build(t, db)
-		pfID := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
-		testutil.NewTransaction(pfID).Build(t, db)
+		pf := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+		testutil.NewTransaction(pf.ID).Build(t, db)
 		testutil.NewFundPrice(fund.ID).Build(t, db)
 
 		req := httptest.NewRequest(http.MethodGet, "/api/portfolio/history", nil)
@@ -1242,11 +1243,11 @@ func TestPortfolioHandler_PortfolioHistory(t *testing.T) {
 
 		portfolio := testutil.NewPortfolio().Build(t, db)
 		fund := testutil.NewFund().Build(t, db)
-		pfID := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+		pf := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
 
 		//nolint:errcheck // Test data setup with hardcoded valid date format
 		singleDate, _ := time.Parse("2006-01-02", "2024-06-15")
-		testutil.NewTransaction(pfID).WithDate(singleDate).Build(t, db)
+		testutil.NewTransaction(pf.ID).WithDate(singleDate).Build(t, db)
 		testutil.NewFundPrice(fund.ID).WithDate(singleDate).Build(t, db)
 
 		req := testutil.NewRequestWithQueryParams(
@@ -1316,7 +1317,7 @@ func TestPortfolioHandler_PortfolioFunds(t *testing.T) {
 			t.Errorf("Expected 200, got %d", w.Code)
 		}
 
-		var response []model.PortfolioFund
+		var response []model.PortfolioFundResponse
 		err := json.NewDecoder(w.Body).Decode(&response)
 		if err != nil {
 			t.Fatalf("Failed to decode response: %v", err)
@@ -1351,7 +1352,7 @@ func TestPortfolioHandler_PortfolioFunds(t *testing.T) {
 			t.Errorf("Expected 200, got %d", w.Code)
 		}
 
-		var response []model.PortfolioFund
+		var response []model.PortfolioFundResponse
 		err := json.NewDecoder(w.Body).Decode(&response)
 		if err != nil {
 			t.Fatalf("Failed to decode response: %v", err)
@@ -1380,7 +1381,7 @@ func TestPortfolioHandler_PortfolioFunds(t *testing.T) {
 
 		handler.PortfolioFunds(w, req)
 
-		var response []model.PortfolioFund
+		var response []model.PortfolioFundResponse
 		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
 		json.NewDecoder(w.Body).Decode(&response)
 
@@ -1461,14 +1462,14 @@ func TestPortfolioHandler_GetPortfolioFunds(t *testing.T) {
 		pf2 := testutil.NewPortfolioFund(portfolio.ID, fund2.ID).Build(t, db)
 
 		// AAPL: 100 shares at $10
-		testutil.NewTransaction(pf1).
+		testutil.NewTransaction(pf1.ID).
 			WithShares(100).
 			WithCostPerShare(10.0).
 			Build(t, db)
 		testutil.NewFundPrice(fund1.ID).WithPrice(12.0).Build(t, db)
 
 		// GOOGL: 50 shares at $20
-		testutil.NewTransaction(pf2).
+		testutil.NewTransaction(pf2.ID).
 			WithShares(50).
 			WithCostPerShare(20.0).
 			Build(t, db)
@@ -1477,7 +1478,7 @@ func TestPortfolioHandler_GetPortfolioFunds(t *testing.T) {
 		req := testutil.NewRequestWithURLParams(
 			http.MethodGet,
 			"/api/portfolio/funds/"+portfolio.ID,
-			map[string]string{"portfolioId": portfolio.ID},
+			map[string]string{"uuid": portfolio.ID},
 		)
 		w := httptest.NewRecorder()
 
@@ -1487,7 +1488,7 @@ func TestPortfolioHandler_GetPortfolioFunds(t *testing.T) {
 			t.Errorf("Expected 200, got %d", w.Code)
 		}
 
-		var response []model.PortfolioFund
+		var response []model.PortfolioFundResponse
 		err := json.NewDecoder(w.Body).Decode(&response)
 		if err != nil {
 			t.Fatalf("Failed to decode response: %v", err)
@@ -1498,7 +1499,7 @@ func TestPortfolioHandler_GetPortfolioFunds(t *testing.T) {
 		}
 
 		// Find funds by ID - don't assume order
-		var aapl, googl *model.PortfolioFund
+		var aapl, googl *model.PortfolioFundResponse
 		for i := range response {
 			if response[i].FundID == fund1.ID {
 				aapl = &response[i]
@@ -1548,7 +1549,7 @@ func TestPortfolioHandler_GetPortfolioFunds(t *testing.T) {
 		req := testutil.NewRequestWithURLParams(
 			http.MethodGet,
 			"/api/portfolio/funds/"+portfolio.ID,
-			map[string]string{"portfolioId": portfolio.ID},
+			map[string]string{"uuid": portfolio.ID},
 		)
 		w := httptest.NewRecorder()
 
@@ -1558,7 +1559,7 @@ func TestPortfolioHandler_GetPortfolioFunds(t *testing.T) {
 			t.Errorf("Expected 200, got %d", w.Code)
 		}
 
-		var response []model.PortfolioFund
+		var response []model.PortfolioFundResponse
 		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
 		json.NewDecoder(w.Body).Decode(&response)
 
@@ -1575,7 +1576,7 @@ func TestPortfolioHandler_GetPortfolioFunds(t *testing.T) {
 		req := testutil.NewRequestWithURLParams(
 			http.MethodGet,
 			"/api/portfolio/funds/"+validID,
-			map[string]string{"portfolioId": validID},
+			map[string]string{"uuid": validID},
 		)
 		w := httptest.NewRecorder()
 
@@ -1592,9 +1593,9 @@ func TestPortfolioHandler_GetPortfolioFunds(t *testing.T) {
 
 		portfolio := testutil.NewPortfolio().Build(t, db)
 		fund := testutil.NewFund().Build(t, db)
-		pfID := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+		pf := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
 
-		testutil.NewTransaction(pfID).
+		testutil.NewTransaction(pf.ID).
 			WithShares(100).
 			WithCostPerShare(10.0).
 			Build(t, db)
@@ -1604,7 +1605,7 @@ func TestPortfolioHandler_GetPortfolioFunds(t *testing.T) {
 		req := testutil.NewRequestWithURLParams(
 			http.MethodGet,
 			"/api/portfolio/funds/"+portfolio.ID,
-			map[string]string{"portfolioId": portfolio.ID},
+			map[string]string{"uuid": portfolio.ID},
 		)
 		w := httptest.NewRecorder()
 
@@ -1614,7 +1615,7 @@ func TestPortfolioHandler_GetPortfolioFunds(t *testing.T) {
 			t.Errorf("Expected 200, got %d", w.Code)
 		}
 
-		var response []model.PortfolioFund
+		var response []model.PortfolioFundResponse
 		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
 		json.NewDecoder(w.Body).Decode(&response)
 
@@ -1639,17 +1640,17 @@ func TestPortfolioHandler_GetPortfolioFunds(t *testing.T) {
 
 		portfolio := testutil.NewPortfolio().Build(t, db)
 		fund := testutil.NewFund().Build(t, db)
-		pfID := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+		pf := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
 
 		// Buy 100 shares at $10
-		testutil.NewTransaction(pfID).
+		testutil.NewTransaction(pf.ID).
 			WithType("buy").
 			WithShares(100).
 			WithCostPerShare(10.0).
 			Build(t, db)
 
 		// Sell 30 shares at $15
-		sellTx := testutil.NewTransaction(pfID).
+		sellTx := testutil.NewTransaction(pf.ID).
 			WithType("sell").
 			WithShares(30).
 			WithCostPerShare(15.0).
@@ -1667,13 +1668,13 @@ func TestPortfolioHandler_GetPortfolioFunds(t *testing.T) {
 		req := testutil.NewRequestWithURLParams(
 			http.MethodGet,
 			"/api/portfolio/funds/"+portfolio.ID,
-			map[string]string{"portfolioId": portfolio.ID},
+			map[string]string{"uuid": portfolio.ID},
 		)
 		w := httptest.NewRecorder()
 
 		handler.GetPortfolioFunds(w, req)
 
-		var response []model.PortfolioFund
+		var response []model.PortfolioFundResponse
 		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
 		json.NewDecoder(w.Body).Decode(&response)
 
@@ -1701,16 +1702,16 @@ func TestPortfolioHandler_GetPortfolioFunds(t *testing.T) {
 
 		portfolio := testutil.NewPortfolio().Build(t, db)
 		fund := testutil.NewFund().Build(t, db)
-		pfID := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+		pf := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
 
-		testutil.NewTransaction(pfID).
+		testutil.NewTransaction(pf.ID).
 			WithShares(100).
 			WithCostPerShare(10.0).
 			WithDate(time.Now().AddDate(0, 0, -20)).
 			Build(t, db)
 
 		// Add dividend: $50
-		testutil.NewDividend(fund.ID, pfID).
+		testutil.NewDividend(fund.ID, pf.ID).
 			WithSharesOwned(100).
 			WithDividendPerShare(0.50).
 			Build(t, db)
@@ -1720,13 +1721,13 @@ func TestPortfolioHandler_GetPortfolioFunds(t *testing.T) {
 		req := testutil.NewRequestWithURLParams(
 			http.MethodGet,
 			"/api/portfolio/funds/"+portfolio.ID,
-			map[string]string{"portfolioId": portfolio.ID},
+			map[string]string{"uuid": portfolio.ID},
 		)
 		w := httptest.NewRecorder()
 
 		handler.GetPortfolioFunds(w, req)
 
-		var response []model.PortfolioFund
+		var response []model.PortfolioFundResponse
 		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
 		json.NewDecoder(w.Body).Decode(&response)
 
@@ -1746,7 +1747,7 @@ func TestPortfolioHandler_GetPortfolioFunds(t *testing.T) {
 		req := testutil.NewRequestWithURLParams(
 			http.MethodGet,
 			"/api/portfolio/funds/",
-			map[string]string{"portfolioId": ""},
+			map[string]string{"uuid": ""},
 		)
 		w := httptest.NewRecorder()
 
@@ -1775,7 +1776,7 @@ func TestPortfolioHandler_GetPortfolioFunds(t *testing.T) {
 		req := testutil.NewRequestWithURLParams(
 			http.MethodGet,
 			"/api/portfolio/funds/"+portfolio.ID,
-			map[string]string{"portfolioId": portfolio.ID},
+			map[string]string{"uuid": portfolio.ID},
 		)
 		w := httptest.NewRecorder()
 
@@ -2016,7 +2017,7 @@ func TestPortfolioHandler_UpdatePortfolio(t *testing.T) {
 		req = testutil.NewRequestWithURLParams(
 			http.MethodPut,
 			"/api/portfolio/"+portfolio.ID,
-			map[string]string{"portfolioId": portfolio.ID},
+			map[string]string{"uuid": portfolio.ID},
 		)
 		req.Body = io.NopCloser(strings.NewReader(reqBody))
 		req.Header.Set("Content-Type", "application/json")
@@ -2058,7 +2059,7 @@ func TestPortfolioHandler_UpdatePortfolio(t *testing.T) {
 		req := testutil.NewRequestWithURLParams(
 			http.MethodPut,
 			"/api/portfolio/"+portfolio.ID,
-			map[string]string{"portfolioId": portfolio.ID},
+			map[string]string{"uuid": portfolio.ID},
 		)
 		req.Body = io.NopCloser(strings.NewReader(reqBody))
 		req.Header.Set("Content-Type", "application/json")
@@ -2092,7 +2093,7 @@ func TestPortfolioHandler_UpdatePortfolio(t *testing.T) {
 		req := testutil.NewRequestWithURLParams(
 			http.MethodPut,
 			"/api/portfolio/"+nonExistentID,
-			map[string]string{"portfolioId": nonExistentID},
+			map[string]string{"uuid": nonExistentID},
 		)
 		req.Body = io.NopCloser(strings.NewReader(reqBody))
 		req.Header.Set("Content-Type", "application/json")
@@ -2123,7 +2124,7 @@ func TestPortfolioHandler_UpdatePortfolio(t *testing.T) {
 		req := testutil.NewRequestWithURLParams(
 			http.MethodPut,
 			"/api/portfolio/"+portfolio.ID,
-			map[string]string{"portfolioId": portfolio.ID},
+			map[string]string{"uuid": portfolio.ID},
 		)
 		req.Body = io.NopCloser(strings.NewReader(reqBody))
 		req.Header.Set("Content-Type", "application/json")
@@ -2144,6 +2145,42 @@ func TestPortfolioHandler_UpdatePortfolio(t *testing.T) {
 		}
 	})
 
+	t.Run("returns 400 for failed validation due to empty name", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		portfolio := testutil.NewPortfolio().
+			WithName("Original Name").
+			WithDescription("Original Description").
+			Build(t, db)
+
+		reqBody := `{
+			"name": ""
+		}`
+		req := testutil.NewRequestWithURLParams(
+			http.MethodPut,
+			"/api/portfolio/"+portfolio.ID,
+			map[string]string{"uuid": portfolio.ID},
+		)
+		req.Body = io.NopCloser(strings.NewReader(reqBody))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		handler.UpdatePortfolio(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var response map[string]string
+		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if response["error"] != "validation failed" {
+			t.Errorf("Expected 'validation failed' error, got '%s'", response["error"])
+		}
+
+	})
+
 	// Database error
 	t.Run("returns 500 on database error", func(t *testing.T) {
 		handler, db := setupHandler(t)
@@ -2155,7 +2192,7 @@ func TestPortfolioHandler_UpdatePortfolio(t *testing.T) {
 		req := testutil.NewRequestWithURLParams(
 			http.MethodPut,
 			"/api/portfolio/"+portfolio.ID,
-			map[string]string{"portfolioId": portfolio.ID},
+			map[string]string{"uuid": portfolio.ID},
 		)
 		req.Body = io.NopCloser(strings.NewReader(reqBody))
 		req.Header.Set("Content-Type", "application/json")
@@ -2195,7 +2232,7 @@ func TestPortfolioHandler_DeletePortfolio(t *testing.T) {
 		req := testutil.NewRequestWithURLParams(
 			http.MethodDelete,
 			"/api/portfolio/"+portfolio.ID,
-			map[string]string{"portfolioId": portfolio.ID},
+			map[string]string{"uuid": portfolio.ID},
 		)
 		w := httptest.NewRecorder()
 
@@ -2215,8 +2252,8 @@ func TestPortfolioHandler_DeletePortfolio(t *testing.T) {
 
 		portfolio := testutil.NewPortfolio().Build(t, db)
 		fund := testutil.NewFund().Build(t, db)
-		pfID := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
-		testutil.NewTransaction(pfID).Build(t, db)
+		pf := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+		testutil.NewTransaction(pf.ID).Build(t, db)
 
 		testutil.AssertRowCount(t, db, "portfolio", 1)
 		testutil.AssertRowCount(t, db, "portfolio_fund", 1)
@@ -2225,7 +2262,7 @@ func TestPortfolioHandler_DeletePortfolio(t *testing.T) {
 		req := testutil.NewRequestWithURLParams(
 			http.MethodDelete,
 			"/api/portfolio/"+portfolio.ID,
-			map[string]string{"portfolioId": portfolio.ID},
+			map[string]string{"uuid": portfolio.ID},
 		)
 		w := httptest.NewRecorder()
 
@@ -2249,7 +2286,7 @@ func TestPortfolioHandler_DeletePortfolio(t *testing.T) {
 		req := testutil.NewRequestWithURLParams(
 			http.MethodDelete,
 			"/api/portfolio/"+nonExistentID,
-			map[string]string{"portfolioId": nonExistentID},
+			map[string]string{"uuid": nonExistentID},
 		)
 		w := httptest.NewRecorder()
 
@@ -2278,7 +2315,7 @@ func TestPortfolioHandler_DeletePortfolio(t *testing.T) {
 		req := testutil.NewRequestWithURLParams(
 			http.MethodDelete,
 			"/api/portfolio/"+portfolio.ID,
-			map[string]string{"portfolioId": portfolio.ID},
+			map[string]string{"uuid": portfolio.ID},
 		)
 		w := httptest.NewRecorder()
 
@@ -2315,7 +2352,7 @@ func TestPortfolioHandler_ArchivePortfolio(t *testing.T) {
 		req := testutil.NewRequestWithURLParams(
 			http.MethodPost,
 			"/api/portfolio/"+portfolio.ID+"/archive",
-			map[string]string{"portfolioId": portfolio.ID},
+			map[string]string{"uuid": portfolio.ID},
 		)
 		w := httptest.NewRecorder()
 
@@ -2348,7 +2385,7 @@ func TestPortfolioHandler_ArchivePortfolio(t *testing.T) {
 		req := testutil.NewRequestWithURLParams(
 			http.MethodPost,
 			"/api/portfolio/"+portfolio.ID+"/archive",
-			map[string]string{"portfolioId": portfolio.ID},
+			map[string]string{"uuid": portfolio.ID},
 		)
 		w := httptest.NewRecorder()
 
@@ -2375,7 +2412,7 @@ func TestPortfolioHandler_ArchivePortfolio(t *testing.T) {
 		req := testutil.NewRequestWithURLParams(
 			http.MethodPost,
 			"/api/portfolio/"+nonExistentID+"/archive",
-			map[string]string{"portfolioId": nonExistentID},
+			map[string]string{"uuid": nonExistentID},
 		)
 		w := httptest.NewRecorder()
 
@@ -2404,7 +2441,7 @@ func TestPortfolioHandler_ArchivePortfolio(t *testing.T) {
 		req := testutil.NewRequestWithURLParams(
 			http.MethodPost,
 			"/api/portfolio/"+portfolio.ID+"/archive",
-			map[string]string{"portfolioId": portfolio.ID},
+			map[string]string{"uuid": portfolio.ID},
 		)
 		w := httptest.NewRecorder()
 
@@ -2441,7 +2478,7 @@ func TestPortfolioHandler_UnarchivePortfolio(t *testing.T) {
 		req := testutil.NewRequestWithURLParams(
 			http.MethodPost,
 			"/api/portfolio/"+portfolio.ID+"/unarchive",
-			map[string]string{"portfolioId": portfolio.ID},
+			map[string]string{"uuid": portfolio.ID},
 		)
 		w := httptest.NewRecorder()
 
@@ -2474,7 +2511,7 @@ func TestPortfolioHandler_UnarchivePortfolio(t *testing.T) {
 		req := testutil.NewRequestWithURLParams(
 			http.MethodPost,
 			"/api/portfolio/"+portfolio.ID+"/unarchive",
-			map[string]string{"portfolioId": portfolio.ID},
+			map[string]string{"uuid": portfolio.ID},
 		)
 		w := httptest.NewRecorder()
 
@@ -2501,7 +2538,7 @@ func TestPortfolioHandler_UnarchivePortfolio(t *testing.T) {
 		req := testutil.NewRequestWithURLParams(
 			http.MethodPost,
 			"/api/portfolio/"+nonExistentID+"/unarchive",
-			map[string]string{"portfolioId": nonExistentID},
+			map[string]string{"uuid": nonExistentID},
 		)
 		w := httptest.NewRecorder()
 
@@ -2530,11 +2567,372 @@ func TestPortfolioHandler_UnarchivePortfolio(t *testing.T) {
 		req := testutil.NewRequestWithURLParams(
 			http.MethodPost,
 			"/api/portfolio/"+portfolio.ID+"/unarchive",
-			map[string]string{"portfolioId": portfolio.ID},
+			map[string]string{"uuid": portfolio.ID},
 		)
 		w := httptest.NewRecorder()
 
 		handler.UnarchivePortfolio(w, req)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Errorf("Expected 500, got %d", w.Code)
+		}
+	})
+}
+
+func TestPortfolioHandler_CreatePortfolioFundHandler(t *testing.T) {
+	setupHandler := func(t *testing.T) (*handlers.PortfolioHandler, *sql.DB) {
+		t.Helper()
+		db := testutil.SetupTestDB(t)
+		ps := testutil.NewTestPortfolioService(t, db)
+		fs := testutil.NewTestFundService(t, db)
+		ms := testutil.NewTestMaterializedService(t, db)
+		return handlers.NewPortfolioHandler(ps, fs, ms), db
+	}
+
+	// Happy path: Create portfolio fund
+	t.Run("create portfolio fund successfully", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		portfolio := testutil.NewPortfolio().
+			Build(t, db)
+		fund := testutil.NewFund().
+			Build(t, db)
+
+		reqBody := `{
+			"portfolioId": "` + portfolio.ID + `",
+			"fundId": "` + fund.ID + `"
+		}`
+
+		req := httptest.NewRequest(http.MethodPut, "/api/portfolio/fund", strings.NewReader(reqBody))
+		req.Header.Set("Content-Type", "application/json")
+
+		w := httptest.NewRecorder()
+
+		handler.CreatePortfolioFund(w, req)
+
+		if w.Code != http.StatusCreated {
+			t.Errorf("Expected 201, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	// Input validation: Invalid JSON
+	t.Run("returns 400 for invalid JSON", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		reqBody := `{invalid json`
+		req := httptest.NewRequest(http.MethodPost, "/api/portfolio/fund", strings.NewReader(reqBody))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		handler.CreatePortfolioFund(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d", w.Code)
+		}
+
+		var response map[string]string
+		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if response["error"] != "invalid request body" {
+			t.Errorf("Expected 'invalid request body' error, got '%s'", response["error"])
+		}
+	})
+
+	// Invalid Portfolio UUID
+	t.Run("returns 400 when portfolioId param is a faulty UUID", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		nonExistentID := testutil.MakeID()
+		reqBody := `{
+			"portfolioId": "failtyUUID",
+			"fundId": "` + nonExistentID + `"
+		}`
+
+		req := httptest.NewRequest(http.MethodPut, "/api/portfolio/fund", strings.NewReader(reqBody))
+		w := httptest.NewRecorder()
+
+		handler.CreatePortfolioFund(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400 for empty portfolioId, got %d", w.Code)
+		}
+
+		var response map[string]string
+		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if response["error"] != "validation failed" {
+			t.Errorf("Expected 'validation failed' error, got '%s'", response["error"])
+		}
+	})
+
+	// Invalid Fund UUID
+	t.Run("returns 400 when fundId param is a faulty UUID", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		nonExistentID := testutil.MakeID()
+		reqBody := `{
+			"portfolioId": "` + nonExistentID + `",
+			"fundId": "failtyUUID"
+		}`
+
+		req := httptest.NewRequest(http.MethodPut, "/api/portfolio/fund", strings.NewReader(reqBody))
+		w := httptest.NewRecorder()
+
+		handler.CreatePortfolioFund(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400 for empty fundId, got %d", w.Code)
+		}
+
+		var response map[string]string
+		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if response["error"] != "validation failed" {
+			t.Errorf("Expected 'validation failed' error, got '%s'", response["error"])
+		}
+	})
+
+	// Invalid Portfolio
+	t.Run("invalid portfolio id", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		nonExistentID := testutil.MakeID()
+
+		fund := testutil.NewFund().
+			Build(t, db)
+
+		reqBody := `{
+			"portfolioId": "` + nonExistentID + `",
+			"fundId": "` + fund.ID + `"
+		}`
+
+		req := httptest.NewRequest(http.MethodPut, "/api/portfolio/fund", strings.NewReader(reqBody))
+		req.Header.Set("Content-Type", "application/json")
+
+		w := httptest.NewRecorder()
+
+		handler.CreatePortfolioFund(w, req)
+
+		if w.Code != http.StatusNotFound {
+			t.Errorf("Expected 404, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var response map[string]string
+		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if response["error"] != apperrors.ErrPortfolioNotFound.Error() {
+			t.Errorf("Expected '"+apperrors.ErrPortfolioNotFound.Error()+"' error, got '%s'", response["error"])
+		}
+	})
+
+	// Invalid Fund
+	t.Run("invalid fund id", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		nonExistentID := testutil.MakeID()
+
+		portfolio := testutil.NewPortfolio().
+			Build(t, db)
+
+		reqBody := `{
+			"portfolioId": "` + portfolio.ID + `",
+			"fundId": "` + nonExistentID + `"
+		}`
+
+		req := httptest.NewRequest(http.MethodPut, "/api/portfolio/fund", strings.NewReader(reqBody))
+		req.Header.Set("Content-Type", "application/json")
+
+		w := httptest.NewRecorder()
+
+		handler.CreatePortfolioFund(w, req)
+
+		if w.Code != http.StatusNotFound {
+			t.Errorf("Expected 404, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var response map[string]string
+		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if response["error"] != apperrors.ErrFundNotFound.Error() {
+			t.Errorf("Expected '"+apperrors.ErrFundNotFound.Error()+"' error, got '%s'", response["error"])
+		}
+	})
+
+	// Database error
+	t.Run("returns 500 on database error", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		portfolio := testutil.NewPortfolio().
+			Build(t, db)
+		fund := testutil.NewFund().
+			Build(t, db)
+
+		db.Close() // Force error
+
+		reqBody := `{
+			"portfolioId": "` + portfolio.ID + `",
+			"fundId": "` + fund.ID + `"
+		}`
+
+		req := httptest.NewRequest(http.MethodPut, "/api/portfolio/fund", strings.NewReader(reqBody))
+		req.Header.Set("Content-Type", "application/json")
+
+		w := httptest.NewRecorder()
+
+		handler.CreatePortfolioFund(w, req)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Errorf("Expected 500, got %d", w.Code)
+		}
+	})
+}
+
+func TestPortfolioHandler_DeletePortfolioFundHandler(t *testing.T) {
+	setupHandler := func(t *testing.T) (*handlers.PortfolioHandler, *sql.DB) {
+		t.Helper()
+		db := testutil.SetupTestDB(t)
+		ps := testutil.NewTestPortfolioService(t, db)
+		fs := testutil.NewTestFundService(t, db)
+		ms := testutil.NewTestMaterializedService(t, db)
+		return handlers.NewPortfolioHandler(ps, fs, ms), db
+	}
+
+	// Happy path: Delete portfolio fund
+	t.Run("Delete portfolio fund successfully", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		portfolio := testutil.NewPortfolio().
+			Build(t, db)
+		fund := testutil.NewFund().
+			Build(t, db)
+		pf := testutil.NewPortfolioFund(portfolio.ID, fund.ID).
+			Build(t, db)
+
+		req := testutil.NewRequestWithQueryAndURLParams(
+			http.MethodDelete,
+			"/api/portfolio/fund/"+pf.ID,
+			map[string]string{
+				"uuid": pf.ID,
+			},
+			map[string]string{
+				"confirm": "true",
+			},
+		)
+
+		w := httptest.NewRecorder()
+
+		handler.DeletePortfolioFund(w, req)
+
+		if w.Code != http.StatusNoContent {
+			t.Errorf("Expected 204, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	// Delete portfolio fund without conformation
+
+	t.Run("Delete portfolio fund successfully", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		portfolio := testutil.NewPortfolio().
+			Build(t, db)
+		fund := testutil.NewFund().
+			Build(t, db)
+		pf := testutil.NewPortfolioFund(portfolio.ID, fund.ID).
+			Build(t, db)
+
+		req := testutil.NewRequestWithURLParams(
+			http.MethodDelete,
+			"/api/portfolio/fund"+pf.ID,
+			map[string]string{"uuid": pf.ID},
+		)
+
+		w := httptest.NewRecorder()
+
+		handler.DeletePortfolioFund(w, req)
+
+		if w.Code != http.StatusConflict {
+			t.Errorf("Expected 409, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var response map[string]string
+		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if response["error"] != "Confirm deletion" {
+			t.Errorf("Expected 'Confirm deletion' error, got '%s'", response["error"])
+		}
+	})
+
+	// Invalid PortfolioFund
+	t.Run("invalid portfoliofund id", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		nonExistentID := testutil.MakeID()
+
+		req := testutil.NewRequestWithQueryAndURLParams(
+			http.MethodDelete,
+			"/api/portfolio/fund/"+nonExistentID,
+			map[string]string{
+				"uuid": nonExistentID,
+			},
+			map[string]string{
+				"confirm": "true",
+			},
+		)
+
+		req.Header.Set("Content-Type", "application/json")
+
+		w := httptest.NewRecorder()
+
+		handler.DeletePortfolioFund(w, req)
+
+		if w.Code != http.StatusNotFound {
+			t.Errorf("Expected 404, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var response map[string]string
+		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if response["error"] != apperrors.ErrPortfolioFundNotFound.Error() {
+			t.Errorf("Expected '"+apperrors.ErrPortfolioFundNotFound.Error()+"' error, got '%s'", response["error"])
+		}
+	})
+
+	// Database error
+	t.Run("returns 500 on database error", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		portfolio := testutil.NewPortfolio().
+			Build(t, db)
+		fund := testutil.NewFund().
+			Build(t, db)
+		pf := testutil.NewPortfolioFund(portfolio.ID, fund.ID).
+			Build(t, db)
+
+		db.Close() // Force error
+
+		req := testutil.NewRequestWithQueryAndURLParams(
+			http.MethodDelete,
+			"/api/portfolio/fund/"+pf.ID,
+			map[string]string{
+				"uuid": pf.ID,
+			},
+			map[string]string{
+				"confirm": "true",
+			},
+		)
+
+		req.Header.Set("Content-Type", "application/json")
+
+		w := httptest.NewRecorder()
+
+		handler.DeletePortfolioFund(w, req)
 
 		if w.Code != http.StatusInternalServerError {
 			t.Errorf("Expected 500, got %d", w.Code)

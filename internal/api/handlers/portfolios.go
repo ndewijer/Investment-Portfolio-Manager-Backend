@@ -58,7 +58,7 @@ func (h *PortfolioHandler) Portfolios(w http.ResponseWriter, _ *http.Request) {
 // Error: 500 Internal Server Error if retrieval or calculation fails
 func (h *PortfolioHandler) GetPortfolio(w http.ResponseWriter, r *http.Request) {
 
-	portfolioID := chi.URLParam(r, "portfolioId")
+	portfolioID := chi.URLParam(r, "uuid")
 
 	if portfolioID == "" {
 		response.RespondError(w, http.StatusBadRequest, "portfolio ID is required", "")
@@ -219,7 +219,7 @@ func (h *PortfolioHandler) PortfolioFunds(w http.ResponseWriter, _ *http.Request
 // Error: 500 Internal Server Error if retrieval or calculation fails
 func (h *PortfolioHandler) GetPortfolioFunds(w http.ResponseWriter, r *http.Request) {
 
-	portfolioID := chi.URLParam(r, "portfolioId")
+	portfolioID := chi.URLParam(r, "uuid")
 	if portfolioID == "" {
 		response.RespondError(w, http.StatusBadRequest, "portfolio ID is required", "")
 		return
@@ -281,7 +281,7 @@ func (h *PortfolioHandler) CreatePortfolio(w http.ResponseWriter, r *http.Reques
 // Error: 404 Not Found if portfolio doesn't exist
 // Error: 500 Internal Server Error if update fails
 func (h *PortfolioHandler) UpdatePortfolio(w http.ResponseWriter, r *http.Request) {
-	portfolioID := chi.URLParam(r, "portfolioId")
+	portfolioID := chi.URLParam(r, "uuid")
 
 	req, err := parseJSON[request.UpdatePortfolioRequest](r)
 	if err != nil {
@@ -320,7 +320,7 @@ func (h *PortfolioHandler) UpdatePortfolio(w http.ResponseWriter, r *http.Reques
 // Error: 404 Not Found if portfolio doesn't exist
 // Error: 500 Internal Server Error if deletion fails
 func (h *PortfolioHandler) DeletePortfolio(w http.ResponseWriter, r *http.Request) {
-	portfolioID := chi.URLParam(r, "portfolioId")
+	portfolioID := chi.URLParam(r, "uuid")
 
 	err := h.portfolioService.DeletePortfolio(r.Context(), portfolioID)
 	if err != nil {
@@ -334,7 +334,7 @@ func (h *PortfolioHandler) DeletePortfolio(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	w.WriteHeader(http.StatusNoContent) // 204 No Content
+	response.RespondJSON(w, http.StatusNoContent, nil)
 }
 
 // ArchivePortfolio handles POST requests to archive a portfolio.
@@ -346,7 +346,7 @@ func (h *PortfolioHandler) DeletePortfolio(w http.ResponseWriter, r *http.Reques
 // Error: 404 Not Found if portfolio doesn't exist
 // Error: 500 Internal Server Error if update fails
 func (h *PortfolioHandler) ArchivePortfolio(w http.ResponseWriter, r *http.Request) {
-	portfolioID := chi.URLParam(r, "portfolioId")
+	portfolioID := chi.URLParam(r, "uuid")
 
 	isArchived := true
 	req := request.UpdatePortfolioRequest{
@@ -375,7 +375,7 @@ func (h *PortfolioHandler) ArchivePortfolio(w http.ResponseWriter, r *http.Reque
 // Error: 404 Not Found if portfolio doesn't exist
 // Error: 500 Internal Server Error if update fails
 func (h *PortfolioHandler) UnarchivePortfolio(w http.ResponseWriter, r *http.Request) {
-	portfolioID := chi.URLParam(r, "portfolioId")
+	portfolioID := chi.URLParam(r, "uuid")
 
 	isArchived := false
 	req := request.UpdatePortfolioRequest{
@@ -393,4 +393,72 @@ func (h *PortfolioHandler) UnarchivePortfolio(w http.ResponseWriter, r *http.Req
 	}
 
 	response.RespondJSON(w, http.StatusOK, portfolio)
+}
+
+// CreatePortfolioFund handles POST requests to add a fund to a portfolio.
+// Requires valid portfolioId and fundId in the request body.
+// Returns 201 Created on success.
+//
+// Error: 400 Bad Request if request body is invalid
+// Error: 404 Not Found if portfolio or fund doesn't exist
+// Error: 500 Internal Server Error if creation fails
+func (h *PortfolioHandler) CreatePortfolioFund(w http.ResponseWriter, r *http.Request) {
+	req, err := parseJSON[request.CreatePortfolioFundRequest](r)
+	if err != nil {
+		response.RespondError(w, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
+
+	if err := validation.ValidateCreatePortfolioFund(req); err != nil {
+		response.RespondError(w, http.StatusBadRequest, "validation failed", err.Error())
+		return
+	}
+
+	err = h.fundService.CreatePortfolioFund(r.Context(), req)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrPortfolioNotFound) {
+			response.RespondError(w, http.StatusNotFound, "portfolio not found", err.Error())
+			return
+		}
+		if errors.Is(err, apperrors.ErrFundNotFound) {
+			response.RespondError(w, http.StatusNotFound, "fund not found", err.Error())
+			return
+		}
+		response.RespondError(w, http.StatusInternalServerError, "failed to create portfolio fund", err.Error())
+		return
+	}
+
+	response.RespondJSON(w, http.StatusCreated, nil)
+}
+
+// DeletePortfolioFund handles DELETE requests to remove a fund from a portfolio.
+// Requires a valid portfolio_fund UUID in the URL path.
+// Requires ?confirm=true query parameter to prevent accidental deletions.
+// Returns 204 No Content on success.
+//
+// Error: 409 Conflict if confirm parameter is not "true"
+// Error: 404 Not Found if portfolio-fund relationship doesn't exist
+// Error: 500 Internal Server Error if deletion fails
+func (h *PortfolioHandler) DeletePortfolioFund(w http.ResponseWriter, r *http.Request) {
+	portfolioFundID := chi.URLParam(r, "uuid")
+	confirm := r.URL.Query().Get("confirm")
+
+	if confirm != "true" {
+		response.RespondError(w, http.StatusConflict, "Confirm deletion", "")
+		return
+	}
+
+	err := h.fundService.DeletePortfolioFund(r.Context(), portfolioFundID)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrPortfolioFundNotFound) {
+
+			response.RespondError(w, http.StatusNotFound, "portfolio-fund relationship not found", err.Error())
+			return
+		}
+
+		response.RespondError(w, http.StatusInternalServerError, "failed to delete portfolio fund", err.Error())
+		return
+	}
+
+	response.RespondJSON(w, http.StatusNoContent, nil)
 }

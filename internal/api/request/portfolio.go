@@ -14,3 +14,8 @@ type UpdatePortfolioRequest struct {
 	IsArchived          *bool   `json:"isArchived,omitempty"`
 	ExcludeFromOverview *bool   `json:"excludeFromOverview,omitempty"`
 }
+
+type CreatePortfolioFundRequest struct {
+	PortfolioID string `json:"portfolioId"`
+	FundID      string `json:"fundId"`
+}

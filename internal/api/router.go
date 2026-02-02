@@ -50,11 +50,18 @@ func NewRouter(
 			r.Get("/history", portfolioHandler.PortfolioHistory)
 			r.Get("/funds", portfolioHandler.PortfolioFunds)
 			r.Post("/", portfolioHandler.CreatePortfolio)
-			r.Get("/funds/{portfolioId:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", portfolioHandler.GetPortfolioFunds)
+			r.Route("/fund/{uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", func(r chi.Router) {
+				r.Use(custommiddleware.ValidateUUIDMiddleware)
+				r.Delete("/", portfolioHandler.DeletePortfolioFund)
+			})
+			r.Route("/funds/{uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", func(r chi.Router) {
+				r.Use(custommiddleware.ValidateUUIDMiddleware)
+				r.Get("/", portfolioHandler.GetPortfolioFunds)
+			})
+			r.Post("/funds", portfolioHandler.CreatePortfolioFund)
 
-			r.Route("/{portfolioId:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", func(r chi.Router) {
-				r.Use(custommiddleware.ValidatePortfolioIDMiddleware)
-
+			r.Route("/{uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", func(r chi.Router) {
+				r.Use(custommiddleware.ValidateUUIDMiddleware)
 				r.Get("/", portfolioHandler.GetPortfolio)
 				r.Put("/", portfolioHandler.UpdatePortfolio)
 				r.Delete("/", portfolioHandler.DeletePortfolio)

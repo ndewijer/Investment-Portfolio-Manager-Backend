@@ -20,17 +20,17 @@ import (
 //	    r.Get("/", handler.GetPortfolio)
 //	    r.Put("/", handler.UpdatePortfolio)
 //	})
-func ValidatePortfolioIDMiddleware(next http.Handler) http.Handler {
+func ValidateUUIDMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		portfolioID := chi.URLParam(r, "portfolioId")
+		UUID := chi.URLParam(r, "uuid")
 
-		if portfolioID == "" {
-			response.RespondError(w, http.StatusBadRequest, "portfolio ID is required", "")
+		if UUID == "" {
+			response.RespondError(w, http.StatusBadRequest, "valid UUID is required", "")
 			return
 		}
 
-		if err := validation.ValidateUUID(portfolioID); err != nil {
-			response.RespondError(w, http.StatusBadRequest, "invalid portfolio ID format", err.Error())
+		if err := validation.ValidateUUID(UUID); err != nil {
+			response.RespondError(w, http.StatusBadRequest, "invalid UUID format", err.Error())
 			return
 		}
 

@@ -420,7 +420,7 @@ func (s *MaterializedService) calculateFundsForDate(
 // Shares, Price, Value, Cost, RealizedGain, UnrealizedGain, TotalGainLoss, Dividends, Fees.
 // All monetary values are rounded to two decimal places.
 func (s *MaterializedService) calculateFundEntry(
-	pf model.PortfolioFund,
+	pf model.PortfolioFundResponse,
 	date time.Time,
 	data *PortfolioData,
 	realizedGains []model.RealizedGainLoss,

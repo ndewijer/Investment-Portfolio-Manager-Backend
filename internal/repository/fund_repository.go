@@ -1,12 +1,15 @@
 package repository
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/errors"
+	apperrors "github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/errors"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 )
 
@@ -14,11 +17,33 @@ import (
 // It handles retrieving fund metadata and historical price data.
 type FundRepository struct {
 	db *sql.DB
+	tx *sql.Tx
 }
 
 // NewFundRepository creates a new FundRepository with the provided database connection.
 func NewFundRepository(db *sql.DB) *FundRepository {
 	return &FundRepository{db: db}
+}
+
+func (r *FundRepository) WithTx(tx *sql.Tx) *FundRepository {
+	return &FundRepository{
+		db: r.db,
+		tx: tx,
+	}
+}
+
+func (r *FundRepository) getQuerier() interface {
+	Query(query string, args ...any) (*sql.Rows, error)
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	QueryRow(query string, args ...any) *sql.Row
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+	Exec(query string, args ...any) (sql.Result, error)
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+} {
+	if r.tx != nil {
+		return r.tx
+	}
+	return r.db
 }
 
 // GetFund retrieves all funds from the database.
@@ -27,12 +52,15 @@ func (r *FundRepository) GetFund(fundID string) ([]model.Fund, error) {
 	query := `
         SELECT f.id, f.name, f.isin, f.symbol, f.currency, f.exchange, f.investment_type, f.dividend_type, fp.price
 		FROM fund f
-		INNER JOIN fund_price fp ON f.id = fp.fund_id
-		INNER JOIN (
-			SELECT fund_id, MAX(date) as latest_date
-			FROM fund_price
-			GROUP BY fund_id
-		) latest ON fp.fund_id = latest.fund_id AND fp.date = latest.latest_date
+		LEFT JOIN (
+			SELECT fp.fund_id, fp.price, fp.date
+			FROM fund_price fp
+			INNER JOIN (
+				SELECT fund_id, MAX(date) as latest_date
+				FROM fund_price
+				GROUP BY fund_id
+			) latest ON fp.fund_id = latest.fund_id AND fp.date = latest.latest_date
+		)  fp ON f.id = fp.fund_id
       `
 
 	var args []any
@@ -53,6 +81,7 @@ func (r *FundRepository) GetFund(fundID string) ([]model.Fund, error) {
 
 	for rows.Next() {
 		var f model.Fund
+		var priceStr sql.NullFloat64
 
 		err := rows.Scan(
 
@@ -64,16 +93,25 @@ func (r *FundRepository) GetFund(fundID string) ([]model.Fund, error) {
 			&f.Exchange,
 			&f.InvestmentType,
 			&f.DividendType,
-			&f.LatestPrice,
+			&priceStr,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan fund table results: %w", err)
 		}
+
+		if priceStr.Valid {
+			f.LatestPrice = priceStr.Float64
+		}
+
 		funds = append(funds, f)
 	}
 
 	if err = rows.Err(); err != nil {
 		return nil, fmt.Errorf("error iterating fund table: %w", err)
+	}
+
+	if fundID != "" && len(funds) == 0 {
+		return nil, apperrors.ErrFundNotFound
 	}
 
 	return funds, nil
@@ -222,7 +260,7 @@ func (r *FundRepository) GetFundPrice(fundIDs []string, startDate, endDate time.
 // GetPortfolioFunds retrieves all funds associated with a portfolio.
 // If PortfolioID is empty, returns funds across all portfolios.
 // Returns basic fund metadata from the portfolio_fund and fund tables.
-func (r *FundRepository) GetPortfolioFunds(PortfolioID string) ([]model.PortfolioFund, error) {
+func (r *FundRepository) GetPortfolioFunds(PortfolioID string) ([]model.PortfolioFundResponse, error) {
 
 	// Retrieve all funds based on returned portfolio_fund IDs
 	fundQuery := `
@@ -247,10 +285,10 @@ func (r *FundRepository) GetPortfolioFunds(PortfolioID string) ([]model.Portfoli
 	}
 	defer rows.Close()
 
-	portfolioFunds := []model.PortfolioFund{}
+	portfolioFunds := []model.PortfolioFundResponse{}
 
 	for rows.Next() {
-		var f model.PortfolioFund
+		var f model.PortfolioFundResponse
 
 		err := rows.Scan(
 			&f.ID,
@@ -437,4 +475,71 @@ func (r *FundRepository) GetFundBySymbolOrIsin(symbol, isin string) (model.Fund,
 
 	return f, nil
 
+}
+
+func (r *FundRepository) GetPortfolioFund(pfID string) (model.PortfolioFund, error) {
+	if pfID == "" {
+		return model.PortfolioFund{}, fmt.Errorf("portfolio_fund ID required")
+	}
+
+	query := `
+		SELECT id, portfolio_id, fund_id
+		FROM portfolio_fund
+		WHERE id = ?
+	`
+
+	var pf model.PortfolioFund
+
+	err := r.db.QueryRow(query, pfID).Scan(
+		&pf.ID,
+		&pf.PortfolioID,
+		&pf.FundID,
+	)
+	if err == sql.ErrNoRows {
+		return model.PortfolioFund{}, errors.ErrPortfolioFundNotFound
+	}
+	if err != nil {
+		return model.PortfolioFund{}, err
+	}
+
+	return pf, nil
+}
+
+func (r *FundRepository) InsertPortfolioFund(ctx context.Context, p, f string) error {
+	query := `
+        INSERT INTO portfolio_fund (id, portfolio_id, fund_id)
+        VALUES (?, ?, ?)
+    `
+
+	_, err := r.getQuerier().ExecContext(ctx, query,
+		uuid.New().String(),
+		p,
+		f,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to insert portfolio_fund: %w", err)
+	}
+
+	return nil
+}
+
+func (r *FundRepository) DeletePortfolioFund(ctx context.Context, portfolioFundID string) error {
+	query := `DELETE FROM portfolio_fund WHERE id = ?`
+
+	result, err := r.getQuerier().ExecContext(ctx, query, portfolioFundID)
+	if err != nil {
+		return fmt.Errorf("failed to delete portfolio_fund: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return errors.ErrPortfolioFundNotFound
+	}
+
+	return nil
 }
