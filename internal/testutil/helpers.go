@@ -140,6 +140,12 @@ func NewTestIbkrService(t *testing.T, db *sql.DB) *service.IbkrService {
 	)
 }
 
+func NewTestSystemService(t *testing.T, db *sql.DB) *service.SystemService {
+	t.Helper()
+
+	return service.NewSystemService(db)
+}
+
 // MakeID generates a UUID string for use in tests.
 //
 // Example usage:
