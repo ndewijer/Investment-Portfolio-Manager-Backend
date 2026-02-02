@@ -58,3 +58,25 @@ func NewRequestWithQueryParams(method, path string, queryParams map[string]strin
 
 	return req
 }
+
+func NewRequestWithQueryAndURLParams(method, path string, URLparams map[string]string, queryParams map[string]string) *http.Request {
+	req := httptest.NewRequest(method, path, nil)
+
+	if len(URLparams) > 0 {
+		rctx := chi.NewRouteContext()
+		for key, value := range URLparams {
+			rctx.URLParams.Add(key, value)
+		}
+		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	}
+
+	if len(queryParams) > 0 {
+		q := req.URL.Query()
+		for key, value := range queryParams {
+			q.Add(key, value)
+		}
+		req.URL.RawQuery = q.Encode()
+	}
+
+	return req
+}

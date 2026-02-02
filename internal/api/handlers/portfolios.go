@@ -433,7 +433,7 @@ func (h *PortfolioHandler) DeletePortfolioFund(w http.ResponseWriter, r *http.Re
 	if err != nil {
 		if errors.Is(err, apperrors.ErrPortfolioFundNotFound) {
 
-			response.RespondError(w, http.StatusNotFound, "portfolio fund not found", err.Error())
+			response.RespondError(w, http.StatusNotFound, "portfolio-fund relationship not found", err.Error())
 			return
 		}
 

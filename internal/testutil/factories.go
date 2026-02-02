@@ -283,7 +283,7 @@ func NewPortfolioFund(portfolioID, fundID string) *PortfolioFundBuilder {
 }
 
 // Build creates the portfolio_fund in the database
-func (b *PortfolioFundBuilder) Build(t *testing.T, db *sql.DB) string {
+func (b *PortfolioFundBuilder) Build(t *testing.T, db *sql.DB) model.PortfolioFund {
 	t.Helper()
 
 	query := `
@@ -296,7 +296,11 @@ func (b *PortfolioFundBuilder) Build(t *testing.T, db *sql.DB) string {
 		t.Fatalf("Failed to create portfolio_fund: %v", err)
 	}
 
-	return b.ID
+	return model.PortfolioFund{
+		ID:          b.ID,
+		PortfolioID: b.PortfolioID,
+		FundID:      b.FundID,
+	}
 }
 
 // TransactionBuilder provides a fluent interface for creating transactions
