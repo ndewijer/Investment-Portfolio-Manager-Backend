@@ -22,7 +22,7 @@ func TestValidatePortfolioIDMiddleware(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodGet, "/test", nil)
 		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("portfolioId", "550e8400-e29b-41d4-a716-446655440000")
+		rctx.URLParams.Add("uuid", "550e8400-e29b-41d4-a716-446655440000")
 		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
 		w := httptest.NewRecorder()
@@ -46,7 +46,7 @@ func TestValidatePortfolioIDMiddleware(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodGet, "/test", nil)
 		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("portfolioId", "invalid-id")
+		rctx.URLParams.Add("uuid", "invalid-id")
 		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
 		w := httptest.NewRecorder()
@@ -70,7 +70,7 @@ func TestValidatePortfolioIDMiddleware(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodGet, "/test", nil)
 		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("portfolioId", "")
+		rctx.URLParams.Add("uuid", "")
 		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
 		w := httptest.NewRecorder()
