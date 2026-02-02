@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -406,11 +405,15 @@ func (h *PortfolioHandler) CreatePortfolioFund(w http.ResponseWriter, r *http.Re
 
 	err = h.fundService.CreatePortfolioFund(r.Context(), req)
 	if err != nil {
-		if errors.Is(err, apperrors.ErrPortfolioFundNotFound) {
-			response.RespondError(w, http.StatusNotFound, "portfolio fund not found", err.Error())
+		if errors.Is(err, apperrors.ErrPortfolioNotFound) {
+			response.RespondError(w, http.StatusNotFound, "portfolio not found", err.Error())
 			return
 		}
-		response.RespondError(w, http.StatusInternalServerError, "failed to create portfolio", err.Error())
+		if errors.Is(err, apperrors.ErrFundNotFound) {
+			response.RespondError(w, http.StatusNotFound, "fund not found", err.Error())
+			return
+		}
+		response.RespondError(w, http.StatusInternalServerError, "failed to create portfolio fund", err.Error())
 		return
 	}
 
@@ -421,7 +424,6 @@ func (h *PortfolioHandler) DeletePortfolioFund(w http.ResponseWriter, r *http.Re
 	portfolioFundID := chi.URLParam(r, "uuid")
 	confirm := r.URL.Query().Get("confirm")
 
-	fmt.Printf("confirm: %s", confirm)
 	if confirm != "true" {
 		response.RespondError(w, http.StatusConflict, "Confirm deletion", "")
 		return
@@ -429,7 +431,7 @@ func (h *PortfolioHandler) DeletePortfolioFund(w http.ResponseWriter, r *http.Re
 
 	err := h.fundService.DeletePortfolioFund(r.Context(), portfolioFundID)
 	if err != nil {
-		if errors.Is(err, apperrors.ErrPortfolioNotFound) {
+		if errors.Is(err, apperrors.ErrPortfolioFundNotFound) {
 
 			response.RespondError(w, http.StatusNotFound, "portfolio fund not found", err.Error())
 			return
