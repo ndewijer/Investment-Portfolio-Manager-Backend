@@ -1316,7 +1316,7 @@ func TestPortfolioHandler_PortfolioFunds(t *testing.T) {
 			t.Errorf("Expected 200, got %d", w.Code)
 		}
 
-		var response []model.PortfolioFund
+		var response []model.PortfolioFundResponse
 		err := json.NewDecoder(w.Body).Decode(&response)
 		if err != nil {
 			t.Fatalf("Failed to decode response: %v", err)
@@ -1351,7 +1351,7 @@ func TestPortfolioHandler_PortfolioFunds(t *testing.T) {
 			t.Errorf("Expected 200, got %d", w.Code)
 		}
 
-		var response []model.PortfolioFund
+		var response []model.PortfolioFundResponse
 		err := json.NewDecoder(w.Body).Decode(&response)
 		if err != nil {
 			t.Fatalf("Failed to decode response: %v", err)
@@ -1380,7 +1380,7 @@ func TestPortfolioHandler_PortfolioFunds(t *testing.T) {
 
 		handler.PortfolioFunds(w, req)
 
-		var response []model.PortfolioFund
+		var response []model.PortfolioFundResponse
 		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
 		json.NewDecoder(w.Body).Decode(&response)
 
@@ -1487,7 +1487,7 @@ func TestPortfolioHandler_GetPortfolioFunds(t *testing.T) {
 			t.Errorf("Expected 200, got %d", w.Code)
 		}
 
-		var response []model.PortfolioFund
+		var response []model.PortfolioFundResponse
 		err := json.NewDecoder(w.Body).Decode(&response)
 		if err != nil {
 			t.Fatalf("Failed to decode response: %v", err)
@@ -1498,7 +1498,7 @@ func TestPortfolioHandler_GetPortfolioFunds(t *testing.T) {
 		}
 
 		// Find funds by ID - don't assume order
-		var aapl, googl *model.PortfolioFund
+		var aapl, googl *model.PortfolioFundResponse
 		for i := range response {
 			if response[i].FundID == fund1.ID {
 				aapl = &response[i]
@@ -1558,7 +1558,7 @@ func TestPortfolioHandler_GetPortfolioFunds(t *testing.T) {
 			t.Errorf("Expected 200, got %d", w.Code)
 		}
 
-		var response []model.PortfolioFund
+		var response []model.PortfolioFundResponse
 		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
 		json.NewDecoder(w.Body).Decode(&response)
 
@@ -1614,7 +1614,7 @@ func TestPortfolioHandler_GetPortfolioFunds(t *testing.T) {
 			t.Errorf("Expected 200, got %d", w.Code)
 		}
 
-		var response []model.PortfolioFund
+		var response []model.PortfolioFundResponse
 		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
 		json.NewDecoder(w.Body).Decode(&response)
 
@@ -1673,7 +1673,7 @@ func TestPortfolioHandler_GetPortfolioFunds(t *testing.T) {
 
 		handler.GetPortfolioFunds(w, req)
 
-		var response []model.PortfolioFund
+		var response []model.PortfolioFundResponse
 		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
 		json.NewDecoder(w.Body).Decode(&response)
 
@@ -1726,7 +1726,7 @@ func TestPortfolioHandler_GetPortfolioFunds(t *testing.T) {
 
 		handler.GetPortfolioFunds(w, req)
 
-		var response []model.PortfolioFund
+		var response []model.PortfolioFundResponse
 		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
 		json.NewDecoder(w.Body).Decode(&response)
 

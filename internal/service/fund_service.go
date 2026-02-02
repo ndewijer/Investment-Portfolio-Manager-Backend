@@ -1,8 +1,11 @@
 package service
 
 import (
+	"context"
+	"fmt"
 	"time"
 
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/request"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/repository"
 )
@@ -77,7 +80,7 @@ func (s *FundService) GetAllPortfolioFundListings() ([]model.PortfolioFundListin
 // TotalShares, LatestPrice, AverageCost, TotalCost, CurrentValue, UnrealizedGainLoss,
 // RealizedGainLoss, TotalGainLoss, TotalDividends, and TotalFees.
 // All monetary values are rounded to two decimal places.
-func (s *FundService) GetPortfolioFunds(portfolioID string) ([]model.PortfolioFund, error) {
+func (s *FundService) GetPortfolioFunds(portfolioID string) ([]model.PortfolioFundResponse, error) {
 
 	portfolio, err := s.portfolioService.GetPortfoliosForRequest(portfolioID)
 	if err != nil {
@@ -90,7 +93,7 @@ func (s *FundService) GetPortfolioFunds(portfolioID string) ([]model.PortfolioFu
 	}
 
 	if len(data.PFIDs) == 0 {
-		return []model.PortfolioFund{}, nil
+		return []model.PortfolioFundResponse{}, nil
 	}
 
 	realizedGainsByPF := data.MapRealizedGainsByPF(portfolioID)
@@ -113,4 +116,37 @@ func (s *FundService) GetPortfolioFunds(portfolioID string) ([]model.PortfolioFu
 // while DESC order is efficient for latest-price queries.
 func (s *FundService) LoadFundPrices(fundIDs []string, startDate, endDate time.Time, ascending bool) (map[string][]model.FundPrice, error) {
 	return s.fundRepo.GetFundPrice(fundIDs, startDate, endDate, ascending)
+}
+
+func (s *FundService) CreatePortfolioFund(ctx context.Context, req request.CreatePortfolioFundRequest) error {
+	_, err := s.portfolioService.GetPortfolio(req.PortfolioID)
+	if err != nil {
+		return err
+	}
+
+	_, err = s.GetFund(req.FundID)
+	if err != nil {
+		return err
+	}
+
+	if err := s.fundRepo.InsertPortfolioFund(ctx, req.PortfolioID, req.FundID); err != nil {
+		return fmt.Errorf("failed to create portfolio_fund: %w", err)
+	}
+
+	return nil
+}
+
+func (s *FundService) DeletePortfolioFund(ctx context.Context, pfID string) error {
+
+	_, err := s.fundRepo.GetPortfolioFund(pfID)
+	if err != nil {
+		return err
+	}
+
+	err = s.fundRepo.DeletePortfolioFund(ctx, pfID)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

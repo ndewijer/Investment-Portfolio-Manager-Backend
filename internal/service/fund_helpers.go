@@ -23,7 +23,7 @@ import (
 func (s *FundService) enrichPortfolioFundsWithMetrics(
 	data *PortfolioData,
 	realizedGainsByPF map[string][]model.RealizedGainLoss,
-) ([]model.PortfolioFund, error) {
+) ([]model.PortfolioFundResponse, error) {
 
 	today := time.Now()
 	portfolioFunds := data.PortfolioFunds
@@ -64,7 +64,7 @@ func (s *FundService) enrichPortfolioFundsWithMetrics(
 // TotalShares, LatestPrice, AverageCost, TotalCost, CurrentValue, UnrealizedGainLoss,
 // RealizedGainLoss, TotalGainLoss, TotalDividends, and TotalFees.
 func (s *FundService) calculateAndAssignFundMetrics(
-	fund *model.PortfolioFund,
+	fund *model.PortfolioFundResponse,
 	date time.Time,
 	data *PortfolioData,
 	realizedGains []model.RealizedGainLoss,

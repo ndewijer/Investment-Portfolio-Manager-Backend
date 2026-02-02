@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -58,7 +59,7 @@ func (h *PortfolioHandler) Portfolios(w http.ResponseWriter, _ *http.Request) {
 // Error: 500 Internal Server Error if retrieval or calculation fails
 func (h *PortfolioHandler) GetPortfolio(w http.ResponseWriter, r *http.Request) {
 
-	portfolioID := chi.URLParam(r, "portfolioId")
+	portfolioID := chi.URLParam(r, "uuid")
 
 	if portfolioID == "" {
 		response.RespondError(w, http.StatusBadRequest, "portfolio ID is required", "")
@@ -219,7 +220,7 @@ func (h *PortfolioHandler) PortfolioFunds(w http.ResponseWriter, _ *http.Request
 // Error: 500 Internal Server Error if retrieval or calculation fails
 func (h *PortfolioHandler) GetPortfolioFunds(w http.ResponseWriter, r *http.Request) {
 
-	portfolioID := chi.URLParam(r, "portfolioId")
+	portfolioID := chi.URLParam(r, "uuid")
 	if portfolioID == "" {
 		response.RespondError(w, http.StatusBadRequest, "portfolio ID is required", "")
 		return
@@ -281,7 +282,7 @@ func (h *PortfolioHandler) CreatePortfolio(w http.ResponseWriter, r *http.Reques
 // Error: 404 Not Found if portfolio doesn't exist
 // Error: 500 Internal Server Error if update fails
 func (h *PortfolioHandler) UpdatePortfolio(w http.ResponseWriter, r *http.Request) {
-	portfolioID := chi.URLParam(r, "portfolioId")
+	portfolioID := chi.URLParam(r, "uuid")
 
 	req, err := parseJSON[request.UpdatePortfolioRequest](r)
 	if err != nil {
@@ -320,7 +321,7 @@ func (h *PortfolioHandler) UpdatePortfolio(w http.ResponseWriter, r *http.Reques
 // Error: 404 Not Found if portfolio doesn't exist
 // Error: 500 Internal Server Error if deletion fails
 func (h *PortfolioHandler) DeletePortfolio(w http.ResponseWriter, r *http.Request) {
-	portfolioID := chi.URLParam(r, "portfolioId")
+	portfolioID := chi.URLParam(r, "uuid")
 
 	err := h.portfolioService.DeletePortfolio(r.Context(), portfolioID)
 	if err != nil {
@@ -346,7 +347,7 @@ func (h *PortfolioHandler) DeletePortfolio(w http.ResponseWriter, r *http.Reques
 // Error: 404 Not Found if portfolio doesn't exist
 // Error: 500 Internal Server Error if update fails
 func (h *PortfolioHandler) ArchivePortfolio(w http.ResponseWriter, r *http.Request) {
-	portfolioID := chi.URLParam(r, "portfolioId")
+	portfolioID := chi.URLParam(r, "uuid")
 
 	isArchived := true
 	req := request.UpdatePortfolioRequest{
@@ -375,7 +376,7 @@ func (h *PortfolioHandler) ArchivePortfolio(w http.ResponseWriter, r *http.Reque
 // Error: 404 Not Found if portfolio doesn't exist
 // Error: 500 Internal Server Error if update fails
 func (h *PortfolioHandler) UnarchivePortfolio(w http.ResponseWriter, r *http.Request) {
-	portfolioID := chi.URLParam(r, "portfolioId")
+	portfolioID := chi.URLParam(r, "uuid")
 
 	isArchived := false
 	req := request.UpdatePortfolioRequest{
@@ -393,4 +394,50 @@ func (h *PortfolioHandler) UnarchivePortfolio(w http.ResponseWriter, r *http.Req
 	}
 
 	response.RespondJSON(w, http.StatusOK, portfolio)
+}
+
+func (h *PortfolioHandler) CreatePortfolioFund(w http.ResponseWriter, r *http.Request) {
+	req, err := parseJSON[request.CreatePortfolioFundRequest](r)
+	if err != nil {
+
+		response.RespondError(w, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
+
+	err = h.fundService.CreatePortfolioFund(r.Context(), req)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrPortfolioFundNotFound) {
+			response.RespondError(w, http.StatusNotFound, "portfolio fund not found", err.Error())
+			return
+		}
+		response.RespondError(w, http.StatusInternalServerError, "failed to create portfolio", err.Error())
+		return
+	}
+
+	response.RespondJSON(w, http.StatusCreated, "")
+}
+
+func (h *PortfolioHandler) DeletePortfolioFund(w http.ResponseWriter, r *http.Request) {
+	portfolioFundID := chi.URLParam(r, "uuid")
+	confirm := r.URL.Query().Get("confirm")
+
+	fmt.Printf("confirm: %s", confirm)
+	if confirm != "true" {
+		response.RespondError(w, http.StatusConflict, "Confirm deletion", "")
+		return
+	}
+
+	err := h.fundService.DeletePortfolioFund(r.Context(), portfolioFundID)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrPortfolioNotFound) {
+
+			response.RespondError(w, http.StatusNotFound, "portfolio fund not found", err.Error())
+			return
+		}
+
+		response.RespondError(w, http.StatusInternalServerError, "failed to delete portfolio fund", err.Error())
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent) // 204 No Content
 }

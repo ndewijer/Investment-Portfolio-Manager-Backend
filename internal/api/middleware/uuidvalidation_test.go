@@ -18,7 +18,7 @@ func TestValidatePortfolioIDMiddleware(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		})
 
-		mw := middleware.ValidatePortfolioIDMiddleware(next)
+		mw := middleware.ValidateUUIDMiddleware(next)
 
 		req := httptest.NewRequest(http.MethodGet, "/test", nil)
 		rctx := chi.NewRouteContext()
@@ -42,7 +42,7 @@ func TestValidatePortfolioIDMiddleware(t *testing.T) {
 			handlerCalled = true
 		})
 
-		mw := middleware.ValidatePortfolioIDMiddleware(next)
+		mw := middleware.ValidateUUIDMiddleware(next)
 
 		req := httptest.NewRequest(http.MethodGet, "/test", nil)
 		rctx := chi.NewRouteContext()
@@ -66,7 +66,7 @@ func TestValidatePortfolioIDMiddleware(t *testing.T) {
 			handlerCalled = true
 		})
 
-		mw := middleware.ValidatePortfolioIDMiddleware(next)
+		mw := middleware.ValidateUUIDMiddleware(next)
 
 		req := httptest.NewRequest(http.MethodGet, "/test", nil)
 		rctx := chi.NewRouteContext()

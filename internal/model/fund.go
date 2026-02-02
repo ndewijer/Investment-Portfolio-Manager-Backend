@@ -15,6 +15,13 @@ type Fund struct {
 	LatestPrice    float64 `json:"latest_price"`
 }
 
+// PortfolioFund represends a portfoliofund record from the database
+type PortfolioFund struct {
+	ID          string
+	PortfolioID string
+	FundID      string
+}
+
 // FundPrice represents a historical price point for a fund.
 type FundPrice struct {
 	ID     string    `json:"id"`
@@ -25,7 +32,7 @@ type FundPrice struct {
 
 // PortfolioFund represents a fund held within a portfolio with calculated metrics.
 // Used for detailed portfolio fund breakdowns with shares, values, and gains/losses.
-type PortfolioFund struct {
+type PortfolioFundResponse struct {
 	ID                 string  `json:"id"`
 	FundID             string  `json:"fundId"`
 	FundName           string  `json:"fundName"`
