@@ -31,7 +31,7 @@ This backend aims to replicate all 73 endpoints from the Python backend. Below i
 │   ├── GET    /health                          ✅ Health check
 │   └── GET    /version                         ✅ Version information
 │
-├── /portfolio (5/14 endpoints) 🚧
+├── /portfolio (14/14 endpoints) ✅
 │   ├── GET    /                                ✅ List all portfolios
 │   ├── POST   /                                ✅ Create portfolio
 │   ├── GET    /{id}                            ✅ Get portfolio by ID
@@ -43,8 +43,8 @@ This backend aims to replicate all 73 endpoints from the Python backend. Below i
 │   ├── GET    /history                         ✅ Portfolio history
 │   ├── GET    /{id}/fund-history               ✅ MOVED TO FUND/HISTORY/
 │   ├── GET    /funds/{portfolioID}             ✅ Portfolio funds per ID
-│   ├── POST   /fund                            ⬜ Add fund to portfolio
-│   └── DELETE /fund/{id}                       ⬜ Remove fund from portfolio
+│   ├── POST   /fund                            ✅ Add fund to portfolio
+│   └── DELETE /fund/{id}                       ✅ Remove fund from portfolio
 │
 ├── /fund (1/13 endpoints) ⬜
 │   ├── GET    /                                ✅ List all funds
