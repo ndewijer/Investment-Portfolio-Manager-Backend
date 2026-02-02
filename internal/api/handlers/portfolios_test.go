@@ -24,7 +24,7 @@ import (
 //
 //nolint:gocyclo // Comprehensive integration test with multiple subtests
 func TestPortfolioHandler_Portfolios(t *testing.T) {
-	t.Run("GET /api/portfolio returns 200 with empty array", func(t *testing.T) {
+	t.Run("returns empty array when no portfolios exist", func(t *testing.T) {
 		// Setup
 		db := testutil.SetupTestDB(t)
 		ps := testutil.NewTestPortfolioService(t, db)
@@ -62,7 +62,7 @@ func TestPortfolioHandler_Portfolios(t *testing.T) {
 		}
 	})
 
-	t.Run("GET /api/portfolio returns all portfolios", func(t *testing.T) {
+	t.Run("returns all portfolios successfully", func(t *testing.T) {
 		// Setup
 		db := testutil.SetupTestDB(t)
 		ps := testutil.NewTestPortfolioService(t, db)
@@ -124,7 +124,7 @@ func TestPortfolioHandler_Portfolios(t *testing.T) {
 		}
 	})
 
-	t.Run("GET /api/portfolio includes all fields", func(t *testing.T) {
+	t.Run("returns portfolio with all fields populated", func(t *testing.T) {
 		// Setup
 		db := testutil.SetupTestDB(t)
 		ps := testutil.NewTestPortfolioService(t, db)
@@ -182,7 +182,7 @@ func TestPortfolioHandler_Portfolios(t *testing.T) {
 		}
 	})
 
-	t.Run("GET /api/portfolio includes archived and excluded from overview", func(t *testing.T) {
+	t.Run("returns portfolios including archived and excluded flags", func(t *testing.T) {
 		// Setup
 		db := testutil.SetupTestDB(t)
 		ps := testutil.NewTestPortfolioService(t, db)
@@ -244,7 +244,7 @@ func TestPortfolioHandler_Portfolios(t *testing.T) {
 		}
 	})
 
-	t.Run("GET /api/portfolio returns 500 on database error", func(t *testing.T) {
+	t.Run("returns 500 on database error", func(t *testing.T) {
 		// Setup with closed database
 		db := testutil.SetupTestDB(t)
 		db.Close() // Force database error
@@ -892,7 +892,7 @@ func TestPortfolioHandler_GetPortfolio(t *testing.T) {
 	}
 
 	// Happy path
-	t.Run("returns portfolio with current summary for valid ID", func(t *testing.T) {
+	t.Run("returns portfolio successfully", func(t *testing.T) {
 		handler, db := setupHandler(t)
 
 		// Create test data
@@ -1013,7 +1013,7 @@ func TestPortfolioHandler_GetPortfolio(t *testing.T) {
 	})
 
 	// Input validation: Empty portfolio ID
-	t.Run("returns 400 when portfolioId URL param is empty", func(t *testing.T) {
+	t.Run("returns 400 when portfolio ID is missing", func(t *testing.T) {
 		handler, _ := setupHandler(t)
 
 		req := testutil.NewRequestWithURLParams(
@@ -1113,7 +1113,7 @@ func TestPortfolioHandler_PortfolioHistory(t *testing.T) {
 	})
 
 	// Happy path: With data
-	t.Run("returns historical data for specified date range", func(t *testing.T) {
+	t.Run("returns historical data successfully", func(t *testing.T) {
 		handler, db := setupHandler(t)
 
 		// Create test data
@@ -1189,7 +1189,7 @@ func TestPortfolioHandler_PortfolioHistory(t *testing.T) {
 	})
 
 	// Input validation: Invalid date format
-	t.Run("returns 400 when start_date has invalid format", func(t *testing.T) {
+	t.Run("returns 400 for invalid start date format", func(t *testing.T) {
 		handler, _ := setupHandler(t)
 
 		req := testutil.NewRequestWithQueryParams(
@@ -1217,7 +1217,7 @@ func TestPortfolioHandler_PortfolioHistory(t *testing.T) {
 		}
 	})
 
-	t.Run("returns 400 when end_date has invalid format", func(t *testing.T) {
+	t.Run("returns 400 for invalid end date format", func(t *testing.T) {
 		handler, _ := setupHandler(t)
 
 		req := testutil.NewRequestWithQueryParams(
@@ -1329,7 +1329,7 @@ func TestPortfolioHandler_PortfolioFunds(t *testing.T) {
 	})
 
 	// Happy path: With data
-	t.Run("returns all portfolio-fund relationships", func(t *testing.T) {
+	t.Run("returns all portfolio-fund relationships successfully", func(t *testing.T) {
 		handler, db := setupHandler(t)
 
 		// Create test data: 2 portfolios, 2 funds
@@ -1450,7 +1450,7 @@ func TestPortfolioHandler_GetPortfolioFunds(t *testing.T) {
 	}
 
 	// Happy path
-	t.Run("returns funds with metrics for valid portfolio", func(t *testing.T) {
+	t.Run("returns funds with metrics successfully", func(t *testing.T) {
 		handler, db := setupHandler(t)
 
 		// Create test data
@@ -1741,7 +1741,7 @@ func TestPortfolioHandler_GetPortfolioFunds(t *testing.T) {
 	})
 
 	// Input validation: Empty portfolio ID
-	t.Run("returns 400 when portfolioId URL param is empty", func(t *testing.T) {
+	t.Run("returns 400 when portfolio ID is missing", func(t *testing.T) {
 		handler, _ := setupHandler(t)
 
 		req := testutil.NewRequestWithURLParams(
@@ -1806,7 +1806,7 @@ func TestPortfolioHandler_CreatePortfolio(t *testing.T) {
 	}
 
 	// Happy path: Create portfolio with all fields
-	t.Run("creates portfolio successfully with all fields", func(t *testing.T) {
+	t.Run("creates portfolio with all fields successfully", func(t *testing.T) {
 		handler, db := setupHandler(t)
 
 		reqBody := `{
@@ -1849,7 +1849,7 @@ func TestPortfolioHandler_CreatePortfolio(t *testing.T) {
 	})
 
 	// Happy path: Create portfolio with minimal fields
-	t.Run("creates portfolio with only required fields", func(t *testing.T) {
+	t.Run("creates portfolio with required fields only", func(t *testing.T) {
 		handler, db := setupHandler(t)
 
 		reqBody := `{
@@ -1998,7 +1998,7 @@ func TestPortfolioHandler_UpdatePortfolio(t *testing.T) {
 	}
 
 	// Happy path: Update all fields
-	t.Run("updates portfolio successfully with all fields", func(t *testing.T) {
+	t.Run("updates portfolio with all fields successfully", func(t *testing.T) {
 		handler, db := setupHandler(t)
 
 		portfolio := testutil.NewPortfolio().
@@ -2045,7 +2045,7 @@ func TestPortfolioHandler_UpdatePortfolio(t *testing.T) {
 	})
 
 	// Happy path: Partial update (name only)
-	t.Run("updates only name field", func(t *testing.T) {
+	t.Run("updates name field only", func(t *testing.T) {
 		handler, db := setupHandler(t)
 
 		portfolio := testutil.NewPortfolio().
@@ -2145,7 +2145,7 @@ func TestPortfolioHandler_UpdatePortfolio(t *testing.T) {
 		}
 	})
 
-	t.Run("returns 400 for failed validation due to empty name", func(t *testing.T) {
+	t.Run("returns 400 for empty name", func(t *testing.T) {
 		handler, db := setupHandler(t)
 
 		portfolio := testutil.NewPortfolio().
@@ -2590,7 +2590,7 @@ func TestPortfolioHandler_CreatePortfolioFundHandler(t *testing.T) {
 	}
 
 	// Happy path: Create portfolio fund
-	t.Run("create portfolio fund successfully", func(t *testing.T) {
+	t.Run("creates portfolio fund successfully", func(t *testing.T) {
 		handler, db := setupHandler(t)
 
 		portfolio := testutil.NewPortfolio().
@@ -2640,7 +2640,7 @@ func TestPortfolioHandler_CreatePortfolioFundHandler(t *testing.T) {
 	})
 
 	// Invalid Portfolio UUID
-	t.Run("returns 400 when portfolioId param is a faulty UUID", func(t *testing.T) {
+	t.Run("returns 400 for invalid portfolio ID format", func(t *testing.T) {
 		handler, _ := setupHandler(t)
 
 		nonExistentID := testutil.MakeID()
@@ -2668,7 +2668,7 @@ func TestPortfolioHandler_CreatePortfolioFundHandler(t *testing.T) {
 	})
 
 	// Invalid Fund UUID
-	t.Run("returns 400 when fundId param is a faulty UUID", func(t *testing.T) {
+	t.Run("returns 400 for invalid fund ID format", func(t *testing.T) {
 		handler, _ := setupHandler(t)
 
 		nonExistentID := testutil.MakeID()
@@ -2696,7 +2696,7 @@ func TestPortfolioHandler_CreatePortfolioFundHandler(t *testing.T) {
 	})
 
 	// Invalid Portfolio
-	t.Run("invalid portfolio id", func(t *testing.T) {
+	t.Run("returns 404 when portfolio not found", func(t *testing.T) {
 		handler, db := setupHandler(t)
 
 		nonExistentID := testutil.MakeID()
@@ -2730,7 +2730,7 @@ func TestPortfolioHandler_CreatePortfolioFundHandler(t *testing.T) {
 	})
 
 	// Invalid Fund
-	t.Run("invalid fund id", func(t *testing.T) {
+	t.Run("returns 404 when fund not found", func(t *testing.T) {
 		handler, db := setupHandler(t)
 
 		nonExistentID := testutil.MakeID()
@@ -2803,7 +2803,7 @@ func TestPortfolioHandler_DeletePortfolioFundHandler(t *testing.T) {
 	}
 
 	// Happy path: Delete portfolio fund
-	t.Run("Delete portfolio fund successfully", func(t *testing.T) {
+	t.Run("deletes portfolio fund successfully", func(t *testing.T) {
 		handler, db := setupHandler(t)
 
 		portfolio := testutil.NewPortfolio().
@@ -2835,7 +2835,7 @@ func TestPortfolioHandler_DeletePortfolioFundHandler(t *testing.T) {
 
 	// Delete portfolio fund without conformation
 
-	t.Run("Delete portfolio fund successfully", func(t *testing.T) {
+	t.Run("returns 409 when confirmation is missing", func(t *testing.T) {
 		handler, db := setupHandler(t)
 
 		portfolio := testutil.NewPortfolio().
@@ -2869,7 +2869,7 @@ func TestPortfolioHandler_DeletePortfolioFundHandler(t *testing.T) {
 	})
 
 	// Invalid PortfolioFund
-	t.Run("invalid portfoliofund id", func(t *testing.T) {
+	t.Run("returns 404 when portfolio fund not found", func(t *testing.T) {
 		handler, _ := setupHandler(t)
 
 		nonExistentID := testutil.MakeID()
