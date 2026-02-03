@@ -33,7 +33,7 @@ func main() {
 
 	log.Printf("Connected to database: %s", cfg.Database.Path)
 
-	systemService, portfolioService, fundService, materializedService, transactionService, ibkrService := createRepoAndServices(db)
+	systemService, portfolioService, fundService, materializedService, transactionService, ibkrService, developerService := createRepoAndServices(db)
 	// Create router
 	router := api.NewRouter(
 		systemService,
@@ -42,6 +42,7 @@ func main() {
 		materializedService,
 		transactionService,
 		ibkrService,
+		developerService,
 		cfg,
 	)
 
@@ -87,6 +88,7 @@ func createRepoAndServices(db *sql.DB) (
 	*service.MaterializedService,
 	*service.TransactionService,
 	*service.IbkrService,
+	*service.DeveloperService,
 ) {
 	// Create repositories
 	portfolioRepo := repository.NewPortfolioRepository(db)
@@ -96,9 +98,14 @@ func createRepoAndServices(db *sql.DB) (
 	realizedGainLossRepo := repository.NewRealizedGainLossRepository(db)
 	materializedRepo := repository.NewMaterializedRepository(db)
 	ibkrRepo := repository.NewIbkrRepository(db)
+	developerRepo := repository.NewDeveloperRepository(db)
 
 	// Create services
 	systemService := service.NewSystemService(db)
+
+	developerService := service.NewDeveloperService(
+		developerRepo,
+	)
 
 	realizedGainLossService := service.NewRealizedGainLossService(
 		realizedGainLossRepo,
@@ -150,5 +157,6 @@ func createRepoAndServices(db *sql.DB) (
 		fundService,
 		materializedService,
 		transactionService,
-		ibkrService
+		ibkrService,
+		developerService
 }

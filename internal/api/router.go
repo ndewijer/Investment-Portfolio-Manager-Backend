@@ -22,6 +22,7 @@ func NewRouter(
 	materializedService *service.MaterializedService,
 	transactionService *service.TransactionService,
 	ibkrService *service.IbkrService,
+	developerService *service.DeveloperService,
 	cfg *config.Config,
 ) http.Handler {
 	r := chi.NewRouter()
