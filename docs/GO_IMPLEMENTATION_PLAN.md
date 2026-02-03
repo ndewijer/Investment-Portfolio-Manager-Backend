@@ -1747,4 +1747,3 @@ cp ~/.claude/plans/abstract-wibbling-brook.md Investment-Portfolio-Manager-Backe
 ```
 
 This will serve as your living implementation guide that you can update as you progress through the development phases.
-
