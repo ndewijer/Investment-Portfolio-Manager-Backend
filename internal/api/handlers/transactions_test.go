@@ -121,7 +121,7 @@ func TestTransactionHandler_TransactionPerPortfolio(t *testing.T) {
 		req := testutil.NewRequestWithURLParams(
 			http.MethodGet,
 			"/api/transaction/portfolio/"+portfolio.ID,
-			map[string]string{"portfolioId": portfolio.ID},
+			map[string]string{"uuid": portfolio.ID},
 		)
 		w := httptest.NewRecorder()
 
@@ -148,7 +148,7 @@ func TestTransactionHandler_TransactionPerPortfolio(t *testing.T) {
 		req := testutil.NewRequestWithURLParams(
 			http.MethodGet,
 			"/api/transaction/portfolio/"+portfolio.ID,
-			map[string]string{"portfolioId": portfolio.ID},
+			map[string]string{"uuid": portfolio.ID},
 		)
 		w := httptest.NewRecorder()
 
@@ -171,23 +171,6 @@ func TestTransactionHandler_TransactionPerPortfolio(t *testing.T) {
 		}
 	})
 
-	t.Run("returns 400 when portfolio ID is missing", func(t *testing.T) {
-		handler, _ := setupHandler(t)
-
-		req := testutil.NewRequestWithURLParams(
-			http.MethodGet,
-			"/api/transaction/portfolio/",
-			map[string]string{"portfolioId": ""},
-		)
-		w := httptest.NewRecorder()
-
-		handler.TransactionPerPortfolio(w, req)
-
-		if w.Code != http.StatusBadRequest {
-			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
-		}
-	})
-
 	t.Run("returns 500 on database error", func(t *testing.T) {
 		handler, db := setupHandler(t)
 
@@ -197,7 +180,7 @@ func TestTransactionHandler_TransactionPerPortfolio(t *testing.T) {
 		req := testutil.NewRequestWithURLParams(
 			http.MethodGet,
 			"/api/transaction/portfolio/"+portfolio.ID,
-			map[string]string{"portfolioId": portfolio.ID},
+			map[string]string{"uuid": portfolio.ID},
 		)
 		w := httptest.NewRecorder()
 
@@ -229,7 +212,7 @@ func TestTransactionHandler_GetTransaction(t *testing.T) {
 		req := testutil.NewRequestWithURLParams(
 			http.MethodGet,
 			"/api/transaction/"+tx.ID,
-			map[string]string{"transactionId": tx.ID},
+			map[string]string{"uuid": tx.ID},
 		)
 		w := httptest.NewRecorder()
 
@@ -248,40 +231,6 @@ func TestTransactionHandler_GetTransaction(t *testing.T) {
 		}
 	})
 
-	t.Run("returns 400 when transaction ID is missing", func(t *testing.T) {
-		handler, _ := setupHandler(t)
-
-		req := testutil.NewRequestWithURLParams(
-			http.MethodGet,
-			"/api/transaction/",
-			map[string]string{"transactionId": ""},
-		)
-		w := httptest.NewRecorder()
-
-		handler.GetTransaction(w, req)
-
-		if w.Code != http.StatusBadRequest {
-			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
-		}
-	})
-
-	t.Run("returns 400 for invalid UUID format", func(t *testing.T) {
-		handler, _ := setupHandler(t)
-
-		req := testutil.NewRequestWithURLParams(
-			http.MethodGet,
-			"/api/transaction/invalid-uuid",
-			map[string]string{"transactionId": "invalid-uuid"},
-		)
-		w := httptest.NewRecorder()
-
-		handler.GetTransaction(w, req)
-
-		if w.Code != http.StatusBadRequest {
-			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
-		}
-	})
-
 	t.Run("returns 404 when transaction not found", func(t *testing.T) {
 		handler, _ := setupHandler(t)
 
@@ -290,7 +239,7 @@ func TestTransactionHandler_GetTransaction(t *testing.T) {
 		req := testutil.NewRequestWithURLParams(
 			http.MethodGet,
 			"/api/transaction/"+nonExistentID,
-			map[string]string{"transactionId": nonExistentID},
+			map[string]string{"uuid": nonExistentID},
 		)
 		w := httptest.NewRecorder()
 
@@ -314,7 +263,7 @@ func TestTransactionHandler_GetTransaction(t *testing.T) {
 		req := testutil.NewRequestWithURLParams(
 			http.MethodGet,
 			"/api/transaction/"+tx.ID,
-			map[string]string{"transactionId": tx.ID},
+			map[string]string{"uuid": tx.ID},
 		)
 		w := httptest.NewRecorder()
 

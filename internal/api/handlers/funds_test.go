@@ -233,62 +233,6 @@ func TestFundHandler_GetFund(t *testing.T) {
 		}
 	})
 
-	t.Run("returns 400 when fund ID is missing", func(t *testing.T) {
-		db := testutil.SetupTestDB(t)
-		fs := testutil.NewTestFundService(t, db)
-		ms := testutil.NewTestMaterializedService(t, db)
-		handler := handlers.NewFundHandler(fs, ms)
-
-		req := testutil.NewRequestWithURLParams(
-			http.MethodGet,
-			"/api/fund/",
-			map[string]string{"uuid": ""},
-		)
-		w := httptest.NewRecorder()
-
-		handler.GetFund(w, req)
-
-		if w.Code != http.StatusBadRequest {
-			t.Errorf("Expected status 400, got %d", w.Code)
-		}
-
-		var response map[string]string
-		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
-		json.NewDecoder(w.Body).Decode(&response)
-
-		if response["error"] != "fund ID is required" {
-			t.Errorf("Expected 'fund ID is required' error, got '%s'", response["error"])
-		}
-	})
-
-	t.Run("returns 400 for invalid UUID format", func(t *testing.T) {
-		db := testutil.SetupTestDB(t)
-		fs := testutil.NewTestFundService(t, db)
-		ms := testutil.NewTestMaterializedService(t, db)
-		handler := handlers.NewFundHandler(fs, ms)
-
-		req := testutil.NewRequestWithURLParams(
-			http.MethodGet,
-			"/api/fund/",
-			map[string]string{"uuid": "invalidUUID"},
-		)
-		w := httptest.NewRecorder()
-
-		handler.GetFund(w, req)
-
-		if w.Code != http.StatusBadRequest {
-			t.Errorf("Expected status 400, got %d", w.Code)
-		}
-
-		var response map[string]string
-		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
-		json.NewDecoder(w.Body).Decode(&response)
-
-		if response["error"] != "invalid fund ID format" {
-			t.Errorf("Expected 'invalid fund ID format' error, got '%s'", response["error"])
-		}
-	})
-
 	t.Run("returns 404 when fund not found", func(t *testing.T) {
 		db := testutil.SetupTestDB(t)
 		fs := testutil.NewTestFundService(t, db)
@@ -315,7 +259,7 @@ func TestFundHandler_GetFund(t *testing.T) {
 		json.NewDecoder(w.Body).Decode(&response)
 
 		if response["error"] != apperrors.ErrFundNotFound.Error() {
-			t.Errorf("Expected '"+apperrors.ErrFundNotFound.Error()+"' error, got '%s'", response["error"])
+			t.Errorf("Expected '%s' error, got '%s'", apperrors.ErrFundNotFound.Error(), response["error"])
 		}
 	})
 
@@ -415,8 +359,8 @@ func TestFundHandler_GetSymbol(t *testing.T) {
 		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
 		json.NewDecoder(w.Body).Decode(&response)
 
-		if response["error"] != "Symbol is required" {
-			t.Errorf("Expected 'Symbol is required' error, got '%s'", response["error"])
+		if response["error"] != apperrors.ErrInvalidSymbol.Error() {
+			t.Errorf("Expected '%s' error, got '%s'", apperrors.ErrInvalidSymbol.Error(), response["error"])
 		}
 	})
 
@@ -467,7 +411,7 @@ func TestFundHandler_GetFundHistory(t *testing.T) {
 		req := testutil.NewRequestWithURLParams(
 			http.MethodGet,
 			"/api/fund/history/"+portfolio.ID,
-			map[string]string{"portfolioId": portfolio.ID},
+			map[string]string{"uuid": portfolio.ID},
 		)
 		w := httptest.NewRecorder()
 
@@ -489,34 +433,6 @@ func TestFundHandler_GetFundHistory(t *testing.T) {
 		}
 	})
 
-	t.Run("returns 400 when portfolio ID is missing", func(t *testing.T) {
-		db := testutil.SetupTestDB(t)
-		fs := testutil.NewTestFundService(t, db)
-		ms := testutil.NewTestMaterializedService(t, db)
-		handler := handlers.NewFundHandler(fs, ms)
-
-		req := testutil.NewRequestWithURLParams(
-			http.MethodGet,
-			"/api/fund/history/",
-			map[string]string{"portfolioId": ""},
-		)
-		w := httptest.NewRecorder()
-
-		handler.GetFundHistory(w, req)
-
-		if w.Code != http.StatusBadRequest {
-			t.Errorf("Expected status 400, got %d", w.Code)
-		}
-
-		var response map[string]string
-		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
-		json.NewDecoder(w.Body).Decode(&response)
-
-		if response["error"] != "portfolio ID is required" {
-			t.Errorf("Expected 'portfolio ID is required' error, got '%s'", response["error"])
-		}
-	})
-
 	t.Run("returns 400 for invalid date parameters", func(t *testing.T) {
 		db := testutil.SetupTestDB(t)
 		fs := testutil.NewTestFundService(t, db)
@@ -528,7 +444,7 @@ func TestFundHandler_GetFundHistory(t *testing.T) {
 		req := testutil.NewRequestWithQueryAndURLParams(
 			http.MethodGet,
 			"/api/fund/history/"+portfolio.ID+"?start_date=invalid-date",
-			map[string]string{"portfolioId": portfolio.ID},
+			map[string]string{"uuid": portfolio.ID},
 			map[string]string{"start_date": "invalid-date"},
 		)
 		w := httptest.NewRecorder()
@@ -561,7 +477,7 @@ func TestFundHandler_GetFundHistory(t *testing.T) {
 		req := testutil.NewRequestWithURLParams(
 			http.MethodGet,
 			"/api/fund/history/"+portfolio.ID,
-			map[string]string{"portfolioId": portfolio.ID},
+			map[string]string{"uuid": portfolio.ID},
 		)
 		w := httptest.NewRecorder()
 
@@ -595,7 +511,7 @@ func TestFundHandler_GetFundPrices(t *testing.T) {
 		req := testutil.NewRequestWithURLParams(
 			http.MethodGet,
 			"/api/fund/fund-prices/"+fund.ID,
-			map[string]string{"fundId": fund.ID},
+			map[string]string{"uuid": fund.ID},
 		)
 		w := httptest.NewRecorder()
 
@@ -617,62 +533,6 @@ func TestFundHandler_GetFundPrices(t *testing.T) {
 		}
 	})
 
-	t.Run("returns 400 when fund ID is missing", func(t *testing.T) {
-		db := testutil.SetupTestDB(t)
-		fs := testutil.NewTestFundService(t, db)
-		ms := testutil.NewTestMaterializedService(t, db)
-		handler := handlers.NewFundHandler(fs, ms)
-
-		req := testutil.NewRequestWithURLParams(
-			http.MethodGet,
-			"/api/fund/fund-prices/",
-			map[string]string{"fundId": ""},
-		)
-		w := httptest.NewRecorder()
-
-		handler.GetFundPrices(w, req)
-
-		if w.Code != http.StatusBadRequest {
-			t.Errorf("Expected status 400, got %d", w.Code)
-		}
-
-		var response map[string]string
-		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
-		json.NewDecoder(w.Body).Decode(&response)
-
-		if response["error"] != "portfolio ID is required" {
-			t.Errorf("Expected 'portfolio ID is required' error, got '%s'", response["error"])
-		}
-	})
-
-	t.Run("returns 400 for invalid UUID", func(t *testing.T) {
-		db := testutil.SetupTestDB(t)
-		fs := testutil.NewTestFundService(t, db)
-		ms := testutil.NewTestMaterializedService(t, db)
-		handler := handlers.NewFundHandler(fs, ms)
-
-		req := testutil.NewRequestWithURLParams(
-			http.MethodGet,
-			"/api/fund/fund-prices/invalid-uuid",
-			map[string]string{"fundId": "invalid-uuid"},
-		)
-		w := httptest.NewRecorder()
-
-		handler.GetFundPrices(w, req)
-
-		if w.Code != http.StatusBadRequest {
-			t.Errorf("Expected status 400, got %d", w.Code)
-		}
-
-		var response map[string]string
-		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
-		json.NewDecoder(w.Body).Decode(&response)
-
-		if response["error"] != "invalid portfolio ID format" {
-			t.Errorf("Expected 'invalid portfolio ID format' error, got '%s'", response["error"])
-		}
-	})
-
 	t.Run("returns 500 on database error", func(t *testing.T) {
 		db := testutil.SetupTestDB(t)
 		fs := testutil.NewTestFundService(t, db)
@@ -686,7 +546,7 @@ func TestFundHandler_GetFundPrices(t *testing.T) {
 		req := testutil.NewRequestWithURLParams(
 			http.MethodGet,
 			"/api/fund/fund-prices/"+fund.ID,
-			map[string]string{"fundId": fund.ID},
+			map[string]string{"uuid": fund.ID},
 		)
 		w := httptest.NewRecorder()
 

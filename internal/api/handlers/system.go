@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/response"
+	apperrors "github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/errors"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/service"
 )
 
@@ -67,7 +68,7 @@ func (h *SystemHandler) Version(w http.ResponseWriter, _ *http.Request) {
 	version, err := h.systemService.CheckVersion()
 	if err != nil {
 
-		response.RespondError(w, http.StatusInternalServerError, "failed to get version information", err.Error())
+		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToGetVersionInfo.Error(), err.Error())
 		return
 	}
 

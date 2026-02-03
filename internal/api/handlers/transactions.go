@@ -1,13 +1,13 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/response"
 	apperrors "github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/errors"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/service"
-	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/validation"
 )
 
 // TransactionHandler handles HTTP requests for transaction endpoints.
@@ -27,21 +27,16 @@ func NewTransactionHandler(transactionService *service.TransactionService) *Tran
 // TransactionPerPortfolio handles GET requests to retrieve all transactions for a specific portfolio.
 // Returns transaction details including fund information, dates, shares, and IBKR linkage status.
 //
-// Endpoint: GET /api/transaction/portfolio/{portfolioId}
+// Endpoint: GET /api/transaction/portfolio/{uuid}
 // Response: 200 OK with array of TransactionResponse
-// Error: 400 Bad Request if portfolio ID is missing or invalid
+// Error: 400 Bad Request if portfolio ID is invalid (validated by middleware)
 // Error: 500 Internal Server Error if retrieval fails
 func (h *TransactionHandler) TransactionPerPortfolio(w http.ResponseWriter, r *http.Request) {
-
-	portfolioID := chi.URLParam(r, "portfolioId")
-	if portfolioID == "" {
-		response.RespondError(w, http.StatusBadRequest, "portfolio ID is required", "")
-		return
-	}
+	portfolioID := chi.URLParam(r, "uuid")
 
 	transactions, err := h.transactionService.GetTransactionsperPortfolio(portfolioID)
 	if err != nil {
-		response.RespondError(w, http.StatusInternalServerError, "failed to retrieve transactions", err.Error())
+		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToRetrieveTransactions.Error(), err.Error())
 		return
 	}
 
@@ -58,7 +53,7 @@ func (h *TransactionHandler) AllTransactions(w http.ResponseWriter, _ *http.Requ
 
 	transactions, err := h.transactionService.GetTransactionsperPortfolio("")
 	if err != nil {
-		response.RespondError(w, http.StatusInternalServerError, "failed to retrieve transactions", err.Error())
+		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToRetrieveTransactions.Error(), err.Error())
 		return
 	}
 
@@ -68,31 +63,22 @@ func (h *TransactionHandler) AllTransactions(w http.ResponseWriter, _ *http.Requ
 // GetTransaction handles GET requests to retrieve a single transaction by ID.
 // Returns transaction details including fund information, date, shares, and IBKR linkage status.
 //
-// Endpoint: GET /api/transaction/{transactionId}
+// Endpoint: GET /api/transaction/{uuid}
 // Response: 200 OK with TransactionResponse
-// Error: 400 Bad Request if transaction ID is missing or invalid
+// Error: 400 Bad Request if transaction ID is invalid (validated by middleware)
+// Error: 404 Not Found if transaction not found
 // Error: 500 Internal Server Error if retrieval fails
 func (h *TransactionHandler) GetTransaction(w http.ResponseWriter, r *http.Request) {
 
-	transactionID := chi.URLParam(r, "transactionId")
-	if transactionID == "" {
-		response.RespondError(w, http.StatusBadRequest, "transactions ID is required", "")
-		return
-	}
-
-	if err := validation.ValidateUUID(transactionID); err != nil {
-		response.RespondError(w, http.StatusBadRequest, "invalid transaction ID format", err.Error())
-		return
-	}
+	transactionID := chi.URLParam(r, "uuid")
 
 	transaction, err := h.transactionService.GetTransaction(transactionID)
 	if err != nil {
-		response.RespondError(w, http.StatusInternalServerError, "failed to retrieve transaction", err.Error())
-		return
-	}
-
-	if transaction.ID == "" {
-		response.RespondError(w, http.StatusNotFound, "Transaction not found", apperrors.ErrIBKRTransactionNotFound.Error())
+		if errors.Is(err, apperrors.ErrTransactionNotFound) {
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrTransactionNotFound.Error(), err.Error())
+			return
+		}
+		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToRetrieveTransaction.Error(), err.Error())
 		return
 	}
 

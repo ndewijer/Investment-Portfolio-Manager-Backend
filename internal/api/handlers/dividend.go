@@ -1,10 +1,12 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/response"
+	apperrors "github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/errors"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/service"
 )
 
@@ -32,7 +34,7 @@ func (h *DividendHandler) GetAllDividends(w http.ResponseWriter, _ *http.Request
 
 	dividends, err := h.dividendService.GetAllDividends()
 	if err != nil {
-		response.RespondError(w, http.StatusInternalServerError, "failed to retrieve dividends", err.Error())
+		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToRetrieveDividends.Error(), err.Error())
 		return
 	}
 
@@ -43,20 +45,21 @@ func (h *DividendHandler) GetAllDividends(w http.ResponseWriter, _ *http.Request
 // Returns dividend details including fund information, amounts, dates, and reinvestment status
 // for all funds held in the specified portfolio.
 //
-// Endpoint: GET /api/dividend/portfolio/{portfolioId}
+// Endpoint: GET /api/dividend/portfolio/{uuid}
 // Response: 200 OK with array of DividendFund
+// Error: 400 Bad Request if portfolio ID is invalid (validated by middleware)
 // Error: 500 Internal Server Error if retrieval fails
 func (h *DividendHandler) DividendPerPortfolio(w http.ResponseWriter, r *http.Request) {
 
-	portfolioID := chi.URLParam(r, "portfolioId")
-	if portfolioID == "" {
-		response.RespondError(w, http.StatusBadRequest, "portfolio ID is required", "")
-		return
-	}
+	portfolioID := chi.URLParam(r, "uuid")
 
 	dividends, err := h.dividendService.GetDividendFund(portfolioID)
 	if err != nil {
-		response.RespondError(w, http.StatusInternalServerError, "failed to retrieve dividends", err.Error())
+		if errors.Is(err, apperrors.ErrPortfolioNotFound) {
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrPortfolioNotFound.Error(), err.Error())
+			return
+		}
+		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToRetrieveDividends.Error(), err.Error())
 		return
 	}
 
