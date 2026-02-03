@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/errors"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/apperrors"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 )
 
@@ -28,7 +28,7 @@ func (r *IbkrRepository) GetIbkrConfig() (*model.IbkrConfig, error) {
 
 	query := `
         SELECT flex_query_id, token_expires_at, last_import_date, auto_import_enabled, created_at, updated_at, enabled, default_allocation_enabled, default_allocations
-		FROM ibkr_config 
+		FROM ibkr_config
       `
 
 	var ic model.IbkrConfig
@@ -194,7 +194,7 @@ func (r *IbkrRepository) GetInbox(status, transactionType string) ([]model.IBKRT
 	}
 	if transactionType != "" {
 		query += `
-			AND transaction_type = ? 
+			AND transaction_type = ?
 		`
 		args = append(args, transactionType)
 	}
@@ -309,7 +309,7 @@ func (r *IbkrRepository) GetIbkrTransaction(transactionID string) (model.IBKRTra
 		&t.Status,
 		&t.ImportedAt)
 	if err == sql.ErrNoRows {
-		return model.IBKRTransaction{}, errors.ErrIBKRTransactionNotFound
+		return model.IBKRTransaction{}, apperrors.ErrIBKRTransactionNotFound
 	}
 	if err != nil {
 		return model.IBKRTransaction{}, err

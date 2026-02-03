@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	apperrors "github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/errors"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/apperrors"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 )
 
@@ -126,7 +126,7 @@ func (s *TransactionRepository) GetOldestTransaction(pfIDs []string) time.Time {
 	}
 
 	oldestTransactionQuery := `
-		SELECT MIN(date) 
+		SELECT MIN(date)
 		FROM "transaction"
 		WHERE portfolio_fund_id IN (` + strings.Join(oldestTransactionPlaceholders, ",") + `)
 		`
@@ -154,18 +154,18 @@ func (s *TransactionRepository) GetOldestTransaction(pfIDs []string) time.Time {
 func (s *TransactionRepository) GetTransactionsPerPortfolio(portfolioID string) ([]model.TransactionResponse, error) {
 
 	transactionQuery := `
-		SELECT 
-			t.id, 
-			t.portfolio_fund_id, 
-			f.name, 
-			t.date, 
-			t.type, 
-			t.shares, 
-			t.cost_per_share, 
+		SELECT
+			t.id,
+			t.portfolio_fund_id,
+			f.name,
+			t.date,
+			t.type,
+			t.shares,
+			t.cost_per_share,
 			ita.ibkr_transaction_id,
-			CASE 
-				WHEN ita.ibkr_transaction_id IS NOT NULL THEN 1 
-				ELSE 0 
+			CASE
+				WHEN ita.ibkr_transaction_id IS NOT NULL THEN 1
+				ELSE 0
 			END AS ibkr_linked
 		FROM "transaction" t
 		JOIN portfolio_fund pf ON t.portfolio_fund_id = pf.id
@@ -245,18 +245,18 @@ func (s *TransactionRepository) GetTransaction(transactionID string) (model.Tran
 	}
 
 	transactionQuery := `
-		SELECT 
-			t.id, 
-			t.portfolio_fund_id, 
-			f.name, 
-			t.date, 
-			t.type, 
-			t.shares, 
-			t.cost_per_share, 
+		SELECT
+			t.id,
+			t.portfolio_fund_id,
+			f.name,
+			t.date,
+			t.type,
+			t.shares,
+			t.cost_per_share,
 			ita.ibkr_transaction_id,
-			CASE 
-				WHEN ita.ibkr_transaction_id IS NOT NULL THEN 1 
-				ELSE 0 
+			CASE
+				WHEN ita.ibkr_transaction_id IS NOT NULL THEN 1
+				ELSE 0
 			END AS ibkr_linked
 		FROM "transaction" t
 		JOIN portfolio_fund pf ON t.portfolio_fund_id = pf.id

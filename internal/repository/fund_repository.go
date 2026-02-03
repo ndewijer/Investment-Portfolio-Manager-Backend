@@ -8,8 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/errors"
-	apperrors "github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/errors"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/apperrors"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 )
 
@@ -471,7 +470,7 @@ func (r *FundRepository) GetFundBySymbolOrIsin(symbol, isin string) (model.Fund,
 		&f.DividendType,
 	)
 	if err == sql.ErrNoRows {
-		return model.Fund{}, errors.ErrFundNotFound
+		return model.Fund{}, apperrors.ErrFundNotFound
 	}
 	if err != nil {
 		return model.Fund{}, err
@@ -500,7 +499,7 @@ func (r *FundRepository) GetPortfolioFund(pfID string) (model.PortfolioFund, err
 		&pf.FundID,
 	)
 	if err == sql.ErrNoRows {
-		return model.PortfolioFund{}, errors.ErrPortfolioFundNotFound
+		return model.PortfolioFund{}, apperrors.ErrPortfolioFundNotFound
 	}
 	if err != nil {
 		return model.PortfolioFund{}, err
@@ -542,7 +541,7 @@ func (r *FundRepository) DeletePortfolioFund(ctx context.Context, portfolioFundI
 	}
 
 	if rowsAffected == 0 {
-		return errors.ErrPortfolioFundNotFound
+		return apperrors.ErrPortfolioFundNotFound
 	}
 
 	return nil

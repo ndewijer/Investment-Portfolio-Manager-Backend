@@ -1,43 +1,49 @@
+version: "2"
 run:
-  timeout: 5m
   tests: true
-
 linters:
   enable:
-    # Bugs
+    - gocyclo       # Cyclomatic complexity
+    - funlen        # Function length
+    - gosec         # Security issues
+    - misspell      # Spelling mistakes
+    - prealloc      # Suggest preallocations
+    - revive        # Replacement for golint
     - errcheck      # Check error returns
     - gosec         # Security issues
     - staticcheck   # Static analysis
     - govet         # Go vet checks
-
-    # Style
+  settings:
+    errcheck:
+      check-type-assertions: true
+      check-blank: true
+    funlen:
+      lines: 100
+      statements: 50
+    gocyclo:
+      min-complexity: 15
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - linters:
+          - funlen
+        path: _test\.go
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
     - gofmt         # Formatting
     - goimports     # Import organization
-    - misspell      # Spelling mistakes
-    - revive        # Replacement for golint
-
-    # Complexity
-    - gocyclo       # Cyclomatic complexity
-    - funlen        # Function length
-
-    # Performance
-    - prealloc      # Suggest preallocations
-
-linters-settings:
-  funlen:
-    lines: 100      # Warn on functions over 100 lines
-    statements: 50
-
-  gocyclo:
-    min-complexity: 15  # Warn on complex functions
-
-  errcheck:
-    check-type-assertions: true
-    check-blank: true
-
-issues:
-  exclude-rules:
-    # Ignore long lines in generated files
-    - path: "_test\\.go"
-      linters:
-        - funlen
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

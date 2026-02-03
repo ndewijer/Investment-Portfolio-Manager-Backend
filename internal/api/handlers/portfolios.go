@@ -8,7 +8,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/request"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/response"
-	apperrors "github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/errors"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/apperrors"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/service"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/validation"

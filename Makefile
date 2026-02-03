@@ -1,4 +1,4 @@
-.PHONY: run build test test-short test-verbose coverage coverage-html coverage-func coverage-by-file coverage-open coverage-handlers coverage-handlers-full coverage-validation coverage-full-html clean deps help
+.PHONY: run build test test-short test-verbose coverage coverage-html coverage-func coverage-by-file coverage-open coverage-handlers coverage-handlers-full coverage-validation coverage-full-html clean deps help lint lint-fix fmt pre-commit-install pre-commit-run govulncheck ci-local
 
 # Module and version settings
 MODULE=github.com/ndewijer/Investment-Portfolio-Manager-Backend
@@ -129,7 +129,56 @@ fmt:
 
 # Run linter (requires golangci-lint)
 lint:
-	golangci-lint run
+	golangci-lint run --timeout=5m
+
+# Run linter with auto-fix
+lint-fix:
+	golangci-lint run --fix --timeout=5m
+
+# Pre-commit setup
+pre-commit-install:
+	@command -v pre-commit >/dev/null 2>&1 || { \
+		echo "pre-commit not found. Installing..."; \
+		pip install pre-commit || brew install pre-commit; \
+	}
+	pre-commit install
+	@echo "✅ Pre-commit hooks installed"
+
+pre-commit-run:
+	pre-commit run --all-files
+
+# Security scanning
+govulncheck:
+	@command -v govulncheck >/dev/null 2>&1 || { \
+		echo "govulncheck not found. Installing..."; \
+		go install golang.org/x/vuln/cmd/govulncheck@latest; \
+	}
+	govulncheck ./...
+
+# Coverage with threshold check (for CI) - measures all internal packages
+coverage-threshold:
+	@echo "Running tests with coverage across all internal packages..."
+	@go test -coverpkg=./internal/... -coverprofile=coverage.out -covermode=atomic ./...
+	@echo ""
+	@go tool cover -func=coverage.out | grep total
+	@echo ""
+	@COVERAGE=$$(go tool cover -func=coverage.out | grep total | awk '{print substr($$3, 1, length($$3)-1)}'); \
+	echo "Total coverage: $${COVERAGE}%"; \
+	THRESHOLD=75; \
+	if [ $$(echo "$${COVERAGE} < $${THRESHOLD}" | bc -l) -eq 1 ]; then \
+		echo "❌ Coverage $${COVERAGE}% is below threshold $${THRESHOLD}%"; \
+		exit 1; \
+	else \
+		echo "✅ Coverage $${COVERAGE}% meets threshold $${THRESHOLD}%"; \
+	fi
+
+# Local CI simulation (run what CI will run)
+ci-local: lint test coverage-threshold govulncheck
+	@echo ""
+	@echo "✅ Local CI checks passed"
+	@echo ""
+	@echo "To test the build step:"
+	@echo "  make build"
 
 # Display help
 help:
@@ -155,10 +204,18 @@ help:
 	@echo "  coverage-handlers-full- Run ALL tests with detailed coverage breakdown ⭐"
 	@echo "  coverage-validation   - Show validation package coverage from ALL tests"
 	@echo "  coverage-full-html    - Generate comprehensive HTML coverage report"
+	@echo "  coverage-threshold    - Check coverage meets 75% threshold (for CI)"
+	@echo ""
+	@echo "CI/CD:"
+	@echo "  pre-commit-install    - Install pre-commit hooks"
+	@echo "  pre-commit-run        - Run pre-commit hooks on all files"
+	@echo "  govulncheck           - Run security vulnerability scan"
+	@echo "  ci-local              - Run all CI checks locally ⭐"
 	@echo ""
 	@echo "Maintenance:"
 	@echo "  clean            - Clean build artifacts and coverage files"
 	@echo "  deps             - Download and tidy dependencies"
 	@echo "  fmt              - Format code"
 	@echo "  lint             - Run linter"
+	@echo "  lint-fix         - Run linter with auto-fix"
 	@echo "  help             - Display this help message"

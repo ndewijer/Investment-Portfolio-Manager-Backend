@@ -6,8 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/errors"
-	apperrors "github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/errors"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/apperrors"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 )
 
@@ -301,7 +300,7 @@ func (r *PortfolioRepository) UpdatePortfolio(ctx context.Context, p *model.Port
 	}
 
 	if rowsAffected == 0 {
-		return errors.ErrPortfolioNotFound
+		return apperrors.ErrPortfolioNotFound
 	}
 
 	return nil
@@ -321,7 +320,7 @@ func (r *PortfolioRepository) DeletePortfolio(ctx context.Context, portfolioID s
 	}
 
 	if rowsAffected == 0 {
-		return errors.ErrPortfolioNotFound
+		return apperrors.ErrPortfolioNotFound
 	}
 
 	return nil
