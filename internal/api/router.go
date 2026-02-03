@@ -133,6 +133,11 @@ func NewRouter(
 				r.Get("/eligible-portfolios", ibkrHandler.GetEligiblePortfolios)
 			})
 		})
+
+		r.Route("/developer", func(r chi.Router) {
+			developerHandler := handlers.NewDeveloperHandler(developerService)
+			r.Get("/logs", developerHandler.GetLogs)
+		})
 	})
 
 	return r

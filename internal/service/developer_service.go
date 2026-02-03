@@ -1,6 +1,12 @@
 package service
 
-import "github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/repository"
+import (
+	"context"
+
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/request"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/repository"
+)
 
 // DeveloperService handles Developer-related business logic operations.
 type DeveloperService struct {
@@ -14,4 +20,11 @@ func NewDeveloperService(
 	return &DeveloperService{
 		developerRepo: developerRepo,
 	}
+}
+
+func (s *DeveloperService) GetLogs(_ context.Context, filters *request.LogFilters) (*model.LogResponse, error) {
+	// Add any business logic validation here if needed
+
+	// Pass filters to repository
+	return s.developerRepo.GetLogs(filters)
 }

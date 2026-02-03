@@ -1,6 +1,10 @@
 package handlers
 
 import (
+	"net/http"
+
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/request"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/response"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/service"
 )
 
@@ -18,42 +22,30 @@ func NewDeveloperHandler(DeveloperService *service.DeveloperService) *DeveloperH
 	}
 }
 
-type LogLevel string
-
-const (
-	LogLevelDebug    LogLevel = "debug"
-	LogLevelInfo     LogLevel = "info"
-	LogLevelWarning  LogLevel = "warning"
-	LogLevelError    LogLevel = "error"
-	LogLevelCritical LogLevel = "critical"
-)
-
-func (l LogLevel) IsValid() bool {
-	switch l {
-	case LogLevelDebug, LogLevelInfo, LogLevelWarning, LogLevelError, LogLevelCritical:
-		return true
+func (h *DeveloperHandler) GetLogs(w http.ResponseWriter, r *http.Request) {
+	// Parse filter parameters
+	filters, err := request.ParseLogFilters(
+		r.URL.Query().Get("level"),
+		r.URL.Query().Get("category"),
+		r.URL.Query().Get("startDate"),
+		r.URL.Query().Get("endDate"),
+		r.URL.Query().Get("source"),
+		r.URL.Query().Get("message"),
+		r.URL.Query().Get("sortDir"),
+		r.URL.Query().Get("cursor"),
+		r.URL.Query().Get("perPage"),
+	)
+	if err != nil {
+		response.RespondError(w, http.StatusBadRequest, "Invalid filter parameters", err.Error())
+		return
 	}
-	return false
-}
 
-type CategoryLevel string
-
-const (
-	CategoryPortfolio   CategoryLevel = "portfolio"
-	CategoryFund        CategoryLevel = "fund"
-	CategoryTransaction CategoryLevel = "transaction"
-	CategoryDividend    CategoryLevel = "dividend"
-	CategorySystem      CategoryLevel = "system"
-	CategoryDatabase    CategoryLevel = "database"
-	CategorySecurity    CategoryLevel = "security"
-	CategoryIbkr        CategoryLevel = "ibkr"
-	CategoryDeveloper   CategoryLevel = "developer"
-)
-
-func (l CategoryLevel) IsValid() bool {
-	switch l {
-	case CategoryPortfolio, CategoryFund, CategoryTransaction, CategoryDividend, CategorySystem, CategoryDatabase, CategorySecurity, CategoryIbkr, CategoryDeveloper:
-		return true
+	// Call service with filters
+	logs, err := h.DeveloperService.GetLogs(r.Context(), filters)
+	if err != nil {
+		response.RespondError(w, http.StatusInternalServerError, "Failed to retrieve logs", err.Error())
+		return
 	}
-	return false
+
+	response.RespondJSON(w, http.StatusOK, logs)
 }
