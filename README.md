@@ -101,7 +101,7 @@ This backend aims to replicate all 73 endpoints from the Python backend. Below i
 │   └── GET     /portfolios                                ✅ Get available portfolios for transaction allocation
 │
 └── /developer (0/15 endpoints) ⬜
-    ├── GET    /logs                            🚧 List logs
+    ├── GET    /logs                            ✅ List logs
     ├── DELETE /logs                            ⬜ Clear logs
     ├── GET    /logs/export                     ⬜ Export logs
     ├── GET    /database/backup                 ⬜ Backup database
