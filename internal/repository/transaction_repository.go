@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	apperrors "github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/errors"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 )
 
@@ -212,9 +213,6 @@ func (s *TransactionRepository) GetTransactionsPerPortfolio(portfolioID string) 
 			&ibkrTransactionIDStr,
 			&t.IbkrLinked,
 		)
-		if err == sql.ErrNoRows {
-			return []model.TransactionResponse{}, nil
-		}
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan transaction table results: %w", err)
 		}
@@ -282,7 +280,7 @@ func (s *TransactionRepository) GetTransaction(transactionID string) (model.Tran
 		&t.IbkrLinked,
 	)
 	if err == sql.ErrNoRows {
-		return model.TransactionResponse{}, nil
+		return model.TransactionResponse{}, apperrors.ErrTransactionNotFound
 	}
 
 	if err != nil {

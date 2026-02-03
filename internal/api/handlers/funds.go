@@ -10,7 +10,6 @@ import (
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/response"
 	apperrors "github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/errors"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/service"
-	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/validation"
 )
 
 // FundHandler handles HTTP requests for fund endpoints.
@@ -42,7 +41,7 @@ func (h *FundHandler) GetAllFunds(w http.ResponseWriter, _ *http.Request) {
 
 	funds, err := h.fundService.GetFund("")
 	if err != nil {
-		response.RespondError(w, http.StatusInternalServerError, "failed to retrieve funds", err.Error())
+		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToRetrieveFunds.Error(), err.Error())
 		return
 	}
 
@@ -52,33 +51,23 @@ func (h *FundHandler) GetAllFunds(w http.ResponseWriter, _ *http.Request) {
 // GetFund handles GET requests to retrieve a single fund by ID.
 // Returns fund details including name, ISIN, symbol, currency, and latest price.
 //
-// Endpoint: GET /api/fund/{fundID}
+// Endpoint: GET /api/fund/{uuid}
 // Response: 200 OK with Fund
-// Error: 400 Bad Request if fund ID is missing or invalid
+// Error: 400 Bad Request if fund ID is missing or invalid (validated by middleware)
 // Error: 404 Not Found if no fund exists with the given ID
 // Error: 500 Internal Server Error if retrieval fails
 func (h *FundHandler) GetFund(w http.ResponseWriter, r *http.Request) {
 
 	fundID := chi.URLParam(r, "uuid")
 
-	if fundID == "" {
-		response.RespondError(w, http.StatusBadRequest, "fund ID is required", "")
-		return
-	}
-
-	if err := validation.ValidateUUID(fundID); err != nil {
-		response.RespondError(w, http.StatusBadRequest, "invalid fund ID format", err.Error())
-		return
-	}
-
 	funds, err := h.fundService.GetFund(fundID)
 	if err != nil {
-
 		if errors.Is(err, apperrors.ErrFundNotFound) {
 			response.RespondError(w, http.StatusNotFound, apperrors.ErrFundNotFound.Error(), err.Error())
+			return
 		}
 
-		response.RespondError(w, http.StatusInternalServerError, "failed to retrieve funds", err.Error())
+		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToRetrieveFund.Error(), err.Error())
 		return
 	}
 
@@ -96,13 +85,17 @@ func (h *FundHandler) GetSymbol(w http.ResponseWriter, r *http.Request) {
 
 	symbol := chi.URLParam(r, "symbol")
 	if symbol == "" {
-		response.RespondError(w, http.StatusBadRequest, "Symbol is required", "")
+		response.RespondError(w, http.StatusBadRequest, apperrors.ErrInvalidSymbol.Error(), "")
 		return
 	}
 
 	symbolresponse, err := h.fundService.GetSymbol(symbol)
 	if err != nil {
-		response.RespondError(w, http.StatusInternalServerError, "failed to retrieve symbol", err.Error())
+		if errors.Is(err, apperrors.ErrSymbolNotFound) {
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrSymbolNotFound.Error(), err.Error())
+			return
+		}
+		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToRetrieveSymbol.Error(), err.Error())
 		return
 	}
 
@@ -112,21 +105,17 @@ func (h *FundHandler) GetSymbol(w http.ResponseWriter, r *http.Request) {
 // GetFundHistory handles GET requests to retrieve historical fund data for a portfolio.
 // Returns time-series data showing individual fund values within a portfolio over time.
 //
-// Endpoint: GET /api/fund/history/{portfolioId}
+// Endpoint: GET /api/fund/history/{uuid}
 // Query Parameters:
 //   - start_date (optional): Start date (YYYY-MM-DD), defaults to 1970-01-01
 //   - end_date (optional): End date (YYYY-MM-DD), defaults to current date
 //
 // Response: 200 OK with array of FundHistoryResponse
-// Error: 400 Bad Request if portfolio ID is invalid or date parsing fails
+// Error: 400 Bad Request if portfolio ID is invalid (validated by middleware) or date parsing fails
 // Error: 500 Internal Server Error if retrieval fails
 func (h *FundHandler) GetFundHistory(w http.ResponseWriter, r *http.Request) {
-	portfolioID := chi.URLParam(r, "portfolioId")
 
-	if portfolioID == "" {
-		response.RespondError(w, http.StatusBadRequest, "portfolio ID is required", "")
-		return
-	}
+	portfolioID := chi.URLParam(r, "uuid")
 
 	// Parse date parameters
 	startDate, endDate, err := parseDateParams(r)
@@ -137,7 +126,7 @@ func (h *FundHandler) GetFundHistory(w http.ResponseWriter, r *http.Request) {
 
 	fundHistory, err := h.materializedService.GetFundHistoryWithFallback(portfolioID, startDate, endDate)
 	if err != nil {
-		response.RespondError(w, http.StatusInternalServerError, "failed to retrieve fund history", err.Error())
+		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToRetrieveFundHistory.Error(), err.Error())
 		return
 	}
 
@@ -147,23 +136,13 @@ func (h *FundHandler) GetFundHistory(w http.ResponseWriter, r *http.Request) {
 // GetFundPrices handles GET requests to retrieve historical price data for a fund.
 // Returns all available price history from 1970-01-01 to the current date.
 //
-// Endpoint: GET /api/fund/fund-prices/{fundId}
+// Endpoint: GET /api/fund/fund-prices/{uuid}
 // Response: 200 OK with array of FundPrice
-// Error: 400 Bad Request if fund ID is missing or invalid
+// Error: 400 Bad Request if fund ID is invalid (validated by middleware)
 // Error: 500 Internal Server Error if retrieval fails
 func (h *FundHandler) GetFundPrices(w http.ResponseWriter, r *http.Request) {
 
-	fundID := chi.URLParam(r, "fundId")
-
-	if fundID == "" {
-		response.RespondError(w, http.StatusBadRequest, "portfolio ID is required", "")
-		return
-	}
-
-	if err := validation.ValidateUUID(fundID); err != nil {
-		response.RespondError(w, http.StatusBadRequest, "invalid portfolio ID format", err.Error())
-		return
-	}
+	fundID := chi.URLParam(r, "uuid")
 
 	startDate, err := time.Parse("2006-01-02", "1970-01-01")
 	if err != nil {
@@ -173,7 +152,7 @@ func (h *FundHandler) GetFundPrices(w http.ResponseWriter, r *http.Request) {
 
 	funds, err := h.fundService.LoadFundPrices([]string{fundID}, startDate, endDate, false)
 	if err != nil {
-		response.RespondError(w, http.StatusInternalServerError, "failed to retrieve funds", err.Error())
+		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToRetrieveFunds.Error(), err.Error())
 		return
 	}
 

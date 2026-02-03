@@ -129,7 +129,7 @@ func TestDividendHandler_DividendPerPortfolio(t *testing.T) {
 		req := testutil.NewRequestWithURLParams(
 			http.MethodGet,
 			"/api/dividend/portfolio/"+portfolio.ID,
-			map[string]string{"portfolioId": portfolio.ID},
+			map[string]string{"uuid": portfolio.ID},
 		)
 		w := httptest.NewRecorder()
 
@@ -156,7 +156,7 @@ func TestDividendHandler_DividendPerPortfolio(t *testing.T) {
 		req := testutil.NewRequestWithURLParams(
 			http.MethodGet,
 			"/api/dividend/portfolio/"+portfolio.ID,
-			map[string]string{"portfolioId": portfolio.ID},
+			map[string]string{"uuid": portfolio.ID},
 		)
 		w := httptest.NewRecorder()
 
@@ -179,23 +179,6 @@ func TestDividendHandler_DividendPerPortfolio(t *testing.T) {
 		}
 	})
 
-	t.Run("returns 400 when portfolio ID is missing", func(t *testing.T) {
-		handler, _ := setupHandler(t)
-
-		req := testutil.NewRequestWithURLParams(
-			http.MethodGet,
-			"/api/dividend/portfolio/",
-			map[string]string{"portfolioId": ""},
-		)
-		w := httptest.NewRecorder()
-
-		handler.DividendPerPortfolio(w, req)
-
-		if w.Code != http.StatusBadRequest {
-			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
-		}
-	})
-
 	t.Run("returns 500 on database error", func(t *testing.T) {
 		handler, db := setupHandler(t)
 
@@ -205,7 +188,7 @@ func TestDividendHandler_DividendPerPortfolio(t *testing.T) {
 		req := testutil.NewRequestWithURLParams(
 			http.MethodGet,
 			"/api/dividend/portfolio/"+portfolio.ID,
-			map[string]string{"portfolioId": portfolio.ID},
+			map[string]string{"uuid": portfolio.ID},
 		)
 		w := httptest.NewRecorder()
 

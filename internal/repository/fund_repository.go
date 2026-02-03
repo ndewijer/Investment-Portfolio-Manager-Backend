@@ -390,7 +390,7 @@ func (r *FundRepository) GetSymbol(symbol string) (*model.Symbol, error) {
 		&isValidstr,
 	)
 	if err == sql.ErrNoRows {
-		return nil, nil
+		return nil, apperrors.ErrSymbolNotFound
 	}
 
 	if lastUpdatedStr.Valid {

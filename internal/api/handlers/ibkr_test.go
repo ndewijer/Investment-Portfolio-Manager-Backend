@@ -373,6 +373,7 @@ func TestIbkrHandler_GetPendingDividends(t *testing.T) {
 	})
 }
 
+//nolint:gocyclo // Comprehensive integration test with multiple subtests
 func TestIbkrHandler_GetInbox(t *testing.T) {
 	setupHandler := func(t *testing.T) (*IbkrHandler, *sql.DB) {
 		t.Helper()
@@ -669,7 +670,7 @@ func TestIbkrHandler_GetTransactionAllocations(t *testing.T) {
 		req := testutil.NewRequestWithURLParams(
 			http.MethodGet,
 			"/api/ibkr/inbox/"+transactionID+"/allocations",
-			map[string]string{"transactionId": transactionID},
+			map[string]string{"uuid": transactionID},
 		)
 		w := httptest.NewRecorder()
 
@@ -692,40 +693,6 @@ func TestIbkrHandler_GetTransactionAllocations(t *testing.T) {
 		}
 	})
 
-	t.Run("returns 400 when transaction ID is missing", func(t *testing.T) {
-		handler, _ := setupHandler(t)
-
-		req := testutil.NewRequestWithURLParams(
-			http.MethodGet,
-			"/api/ibkr/inbox//allocations",
-			map[string]string{"transactionId": ""},
-		)
-		w := httptest.NewRecorder()
-
-		handler.GetTransactionAllocations(w, req)
-
-		if w.Code != http.StatusBadRequest {
-			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
-		}
-	})
-
-	t.Run("returns 400 for invalid UUID format", func(t *testing.T) {
-		handler, _ := setupHandler(t)
-
-		req := testutil.NewRequestWithURLParams(
-			http.MethodGet,
-			"/api/ibkr/inbox/invalid-uuid/allocations",
-			map[string]string{"transactionId": "invalid-uuid"},
-		)
-		w := httptest.NewRecorder()
-
-		handler.GetTransactionAllocations(w, req)
-
-		if w.Code != http.StatusBadRequest {
-			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
-		}
-	})
-
 	t.Run("returns 404 when transaction not found", func(t *testing.T) {
 		handler, _ := setupHandler(t)
 
@@ -734,7 +701,7 @@ func TestIbkrHandler_GetTransactionAllocations(t *testing.T) {
 		req := testutil.NewRequestWithURLParams(
 			http.MethodGet,
 			"/api/ibkr/inbox/"+nonExistentID+"/allocations",
-			map[string]string{"transactionId": nonExistentID},
+			map[string]string{"uuid": nonExistentID},
 		)
 		w := httptest.NewRecorder()
 
@@ -764,7 +731,7 @@ func TestIbkrHandler_GetTransactionAllocations(t *testing.T) {
 		req := testutil.NewRequestWithURLParams(
 			http.MethodGet,
 			"/api/ibkr/inbox/"+transactionID+"/allocations",
-			map[string]string{"transactionId": transactionID},
+			map[string]string{"uuid": transactionID},
 		)
 		w := httptest.NewRecorder()
 
@@ -776,6 +743,7 @@ func TestIbkrHandler_GetTransactionAllocations(t *testing.T) {
 	})
 }
 
+//nolint:gocyclo // Comprehensive integration test with multiple subtests
 func TestIbkrHandler_GetEligiblePortfolios(t *testing.T) {
 	setupHandler := func(t *testing.T) (*IbkrHandler, *sql.DB) {
 		t.Helper()
@@ -809,7 +777,7 @@ func TestIbkrHandler_GetEligiblePortfolios(t *testing.T) {
 		req := testutil.NewRequestWithURLParams(
 			http.MethodGet,
 			"/api/ibkr/inbox/"+transactionID+"/eligible-portfolios",
-			map[string]string{"transactionId": transactionID},
+			map[string]string{"uuid": transactionID},
 		)
 		w := httptest.NewRecorder()
 
@@ -859,7 +827,7 @@ func TestIbkrHandler_GetEligiblePortfolios(t *testing.T) {
 		req := testutil.NewRequestWithURLParams(
 			http.MethodGet,
 			"/api/ibkr/inbox/"+transactionID+"/eligible-portfolios",
-			map[string]string{"transactionId": transactionID},
+			map[string]string{"uuid": transactionID},
 		)
 		w := httptest.NewRecorder()
 
@@ -904,7 +872,7 @@ func TestIbkrHandler_GetEligiblePortfolios(t *testing.T) {
 		req := testutil.NewRequestWithURLParams(
 			http.MethodGet,
 			"/api/ibkr/inbox/"+transactionID+"/eligible-portfolios",
-			map[string]string{"transactionId": transactionID},
+			map[string]string{"uuid": transactionID},
 		)
 		w := httptest.NewRecorder()
 
@@ -952,7 +920,7 @@ func TestIbkrHandler_GetEligiblePortfolios(t *testing.T) {
 		req := testutil.NewRequestWithURLParams(
 			http.MethodGet,
 			"/api/ibkr/inbox/"+transactionID+"/eligible-portfolios",
-			map[string]string{"transactionId": transactionID},
+			map[string]string{"uuid": transactionID},
 		)
 		w := httptest.NewRecorder()
 
@@ -979,40 +947,6 @@ func TestIbkrHandler_GetEligiblePortfolios(t *testing.T) {
 		}
 	})
 
-	t.Run("returns 400 when transaction ID is missing", func(t *testing.T) {
-		handler, _ := setupHandler(t)
-
-		req := testutil.NewRequestWithURLParams(
-			http.MethodGet,
-			"/api/ibkr/inbox//eligible-portfolios",
-			map[string]string{"transactionId": ""},
-		)
-		w := httptest.NewRecorder()
-
-		handler.GetEligiblePortfolios(w, req)
-
-		if w.Code != http.StatusBadRequest {
-			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
-		}
-	})
-
-	t.Run("returns 400 for invalid UUID format", func(t *testing.T) {
-		handler, _ := setupHandler(t)
-
-		req := testutil.NewRequestWithURLParams(
-			http.MethodGet,
-			"/api/ibkr/inbox/invalid-uuid/eligible-portfolios",
-			map[string]string{"transactionId": "invalid-uuid"},
-		)
-		w := httptest.NewRecorder()
-
-		handler.GetEligiblePortfolios(w, req)
-
-		if w.Code != http.StatusBadRequest {
-			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
-		}
-	})
-
 	t.Run("returns 404 when transaction not found", func(t *testing.T) {
 		handler, _ := setupHandler(t)
 
@@ -1021,7 +955,7 @@ func TestIbkrHandler_GetEligiblePortfolios(t *testing.T) {
 		req := testutil.NewRequestWithURLParams(
 			http.MethodGet,
 			"/api/ibkr/inbox/"+nonExistentID+"/eligible-portfolios",
-			map[string]string{"transactionId": nonExistentID},
+			map[string]string{"uuid": nonExistentID},
 		)
 		w := httptest.NewRecorder()
 
@@ -1051,7 +985,7 @@ func TestIbkrHandler_GetEligiblePortfolios(t *testing.T) {
 		req := testutil.NewRequestWithURLParams(
 			http.MethodGet,
 			"/api/ibkr/inbox/"+transactionID+"/eligible-portfolios",
-			map[string]string{"transactionId": transactionID},
+			map[string]string{"uuid": transactionID},
 		)
 		w := httptest.NewRecorder()
 

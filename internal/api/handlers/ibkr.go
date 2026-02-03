@@ -8,7 +8,6 @@ import (
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/response"
 	apperrors "github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/errors"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/service"
-	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/validation"
 )
 
 // IbkrHandler handles HTTP requests for ibkr endpoints.
@@ -35,7 +34,7 @@ func NewIbkrHandler(ibkrService *service.IbkrService) *IbkrHandler {
 func (h *IbkrHandler) GetConfig(w http.ResponseWriter, _ *http.Request) {
 	config, err := h.ibkrService.GetIbkrConfig()
 	if err != nil {
-		response.RespondError(w, http.StatusInternalServerError, "failed to retrieve ibkr config", err.Error())
+		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToRetrieveIbkrConfig.Error(), err.Error())
 		return
 	}
 
@@ -51,7 +50,7 @@ func (h *IbkrHandler) GetConfig(w http.ResponseWriter, _ *http.Request) {
 func (h *IbkrHandler) GetActivePortfolios(w http.ResponseWriter, _ *http.Request) {
 	config, err := h.ibkrService.GetActivePortfolios()
 	if err != nil {
-		response.RespondError(w, http.StatusInternalServerError, "failed to retrieve portfolios", err.Error())
+		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToRetrievePortfolios.Error(), err.Error())
 		return
 	}
 
@@ -76,7 +75,7 @@ func (h *IbkrHandler) GetPendingDividends(w http.ResponseWriter, r *http.Request
 	pendingDividend, err := h.ibkrService.GetPendingDividends(symbol, isin)
 
 	if err != nil {
-		response.RespondError(w, http.StatusInternalServerError, "failed to retrieve pending dividend", err.Error())
+		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToRetrievePendingDividend.Error(), err.Error())
 		return
 	}
 
@@ -100,7 +99,7 @@ func (h *IbkrHandler) GetInbox(w http.ResponseWriter, r *http.Request) {
 	inbox, err := h.ibkrService.GetInbox(status, transactionType)
 
 	if err != nil {
-		response.RespondError(w, http.StatusInternalServerError, "failed to retrieve inbox transactions", err.Error())
+		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToRetrieveInboxTransactions.Error(), err.Error())
 		return
 	}
 
@@ -119,54 +118,44 @@ func (h *IbkrHandler) GetInboxCount(w http.ResponseWriter, _ *http.Request) {
 	count, err := h.ibkrService.GetInboxCount()
 
 	if err != nil {
-		response.RespondError(w, http.StatusInternalServerError, "failed to retrieve inbox transactions", err.Error())
+		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToRetrieveInboxTransactions.Error(), err.Error())
 		return
 	}
 
 	response.RespondJSON(w, http.StatusOK, count)
 }
 
-// GetTransactionAllocations handles GET /api/ibkr/inbox/{transactionId}/allocations
+// GetTransactionAllocations handles GET /api/ibkr/inbox/{uuid}/allocations
 // Retrieves the allocation details for a specific IBKR transaction, showing how it was
 // distributed across portfolios including amounts, shares, and fees.
 //
 // Path parameters:
-//   - transactionId: UUID of the IBKR transaction
+//   - uuid: UUID of the IBKR transaction (validated by middleware)
 //
 // Responses:
 //   - 200: Success with allocation details
-//   - 400: Invalid or missing transaction ID
+//   - 400: Invalid transaction ID (validated by middleware)
 //   - 404: Transaction not found
 //   - 500: Internal server error
 func (h *IbkrHandler) GetTransactionAllocations(w http.ResponseWriter, r *http.Request) {
-
-	transactionID := chi.URLParam(r, "transactionId")
-
-	if transactionID == "" {
-		response.RespondError(w, http.StatusBadRequest, "transaction ID is required", "")
-		return
-	}
-
-	if err := validation.ValidateUUID(transactionID); err != nil {
-		response.RespondError(w, http.StatusBadRequest, "invalid Transaction ID format", err.Error())
-		return
-	}
+	// UUID is already validated by ValidateUUIDMiddleware
+	transactionID := chi.URLParam(r, "uuid")
 
 	transactionAllocations, err := h.ibkrService.GetTransactionAllocations(transactionID)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrIBKRTransactionNotFound) {
-			response.RespondError(w, http.StatusNotFound, "ibkr transaction does not exist", err.Error())
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrIBKRTransactionNotFound.Error(), err.Error())
 			return
 		}
 
-		response.RespondError(w, http.StatusInternalServerError, "failed to get transaction allocations", err.Error())
+		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToGetTransactionAllocations.Error(), err.Error())
 		return
 	}
 
 	response.RespondJSON(w, http.StatusOK, transactionAllocations)
 }
 
-// GetEligiblePortfolios handles GET /api/ibkr/inbox/{transactionId}/eligible-portfolios
+// GetEligiblePortfolios handles GET /api/ibkr/inbox/{uuid}/eligible-portfolios
 // Finds portfolios eligible for allocating an IBKR transaction by matching the transaction's
 // fund via ISIN or symbol. Returns fund details and the list of portfolios that hold this fund.
 //
@@ -174,35 +163,25 @@ func (h *IbkrHandler) GetTransactionAllocations(w http.ResponseWriter, r *http.R
 // when no fund is found (not 404). This allows clients to handle missing funds gracefully.
 //
 // Path parameters:
-//   - transactionId: UUID of the IBKR transaction
+//   - uuid: UUID of the IBKR transaction (validated by middleware)
 //
 // Responses:
 //   - 200: Success with match_info, portfolios, and optional warning (even if fund not found)
-//   - 400: Invalid or missing transaction ID
+//   - 400: Invalid transaction ID (validated by middleware)
 //   - 404: Transaction not found
 //   - 500: Internal server error
 func (h *IbkrHandler) GetEligiblePortfolios(w http.ResponseWriter, r *http.Request) {
-
-	transactionID := chi.URLParam(r, "transactionId")
-
-	if transactionID == "" {
-		response.RespondError(w, http.StatusBadRequest, "transaction ID is required", "")
-		return
-	}
-
-	if err := validation.ValidateUUID(transactionID); err != nil {
-		response.RespondError(w, http.StatusBadRequest, "invalid Transaction ID format", err.Error())
-		return
-	}
+	// UUID is already validated by ValidateUUIDMiddleware
+	transactionID := chi.URLParam(r, "uuid")
 
 	eligiblePortfolios, err := h.ibkrService.GetEligiblePortfolios(transactionID)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrIBKRTransactionNotFound) {
-			response.RespondError(w, http.StatusNotFound, "ibkr transaction does not exist", err.Error())
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrIBKRTransactionNotFound.Error(), err.Error())
 			return
 		}
 
-		response.RespondError(w, http.StatusInternalServerError, "failed to get eligible portfolios", err.Error())
+		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToGetEligiblePortfolios.Error(), err.Error())
 		return
 	}
 

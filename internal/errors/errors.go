@@ -24,6 +24,12 @@ var (
 	ErrPortfolioFundNotFound = errors.New("portfolio-fund relationship not found")
 
 	ErrIBKRTransactionNotFound = errors.New("ibkr transaction not found")
+
+	// ErrSymbolNotFound indicates that a symbol lookup returned no results
+	ErrSymbolNotFound = errors.New("symbol not found")
+
+	// ErrIbkrConfigNotFound indicates IBKR configuration has not been set up
+	ErrIbkrConfigNotFound = errors.New("ibkr configuration not found")
 )
 
 // Business logic errors represent validation failures or constraint violations.
@@ -48,6 +54,49 @@ var (
 
 	// ErrDuplicateEntry indicates that an entity with the same unique constraint already exists.
 	ErrDuplicateEntry = errors.New("duplicate entry")
+
+	// Validation errors for required fields
+	ErrInvalidPortfolioID   = errors.New("portfolio ID is required")
+	ErrInvalidFundID        = errors.New("fund ID is required")
+	ErrInvalidSymbol        = errors.New("symbol is required")
+	ErrInvalidTransactionID = errors.New("transaction ID is required")
+
+	// Generic operation failure constants
+	ErrFailedToRetrieve = errors.New("failed to retrieve data")
+)
+
+// Operation failure errors represent system-level failures when retrieving or processing data.
+// These errors indicate that an operation failed, but not due to missing entities or validation issues.
+var (
+	// Dividend operation errors
+	ErrFailedToRetrieveDividends       = errors.New("failed to retrieve dividends")
+	ErrFailedToRetrievePendingDividend = errors.New("failed to retrieve pending dividend")
+
+	// Fund operation errors
+	ErrFailedToRetrieveFunds       = errors.New("failed to retrieve funds")
+	ErrFailedToRetrieveFund        = errors.New("failed to retrieve fund")
+	ErrFailedToRetrieveFundHistory = errors.New("failed to retrieve fund history")
+	ErrFailedToRetrieveSymbol      = errors.New("failed to retrieve symbol")
+
+	// Portfolio operation errors
+	ErrFailedToRetrievePortfolios     = errors.New("failed to retrieve portfolios")
+	ErrFailedToRetrievePortfolioFunds = errors.New("failed to retrieve portfolio funds")
+	ErrFailedToGetPortfolioSummary    = errors.New("failed to get portfolio summary")
+	ErrFailedToGetPortfolioHistory    = errors.New("failed to get portfolio history")
+	ErrFailedToGetPortfolioFunds      = errors.New("failed to get portfolio funds")
+
+	// Transaction operation errors
+	ErrFailedToRetrieveTransactions = errors.New("failed to retrieve transactions")
+	ErrFailedToRetrieveTransaction  = errors.New("failed to retrieve transaction")
+
+	// IBKR operation errors
+	ErrFailedToRetrieveIbkrConfig        = errors.New("failed to retrieve ibkr config")
+	ErrFailedToRetrieveInboxTransactions = errors.New("failed to retrieve inbox transactions")
+	ErrFailedToGetTransactionAllocations = errors.New("failed to get transaction allocations")
+	ErrFailedToGetEligiblePortfolios     = errors.New("failed to get eligible portfolios")
+
+	// System operation errors
+	ErrFailedToGetVersionInfo = errors.New("failed to get version information")
 )
 
 // Data integrity errors represent inconsistencies or corruption in the data.

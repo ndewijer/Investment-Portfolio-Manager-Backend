@@ -1033,8 +1033,8 @@ func TestPortfolioHandler_GetPortfolio(t *testing.T) {
 		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
 		json.NewDecoder(w.Body).Decode(&response)
 
-		if response["error"] != "portfolio ID is required" {
-			t.Errorf("Expected 'portfolio ID is required' error, got '%s'", response["error"])
+		if response["error"] != apperrors.ErrInvalidPortfolioID.Error() {
+			t.Errorf("Expected '%s' error, got '%s'", apperrors.ErrInvalidPortfolioID.Error(), response["error"])
 		}
 	})
 
@@ -1761,8 +1761,8 @@ func TestPortfolioHandler_GetPortfolioFunds(t *testing.T) {
 		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
 		json.NewDecoder(w.Body).Decode(&response)
 
-		if response["error"] != "portfolio ID is required" {
-			t.Errorf("Expected 'portfolio ID is required' error, got '%s'", response["error"])
+		if response["error"] != apperrors.ErrInvalidPortfolioID.Error() {
+			t.Errorf("Expected '%s' error, got '%s'", apperrors.ErrInvalidPortfolioID.Error(), response["error"])
 		}
 	})
 
@@ -2109,8 +2109,8 @@ func TestPortfolioHandler_UpdatePortfolio(t *testing.T) {
 		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
 		json.NewDecoder(w.Body).Decode(&response)
 
-		if response["error"] != "portfolio not found" {
-			t.Errorf("Expected 'portfolio not found' error, got '%s'", response["error"])
+		if response["error"] != apperrors.ErrPortfolioNotFound.Error() {
+			t.Errorf("Expected '%s' error, got '%s'", apperrors.ErrPortfolioNotFound.Error(), response["error"])
 		}
 	})
 
@@ -2300,8 +2300,8 @@ func TestPortfolioHandler_DeletePortfolio(t *testing.T) {
 		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
 		json.NewDecoder(w.Body).Decode(&response)
 
-		if response["error"] != "portfolio not found" {
-			t.Errorf("Expected 'portfolio not found' error, got '%s'", response["error"])
+		if response["error"] != apperrors.ErrPortfolioNotFound.Error() {
+			t.Errorf("Expected '%s' error, got '%s'", apperrors.ErrPortfolioNotFound.Error(), response["error"])
 		}
 	})
 
@@ -2426,8 +2426,8 @@ func TestPortfolioHandler_ArchivePortfolio(t *testing.T) {
 		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
 		json.NewDecoder(w.Body).Decode(&response)
 
-		if response["error"] != "portfolio not found" {
-			t.Errorf("Expected 'portfolio not found' error, got '%s'", response["error"])
+		if response["error"] != apperrors.ErrPortfolioNotFound.Error() {
+			t.Errorf("Expected '%s' error, got '%s'", apperrors.ErrPortfolioNotFound.Error(), response["error"])
 		}
 	})
 
@@ -2552,8 +2552,8 @@ func TestPortfolioHandler_UnarchivePortfolio(t *testing.T) {
 		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
 		json.NewDecoder(w.Body).Decode(&response)
 
-		if response["error"] != "portfolio not found" {
-			t.Errorf("Expected 'portfolio not found' error, got '%s'", response["error"])
+		if response["error"] != apperrors.ErrPortfolioNotFound.Error() {
+			t.Errorf("Expected '%s' error, got '%s'", apperrors.ErrPortfolioNotFound.Error(), response["error"])
 		}
 	})
 

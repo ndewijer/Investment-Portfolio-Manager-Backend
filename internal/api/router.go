@@ -13,6 +13,8 @@ import (
 )
 
 // NewRouter creates and configures the HTTP router
+//
+//nolint:funlen // Needs to be in the same function
 func NewRouter(
 	systemService *service.SystemService,
 	portfolioService *service.PortfolioService,
@@ -73,23 +75,47 @@ func NewRouter(
 		r.Route("/fund", func(r chi.Router) {
 			fundHandler := handlers.NewFundHandler(fundService, materializedService)
 			r.Get("/", fundHandler.GetAllFunds)
-			r.Get("/fund-prices/{fundId:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", fundHandler.GetFundPrices)
 			r.Get("/symbol/{symbol}", fundHandler.GetSymbol)
-			r.Get("/history/{portfolioId:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", fundHandler.GetFundHistory)
-			r.Get("/{fundId:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", fundHandler.GetFund)
+
+			r.Route("/fund-prices/{uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", func(r chi.Router) {
+				r.Use(custommiddleware.ValidateUUIDMiddleware)
+				r.Get("/", fundHandler.GetFundPrices)
+			})
+
+			r.Route("/history/{uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", func(r chi.Router) {
+				r.Use(custommiddleware.ValidateUUIDMiddleware)
+				r.Get("/", fundHandler.GetFundHistory)
+			})
+
+			r.Route("/{uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", func(r chi.Router) {
+				r.Use(custommiddleware.ValidateUUIDMiddleware)
+				r.Get("/", fundHandler.GetFund)
+			})
 		})
 
 		r.Route("/dividend", func(r chi.Router) {
 			dividendHandler := handlers.NewDividendHandler(materializedService.DividendService())
 			r.Get("/", dividendHandler.GetAllDividends)
-			r.Get("/portfolio/{portfolioId:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", dividendHandler.DividendPerPortfolio)
+
+			r.Route("/portfolio/{uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", func(r chi.Router) {
+				r.Use(custommiddleware.ValidateUUIDMiddleware)
+				r.Get("/", dividendHandler.DividendPerPortfolio)
+			})
 		})
 
 		r.Route("/transaction", func(r chi.Router) {
 			transactionHandler := handlers.NewTransactionHandler(transactionService)
 			r.Get("/", transactionHandler.AllTransactions)
-			r.Get("/portfolio/{portfolioId:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", transactionHandler.TransactionPerPortfolio)
-			r.Get("/{transactionId:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", transactionHandler.GetTransaction)
+
+			r.Route("/portfolio/{uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", func(r chi.Router) {
+				r.Use(custommiddleware.ValidateUUIDMiddleware)
+				r.Get("/", transactionHandler.TransactionPerPortfolio)
+			})
+
+			r.Route("/{uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", func(r chi.Router) {
+				r.Use(custommiddleware.ValidateUUIDMiddleware)
+				r.Get("/", transactionHandler.GetTransaction)
+			})
 		})
 
 		r.Route("/ibkr", func(r chi.Router) {
@@ -99,8 +125,12 @@ func NewRouter(
 			r.Get("/dividend/pending", ibkrHandler.GetPendingDividends)
 			r.Get("/inbox", ibkrHandler.GetInbox)
 			r.Get("/inbox/count", ibkrHandler.GetInboxCount)
-			r.Get("/inbox/{transactionId:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}/allocations", ibkrHandler.GetTransactionAllocations)
-			r.Get("/inbox/{transactionId:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}/eligible-portfolios", ibkrHandler.GetEligiblePortfolios)
+
+			r.Route("/inbox/{uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", func(r chi.Router) {
+				r.Use(custommiddleware.ValidateUUIDMiddleware)
+				r.Get("/allocations", ibkrHandler.GetTransactionAllocations)
+				r.Get("/eligible-portfolios", ibkrHandler.GetEligiblePortfolios)
+			})
 		})
 	})
 
