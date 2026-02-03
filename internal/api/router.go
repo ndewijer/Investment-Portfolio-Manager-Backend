@@ -1,4 +1,4 @@
-package api
+package api //nolint:revive // var-naming: api is a standard package name
 
 import (
 	"net/http"

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/errors"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/apperrors"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 )
 
@@ -309,7 +309,7 @@ func (r *IbkrRepository) GetIbkrTransaction(transactionID string) (model.IBKRTra
 		&t.Status,
 		&t.ImportedAt)
 	if err == sql.ErrNoRows {
-		return model.IBKRTransaction{}, errors.ErrIBKRTransactionNotFound
+		return model.IBKRTransaction{}, apperrors.ErrIBKRTransactionNotFound
 	}
 	if err != nil {
 		return model.IBKRTransaction{}, err
