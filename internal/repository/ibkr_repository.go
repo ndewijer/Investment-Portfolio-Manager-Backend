@@ -28,7 +28,7 @@ func (r *IbkrRepository) GetIbkrConfig() (*model.IbkrConfig, error) {
 
 	query := `
         SELECT flex_query_id, token_expires_at, last_import_date, auto_import_enabled, created_at, updated_at, enabled, default_allocation_enabled, default_allocations
-		FROM ibkr_config 
+		FROM ibkr_config
       `
 
 	var ic model.IbkrConfig
@@ -194,7 +194,7 @@ func (r *IbkrRepository) GetInbox(status, transactionType string) ([]model.IBKRT
 	}
 	if transactionType != "" {
 		query += `
-			AND transaction_type = ? 
+			AND transaction_type = ?
 		`
 		args = append(args, transactionType)
 	}

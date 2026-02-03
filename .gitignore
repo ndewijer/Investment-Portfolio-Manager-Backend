@@ -22,3 +22,6 @@ coverage_*.out
 coverage_*.html
 *.coverprofile
 *.test
+
+# Pre-commit cache
+.pre-commit-cache/
