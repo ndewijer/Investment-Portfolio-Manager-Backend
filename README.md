@@ -6,9 +6,11 @@ A personal learning project rebuilding the Investment Portfolio Manager backend 
 
 ## Project Status
 
-🚧 **In Active Development** - Currently implementing core functionality
+🚧 **Active Development** - Read operations complete (~44%), write operations planned
 
 This is a ground-up rewrite of the [Investment Portfolio Manager backend](https://github.com/ndewijer/Investment-Portfolio-Manager) from Python/Flask to Go. The goal is to achieve feature parity while learning Go idioms, patterns, and ecosystem.
+
+**Current Phase**: All GET endpoints working. Next phase focuses on POST/PUT/DELETE operations with transaction support.
 
 ### Tech Stack
 
@@ -118,8 +120,32 @@ This backend aims to replicate all 73 endpoints from the Python backend. Below i
     └── GET    /system-info                     🚧 Get system information
 
 Legend: ✅ Implemented | 🚧 In Progress | ⬜ Planned
-Overall Progress: 10/73 endpoints (14%)
+Overall Progress: 33/75 endpoints (44%)
 ```
+
+## What's Working Now
+
+### ✅ Fully Implemented
+- **System Endpoints**: Health checks, version info
+- **Portfolio Operations**: Complete CRUD including archive/unarchive, summary, history
+- **Fund Queries**: Get funds by ID, symbol, prices, and history
+- **Transaction Queries**: List all, get by ID, filter by portfolio
+- **Dividend Queries**: List all, filter by portfolio
+- **IBKR Integration** (read-only): Config status, inbox management, allocation tracking
+- **Developer Tools**: Comprehensive logs endpoint with 9 filter types + cursor pagination
+- **CI/CD Pipeline**: Pre-commit hooks, GitHub Actions with 11 linters, 80% coverage threshold
+- **Testing**: 90%+ test coverage for implemented features
+
+### 🚧 In Progress
+- Write operations (POST/PUT/DELETE) for Fund, Transaction, Dividend entities
+
+### ⬜ Planned (tracked in GitHub issues)
+- Database transaction support
+- Structured logging system
+- IBKR transaction allocation (write operations)
+- Price update service with external API integration
+- Scheduled tasks (cron jobs)
+- Token encryption for IBKR credentials
 
 ## Quick Start
 
@@ -215,13 +241,26 @@ Investment-Portfolio-Manager-Backend/
 
 ## Documentation
 
-### Learning Resources
+### Essential Guides
 
-- **[Architecture Decisions](docs/ARCHITECTURE_DECISIONS.md)** - Deep dive into why specific technologies and patterns were chosen
-- **[Implementation Plan](docs/GO_IMPLEMENTATION_PLAN.md)** - Phased roadmap for building the backend
-- **[Setup Explained](docs/SETUP_EXPLAINED.md)** - Detailed explanation of how everything works
-- **[Go Pointers Guide](docs/GO_POINTERS_EXPLAINED.md)** - Understanding pointers in Go
-- **[Testing Guide](docs/GO_TESTING_GUIDE.md)** - Testing patterns and practices
+- **[Setup & Getting Started](docs/SETUP_EXPLAINED.md)** - Detailed walkthrough of how everything works
+- **[Architecture Decisions](docs/ARCHITECTURE_DECISIONS.md)** - Why specific technologies and patterns were chosen
+- **[Implementation Plan](docs/GO_IMPLEMENTATION_PLAN.md)** - Phased roadmap (Phase 1-2 ✅, Phase 3+ planned)
+- **[CI/CD Setup](docs/deployment/CI_SETUP.md)** - Pre-commit hooks, GitHub Actions, linters
+- **[Troubleshooting Tests](docs/troubleshooting/DEBUG_TESTS.md)** - Practical debugging techniques
+
+### Learning Go
+
+- **[Go Pointers Explained](docs/GO_POINTERS_EXPLAINED.md)** - Understanding pointers in Go
+- **[Go Best Practices](docs/GO_BEST_PRACTICES.md)** - Idioms and patterns
+- **[Testing Guide](docs/GO_TESTING_GUIDE.md)** - Comprehensive testing patterns
+- **[Testing Quick Reference](docs/TESTING_QUICK_REFERENCE.md)** - Quick lookup for common patterns
+
+### Reference
+
+- **[SQLC Decision Guide](docs/reference/SQLC_DECISION_GUIDE.md)** - When to migrate from database/sql to sqlc
+- **[API Logs Endpoint](docs/API_LOGS_ENDPOINT.md)** - Developer logs endpoint documentation
+- **[GitHub Issues](https://github.com/ndewijer/Investment-Portfolio-Manager-Backend/issues)** - Tracked future work
 
 ### Architecture Overview
 
