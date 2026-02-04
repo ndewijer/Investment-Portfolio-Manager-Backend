@@ -106,7 +106,7 @@ jobs:
           go build -ldflags "-X github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/version.Version=${{ steps.version.outputs.version }}" -o bin/server ./cmd/server/main.go
 
       - name: Upload binary artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ipm-backend-${{ steps.version.outputs.version }}
           path: bin/server
