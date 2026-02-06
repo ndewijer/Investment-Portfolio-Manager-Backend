@@ -447,3 +447,215 @@ func TestDeveloperHandler_GetTransactionCSVTemplate(t *testing.T) {
 		t.Errorf("Expected Header to be cost_per_share. value is: '%v'", response.Headers[3])
 	}
 }
+
+//nolint:gocyclo // Test functions naturally have high complexity due to many test cases
+func TestDeveloperHandler_GetExchangeRate(t *testing.T) {
+	setupHandler := func(t *testing.T) (*DeveloperHandler, *sql.DB) {
+		t.Helper()
+		db := testutil.SetupTestDB(t)
+		ds := testutil.NewTestDeveloperService(t, db)
+		return NewDeveloperHandler(ds), db
+	}
+
+	t.Run("returns 200 with rate when exchange rate exists", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		// Insert test exchange rate
+		testutil.NewExchangeRate("USD", "EUR", "2024-01-01", 0.85).Build(t, db)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/developer/exchange-rate?fromCurrency=USD&toCurrency=EUR&date=2024-01-01", nil)
+		w := httptest.NewRecorder()
+
+		handler.GetExchangeRate(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var response model.ExchangeRateWrapper
+		if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+			t.Fatalf("Failed to decode response: %v", err)
+		}
+
+		if response.FromCurrency != "USD" {
+			t.Errorf("Expected fromCurrency to be USD, got %s", response.FromCurrency)
+		}
+
+		if response.ToCurrency != "EUR" {
+			t.Errorf("Expected toCurrency to be EUR, got %s", response.ToCurrency)
+		}
+
+		if response.Date != "2024-01-01" {
+			t.Errorf("Expected date to be 2024-01-01, got %s", response.Date)
+		}
+
+		if response.Rate == nil {
+			t.Error("Expected rate to be set, got nil")
+		} else if response.Rate.Rate != 0.85 {
+			t.Errorf("Expected rate to be 0.85, got %f", response.Rate.Rate)
+		}
+	})
+
+	t.Run("returns 200 with nil rate when exchange rate not found", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/developer/exchange-rate?fromCurrency=USD&toCurrency=EUR&date=2024-01-01", nil)
+		w := httptest.NewRecorder()
+
+		handler.GetExchangeRate(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var response model.ExchangeRateWrapper
+		if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+			t.Fatalf("Failed to decode response: %v", err)
+		}
+
+		if response.FromCurrency != "USD" {
+			t.Errorf("Expected fromCurrency to be USD, got %s", response.FromCurrency)
+		}
+
+		if response.ToCurrency != "EUR" {
+			t.Errorf("Expected toCurrency to be EUR, got %s", response.ToCurrency)
+		}
+
+		if response.Date != "2024-01-01" {
+			t.Errorf("Expected date to be 2024-01-01, got %s", response.Date)
+		}
+
+		if response.Rate != nil {
+			t.Errorf("Expected rate to be nil when not found, got %v", response.Rate)
+		}
+	})
+
+	t.Run("returns 400 when fromCurrency is missing", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/developer/exchange-rate?toCurrency=EUR&date=2024-01-01", nil)
+		w := httptest.NewRecorder()
+
+		handler.GetExchangeRate(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("returns 400 when toCurrency is missing", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/developer/exchange-rate?fromCurrency=USD&date=2024-01-01", nil)
+		w := httptest.NewRecorder()
+
+		handler.GetExchangeRate(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("returns 400 when date is missing", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/developer/exchange-rate?fromCurrency=USD&toCurrency=EUR", nil)
+		w := httptest.NewRecorder()
+
+		handler.GetExchangeRate(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("returns 400 when all parameters are missing", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/developer/exchange-rate", nil)
+		w := httptest.NewRecorder()
+
+		handler.GetExchangeRate(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("panics on invalid date format", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/developer/exchange-rate?fromCurrency=USD&toCurrency=EUR&date=invalid-date", nil)
+		w := httptest.NewRecorder()
+
+		defer func() {
+			if r := recover(); r == nil {
+				t.Error("Expected panic on invalid date format, but no panic occurred")
+			}
+		}()
+
+		handler.GetExchangeRate(w, req)
+	})
+
+	t.Run("returns 500 on database error", func(t *testing.T) {
+		handler, db := setupHandler(t)
+		db.Close()
+
+		req := httptest.NewRequest(http.MethodGet, "/api/developer/exchange-rate?fromCurrency=USD&toCurrency=EUR&date=2024-01-01", nil)
+		w := httptest.NewRecorder()
+
+		handler.GetExchangeRate(w, req)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Errorf("Expected 500, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("handles different currency pairs", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		testutil.NewExchangeRate("GBP", "USD", "2024-06-15", 1.27).Build(t, db)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/developer/exchange-rate?fromCurrency=GBP&toCurrency=USD&date=2024-06-15", nil)
+		w := httptest.NewRecorder()
+
+		handler.GetExchangeRate(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var response model.ExchangeRateWrapper
+		if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+			t.Fatalf("Failed to decode response: %v", err)
+		}
+
+		if response.Rate == nil {
+			t.Error("Expected rate to be set, got nil")
+		} else if response.Rate.Rate != 1.27 {
+			t.Errorf("Expected rate to be 1.27, got %f", response.Rate.Rate)
+		}
+	})
+
+	t.Run("handles valid date formats", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/developer/exchange-rate?fromCurrency=USD&toCurrency=EUR&date=2024-12-31", nil)
+		w := httptest.NewRecorder()
+
+		handler.GetExchangeRate(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var response model.ExchangeRateWrapper
+		if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+			t.Fatalf("Failed to decode response: %v", err)
+		}
+
+		if response.Date != "2024-12-31" {
+			t.Errorf("Expected date to be 2024-12-31, got %s", response.Date)
+		}
+	})
+}

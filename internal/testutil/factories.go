@@ -791,3 +791,60 @@ func NewLoggingLevel(level string) *SystemSettingBuilder {
 
 	return NewSystemSetting("LOGGING_LEVEL", level)
 }
+
+// ExchangeRateBuilder provides a fluent interface for creating exchange rates.
+//
+// Example usage:
+//
+//	rate := testutil.NewExchangeRate("USD", "EUR", "2024-01-01", 0.85).Build(t, db)
+type ExchangeRateBuilder struct {
+	ID           string
+	FromCurrency string
+	ToCurrency   string
+	Rate         float64
+	Date         time.Time
+}
+
+// NewExchangeRate creates an ExchangeRateBuilder with the provided parameters.
+func NewExchangeRate(fromCurrency, toCurrency, date string, rate float64) *ExchangeRateBuilder {
+	parsedDate, err := time.Parse("2006-01-02", date)
+	if err != nil {
+		panic(fmt.Sprintf("invalid date format: %s (must be YYYY-MM-DD)", date))
+	}
+
+	return &ExchangeRateBuilder{
+		ID:           MakeID(),
+		FromCurrency: fromCurrency,
+		ToCurrency:   toCurrency,
+		Rate:         rate,
+		Date:         parsedDate,
+	}
+}
+
+// WithRate sets a custom rate.
+func (b *ExchangeRateBuilder) WithRate(rate float64) *ExchangeRateBuilder {
+	b.Rate = rate
+	return b
+}
+
+// Build creates the exchange rate in the database and returns it.
+func (b *ExchangeRateBuilder) Build(t *testing.T, db *sql.DB) model.ExchangeRate {
+	t.Helper()
+
+	query := `
+		INSERT INTO exchange_rate (id, from_currency, to_currency, rate, date, created_at)
+		VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+	`
+
+	_, err := db.Exec(query, b.ID, b.FromCurrency, b.ToCurrency, b.Rate, b.Date.Format("2006-01-02"))
+	if err != nil {
+		t.Fatalf("Failed to create test exchange rate: %v", err)
+	}
+
+	return model.ExchangeRate{
+		FromCurrency: b.FromCurrency,
+		ToCurrency:   b.ToCurrency,
+		Rate:         b.Rate,
+		Date:         b.Date,
+	}
+}

@@ -101,11 +101,11 @@ This backend aims to replicate all 73 endpoints from the Python backend. Below i
 │   └── GET     /portfolios                                ✅ Get available portfolios for transaction allocation
 │
 └── /developer (0/15 endpoints) ⬜
-    ├── GET /csv/fund-prices/template     ⬜ Get CSV template for fund price import
-    ├── GET /csv/transactions/template    ⬜ Get CSV template for transaction import
+    ├── GET /csv/fund-prices/template     ✅ Get CSV template for fund price import
+    ├── GET /csv/transactions/template    ✅ Get CSV template for transaction import
     ├── GET /data/funds                   ⬜ Get all funds data
     ├── GET /data/portfolios              ⬜ Get all portfolios data
-    ├── GET /exchange-rate                ⬜ Get exchange rate for currency pair
+    ├── GET /exchange-rate                ✅ Get exchange rate for currency pair
     ├── POST /exchange-rate               ⬜ Set exchange rate for currency pair
     ├── GET /fund-price                   ⬜ Get fund price for specific date
     ├── POST /fund-price                  ⬜ Set fund price for specific date

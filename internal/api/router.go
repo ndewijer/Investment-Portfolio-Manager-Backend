@@ -140,6 +140,7 @@ func NewRouter(
 			r.Get("/system-settings/logging", developerHandler.GetLoggingConfig)
 			r.Get("/csv/fund-prices/template", developerHandler.GetFundPriceCSVTemplate)
 			r.Get("/csv/transactions/template", developerHandler.GetTransactionCSVTemplate)
+			r.Get("/exchange-rate", developerHandler.GetExchangeRate)
 		})
 	})
 

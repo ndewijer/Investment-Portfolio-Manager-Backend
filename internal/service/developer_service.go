@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"time"
 
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/request"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
@@ -32,4 +33,9 @@ func (s *DeveloperService) GetLogs(_ context.Context, filters *request.LogFilter
 func (s *DeveloperService) GetLoggingConfig() (model.LoggingSetting, error) {
 
 	return s.developerRepo.GetLoggingConfig()
+}
+
+func (s *DeveloperService) GetExchangeRate(fromCurrency, toCurrency string, dateTime time.Time) (*model.ExchangeRate, error) {
+
+	return s.developerRepo.GetExchangeRate(fromCurrency, toCurrency, dateTime)
 }

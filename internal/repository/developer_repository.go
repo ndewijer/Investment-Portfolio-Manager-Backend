@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/request"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/apperrors"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 )
 
@@ -236,4 +237,34 @@ func (r *DeveloperRepository) GetLoggingConfig() (model.LoggingSetting, error) {
 	}
 
 	return conf, nil
+}
+
+func (r *DeveloperRepository) GetExchangeRate(fromCurrency, toCurrency string, dateTime time.Time) (*model.ExchangeRate, error) {
+
+	query := `
+	SELECT from_currency, to_currency, rate, date
+	FROM exchange_rate
+	WHERE from_currency = ?
+	AND to_currency = ?
+	AND date = ?
+`
+	rate := model.ExchangeRate{}
+	var dateStr string
+	err := r.db.QueryRow(query, fromCurrency, toCurrency, dateTime.Format("2006-01-02")).Scan(
+		&rate.FromCurrency,
+		&rate.ToCurrency,
+		&rate.Rate,
+		&dateStr,
+	)
+
+	if err == sql.ErrNoRows {
+		return nil, apperrors.ErrExchangeRateNotFound
+	}
+
+	rate.Date, err = ParseTime(dateStr)
+	if err != nil || rate.Date.IsZero() {
+		return nil, fmt.Errorf("failed to parse date: %w", err)
+	}
+
+	return &rate, nil
 }

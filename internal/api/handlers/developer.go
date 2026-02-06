@@ -1,10 +1,14 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
+	"time"
 
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/request"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/response"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/apperrors"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/service"
 )
 
@@ -108,4 +112,43 @@ func (h *DeveloperHandler) GetTransactionCSVTemplate(w http.ResponseWriter, _ *h
 	}
 
 	response.RespondJSON(w, http.StatusOK, template)
+}
+
+func (h *DeveloperHandler) GetExchangeRate(w http.ResponseWriter, r *http.Request) {
+
+	fromCurrency := r.URL.Query().Get("fromCurrency")
+	toCurrency := r.URL.Query().Get("toCurrency")
+	dateStr := r.URL.Query().Get("date")
+
+	if fromCurrency == "" || toCurrency == "" || dateStr == "" {
+		response.RespondError(w, http.StatusBadRequest, "Missing parameters", "")
+		return
+	}
+
+	parsedDate, err := (time.Parse("2006-01-02", dateStr))
+	if err != nil {
+		panic("impossible: hardcoded date failed to parse: " + err.Error())
+	}
+	date := parsedDate.Format("2006-01-02")
+
+	exchangeResponse := model.ExchangeRateWrapper{
+		FromCurrency: fromCurrency,
+		ToCurrency:   toCurrency,
+		Date:         date,
+	}
+
+	exchangeRate, err := h.DeveloperService.GetExchangeRate(fromCurrency, toCurrency, parsedDate)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrExchangeRateNotFound) {
+			exchangeResponse.Rate = nil
+			response.RespondJSON(w, http.StatusOK, exchangeResponse)
+			return
+		}
+		response.RespondError(w, http.StatusInternalServerError, "Failed to retreived exchange rate", err.Error())
+		return
+	}
+
+	exchangeResponse.Rate = exchangeRate
+
+	response.RespondJSON(w, http.StatusOK, exchangeResponse)
 }

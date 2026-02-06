@@ -34,3 +34,17 @@ type LoggingSetting struct {
 	Enabled bool   `json:"enabled"`
 	Level   string `json:"level"`
 }
+
+type ExchangeRateWrapper struct {
+	FromCurrency string        `json:"fromCurrency"`
+	ToCurrency   string        `json:"toCurrency"`
+	Rate         *ExchangeRate `json:"rate"`
+	Date         string        `json:"date"`
+}
+
+type ExchangeRate struct {
+	FromCurrency string    `json:"fromCurrency"`
+	ToCurrency   string    `json:"toCurrency"`
+	Rate         float64   `json:"rate"`
+	Date         time.Time `json:"date"`
+}
