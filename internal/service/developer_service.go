@@ -28,3 +28,8 @@ func (s *DeveloperService) GetLogs(_ context.Context, filters *request.LogFilter
 	// Pass filters to repository
 	return s.developerRepo.GetLogs(filters)
 }
+
+func (s *DeveloperService) GetLoggingConfig() (model.LoggingSetting, error) {
+
+	return s.developerRepo.GetLoggingConfig()
+}

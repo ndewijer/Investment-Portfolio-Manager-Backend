@@ -22,3 +22,15 @@ type Log struct {
 	IPAddress  string    `json:"ipAddress,omitempty"`
 	UserAgent  string    `json:"userAgent,omitempty"`
 }
+
+type SystemSetting struct {
+	ID        string
+	Key       string
+	Value     any
+	UpdatedAt *time.Time
+}
+
+type LoggingSetting struct {
+	Enabled bool   `json:"enabled"`
+	Level   string `json:"level"`
+}

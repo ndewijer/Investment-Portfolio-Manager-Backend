@@ -101,21 +101,21 @@ This backend aims to replicate all 73 endpoints from the Python backend. Below i
 │   └── GET     /portfolios                                ✅ Get available portfolios for transaction allocation
 │
 └── /developer (0/15 endpoints) ⬜
-    ├── GET    /logs                            ✅ List logs
-    ├── DELETE /logs                            ⬜ Clear logs
-    ├── GET    /logs/export                     ⬜ Export logs
-    ├── GET    /database/backup                 ⬜ Backup database
-    ├── POST   /database/restore                ⬜ Restore database
-    ├── POST   /database/reset                  ⬜ Reset database
-    ├── GET    /database/export                 ⬜ Export database
-    ├── POST   /database/import                 ⬜ Import database
-    ├── POST   /seed-sample-data                ⬜ Seed sample data
-    ├── DELETE /clear-all-data                  ⬜ Clear all data
-    ├── GET    /stats                           🚧 Get statistics
-    ├── POST   /calculate-portfolio-values      ⬜ Calculate portfolio values
-    ├── POST   /recalculate-all-metrics         ⬜ Recalculate all metrics
-    ├── POST   /fix-data-inconsistencies        ⬜ Fix data inconsistencies
-    └── GET    /system-info                     🚧 Get system information
+    ├── GET /csv/fund-prices/template     ⬜ Get CSV template for fund price import
+    ├── GET /csv/transactions/template    ⬜ Get CSV template for transaction import
+    ├── GET /data/funds                   ⬜ Get all funds data
+    ├── GET /data/portfolios              ⬜ Get all portfolios data
+    ├── GET /exchange-rate                ⬜ Get exchange rate for currency pair
+    ├── POST /exchange-rate               ⬜ Set exchange rate for currency pair
+    ├── GET /fund-price                   ⬜ Get fund price for specific date
+    ├── POST /fund-price                  ⬜ Set fund price for specific date
+    ├── GET /fund-price/{fund_id}         ⬜ Get fund price for specific fund and date
+    ├── POST /import-fund-prices          ⬜ Import fund prices from CSV file
+    ├── POST /import-transactions         ⬜ Import transactions from CSV file
+    ├── DELETE /logs                      ⬜ Clear all system logs
+    ├── GET /logs                         ✅ Get system logs with cursor-based pagination
+    ├── GET /system-settings/logging      ✅ Get current logging configuration settings
+    └── PUT /system-settings/logging      ⬜ Update logging configuration settings
 
 Legend: ✅ Implemented | 🚧 In Progress | ⬜ Planned
 Overall Progress: 10/73 endpoints (14%)

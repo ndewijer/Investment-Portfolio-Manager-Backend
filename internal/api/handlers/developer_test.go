@@ -297,3 +297,83 @@ func TestDeveloperHandler_GetLogs(t *testing.T) {
 		}
 	})
 }
+
+func TestDeveloperHandler_GetLoggingConfig(t *testing.T) {
+
+	setupHandler := func(t *testing.T) (*DeveloperHandler, *sql.DB) {
+		t.Helper()
+		db := testutil.SetupTestDB(t)
+		ds := testutil.NewTestDeveloperService(t, db)
+		return NewDeveloperHandler(ds), db
+	}
+
+	t.Run("returns default logging config", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/developer/system-settings/logging", nil)
+		w := httptest.NewRecorder()
+
+		handler.GetLoggingConfig(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var response model.LoggingSetting
+		if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+			t.Fatalf("Failed to decode response: %v", err)
+		}
+
+		if response.Enabled != true {
+			t.Errorf("Expected logging to be enabled. value is: '%v'", response.Enabled)
+		}
+
+		if response.Level != "info" {
+			t.Errorf("Expected logging level to be set to 'info', set to '%s'", response.Level)
+		}
+	})
+
+	t.Run("returns set config.", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		testutil.NewLoggingEnabled(false).Build(t, db)
+		testutil.NewLoggingLevel("warning").Build(t, db)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/developer/system-settings/logging", nil)
+		w := httptest.NewRecorder()
+
+		handler.GetLoggingConfig(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var response model.LoggingSetting
+		if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+			t.Fatalf("Failed to decode response: %v", err)
+		}
+
+		if response.Enabled != false {
+			t.Errorf("Expected logging to be disabled. value is: '%v'", response.Enabled)
+		}
+
+		if response.Level != "warning" {
+			t.Errorf("Expected logging level to be set to 'warning', set to '%s'", response.Level)
+		}
+	})
+
+	t.Run("returns 500 on database error", func(t *testing.T) {
+		handler, db := setupHandler(t)
+		db.Close()
+
+		req := httptest.NewRequest(http.MethodGet, "/api/developer/system-settings/logging", nil)
+		w := httptest.NewRecorder()
+
+		handler.GetLoggingConfig(w, req)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Errorf("Expected 500, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+}

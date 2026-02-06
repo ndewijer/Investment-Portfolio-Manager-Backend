@@ -3,6 +3,7 @@ package repository
 import (
 	"database/sql"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -197,4 +198,42 @@ func (r *DeveloperRepository) GetLogs(filters *request.LogFilters) (*model.LogRe
 		HasMore:    hasMore,
 		Count:      len(logs),
 	}, nil
+}
+
+func (r *DeveloperRepository) GetLoggingConfig() (model.LoggingSetting, error) {
+
+	queryEnabled := `
+        SELECT value
+		FROM system_setting
+		WHERE key = 'LOGGING_ENABLED'
+      `
+	queryLevel := `
+        SELECT value
+		FROM system_setting
+		WHERE key = 'LOGGING_LEVEL'
+      `
+	// Setting default logging mode if settings are not configured.
+	conf := model.LoggingSetting{
+		Enabled: true,
+		Level:   "info",
+	}
+	err := r.db.QueryRow(queryEnabled).Scan(
+		&conf.Enabled,
+	)
+	if err == sql.ErrNoRows {
+		log.Println("Logging not set, defaulting to enabled")
+	} else if err != nil {
+		return conf, err
+	}
+
+	err = r.db.QueryRow(queryLevel).Scan(
+		&conf.Level,
+	)
+	if err == sql.ErrNoRows {
+		log.Println("Level not set, defaulting to INFO")
+	} else if err != nil {
+		return conf, err
+	}
+
+	return conf, nil
 }

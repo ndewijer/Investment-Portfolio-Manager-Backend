@@ -49,3 +49,13 @@ func (h *DeveloperHandler) GetLogs(w http.ResponseWriter, r *http.Request) {
 
 	response.RespondJSON(w, http.StatusOK, logs)
 }
+
+func (h *DeveloperHandler) GetLoggingConfig(w http.ResponseWriter, r *http.Request) {
+	setting, err := h.DeveloperService.GetLoggingConfig()
+	if err != nil {
+		response.RespondError(w, http.StatusInternalServerError, "Failed to retreived log settings", err.Error())
+		return
+	}
+
+	response.RespondJSON(w, http.StatusOK, setting)
+}

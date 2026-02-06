@@ -2,6 +2,7 @@ package testutil
 
 import (
 	"database/sql"
+	"fmt"
 	"testing"
 	"time"
 
@@ -707,4 +708,86 @@ func (b *SymbolInfoBuilder) Build(t *testing.T, db *sql.DB) model.Symbol {
 func CreateSymbol(t *testing.T, db *sql.DB, symbol string) model.Symbol {
 	t.Helper()
 	return NewSymbol().WithSymbol(symbol).Build(t, db)
+}
+
+// SystemSettingBuilder helps create test system settings.
+type SystemSettingBuilder struct {
+	ID        string
+	Key       string
+	Value     string
+	UpdatedAt *time.Time
+}
+
+// NewSystemSetting creates a SystemSettingBuilder with sensible defaults.
+func NewSystemSetting(key, value string) *SystemSettingBuilder {
+	now := time.Now()
+	return &SystemSettingBuilder{
+		ID:        MakeID(),
+		Key:       key,
+		Value:     value,
+		UpdatedAt: &now,
+	}
+}
+
+// WithValue sets a custom value.
+func (b *SystemSettingBuilder) WithValue(value string) *SystemSettingBuilder {
+	b.Value = value
+	return b
+}
+
+// WithUpdatedAt sets the updated_at timestamp.
+func (b *SystemSettingBuilder) WithUpdatedAt(t time.Time) *SystemSettingBuilder {
+	b.UpdatedAt = &t
+	return b
+}
+
+// Build creates the system setting in the database and returns it.
+func (b *SystemSettingBuilder) Build(t *testing.T, db *sql.DB) model.SystemSetting {
+	t.Helper()
+
+	query := `
+        INSERT INTO system_setting (id, key, value, updated_at)
+        VALUES (?, ?, ?, ?)
+    `
+
+	_, err := db.Exec(query, b.ID, b.Key, b.Value, b.UpdatedAt)
+	if err != nil {
+		t.Fatalf("Failed to create test system setting: %v", err)
+	}
+
+	return model.SystemSetting{
+		ID:        b.ID,
+		Key:       b.Key,
+		Value:     b.Value,
+		UpdatedAt: b.UpdatedAt,
+	}
+}
+
+// Convenience functions for specific settings
+
+// NewLoggingEnabled creates a builder for the LOGGING_ENABLED setting.
+func NewLoggingEnabled(enabled bool) *SystemSettingBuilder {
+	value := "false"
+	if enabled {
+		value = "true"
+	}
+	return NewSystemSetting("LOGGING_ENABLED", value)
+}
+
+// NewLoggingLevel creates a builder for the LOGGING_LEVEL setting.
+// Valid levels: debug, info, warning, error, critical
+func NewLoggingLevel(level string) *SystemSettingBuilder {
+	validLevels := map[string]bool{
+		"debug":    true,
+		"info":     true,
+		"warning":  true,
+		"error":    true,
+		"critical": true,
+	}
+
+	if !validLevels[level] {
+		panic(fmt.Sprintf("invalid logging level: %s (must be debug, info, warning, error, or critical)", level))
+	}
+
+	return NewSystemSetting("LOGGING_LEVEL", level)
 }
