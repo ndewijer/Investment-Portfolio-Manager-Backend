@@ -377,3 +377,73 @@ func TestDeveloperHandler_GetLoggingConfig(t *testing.T) {
 	})
 
 }
+
+func TestDeveloperHandler_GetFundPriceCSVTemplate(t *testing.T) {
+	setupHandler := func(t *testing.T) (*DeveloperHandler, *sql.DB) {
+		t.Helper()
+		db := testutil.SetupTestDB(t)
+		ds := testutil.NewTestDeveloperService(t, db)
+		return NewDeveloperHandler(ds), db
+	}
+
+	handler, _ := setupHandler(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/developer/csv/fund-prices/template", nil)
+	w := httptest.NewRecorder()
+
+	handler.GetFundPriceCSVTemplate(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	type TemplateModel struct {
+		Headers     []string          `json:"headers"`
+		Example     map[string]string `json:"example"`
+		Description string            `json:"description"`
+	}
+
+	var response TemplateModel
+	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if response.Headers[0] != "date" {
+		t.Errorf("Expected Header to be date. value is: '%v'", response.Headers[0])
+	}
+}
+
+func TestDeveloperHandler_GetTransactionCSVTemplate(t *testing.T) {
+	setupHandler := func(t *testing.T) (*DeveloperHandler, *sql.DB) {
+		t.Helper()
+		db := testutil.SetupTestDB(t)
+		ds := testutil.NewTestDeveloperService(t, db)
+		return NewDeveloperHandler(ds), db
+	}
+
+	handler, _ := setupHandler(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/developer/csv/transactions/template", nil)
+	w := httptest.NewRecorder()
+
+	handler.GetTransactionCSVTemplate(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	type TemplateModel struct {
+		Headers     []string          `json:"headers"`
+		Example     map[string]string `json:"example"`
+		Description string            `json:"description"`
+	}
+
+	var response TemplateModel
+	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if response.Headers[3] != "cost_per_share" {
+		t.Errorf("Expected Header to be cost_per_share. value is: '%v'", response.Headers[3])
+	}
+}

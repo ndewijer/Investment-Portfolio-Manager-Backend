@@ -22,6 +22,12 @@ func NewDeveloperHandler(DeveloperService *service.DeveloperService) *DeveloperH
 	}
 }
 
+type TemplateModel struct {
+	Headers     []string          `json:"headers"`
+	Example     map[string]string `json:"example"`
+	Description string            `json:"description"`
+}
+
 func (h *DeveloperHandler) GetLogs(w http.ResponseWriter, r *http.Request) {
 	// Parse filter parameters
 	filters, err := request.ParseLogFilters(
@@ -50,7 +56,7 @@ func (h *DeveloperHandler) GetLogs(w http.ResponseWriter, r *http.Request) {
 	response.RespondJSON(w, http.StatusOK, logs)
 }
 
-func (h *DeveloperHandler) GetLoggingConfig(w http.ResponseWriter, r *http.Request) {
+func (h *DeveloperHandler) GetLoggingConfig(w http.ResponseWriter, _ *http.Request) {
 	setting, err := h.DeveloperService.GetLoggingConfig()
 	if err != nil {
 		response.RespondError(w, http.StatusInternalServerError, "Failed to retreived log settings", err.Error())
@@ -58,4 +64,48 @@ func (h *DeveloperHandler) GetLoggingConfig(w http.ResponseWriter, r *http.Reque
 	}
 
 	response.RespondJSON(w, http.StatusOK, setting)
+}
+
+func (h *DeveloperHandler) GetFundPriceCSVTemplate(w http.ResponseWriter, _ *http.Request) {
+
+	headers := []string{"date", "price"}
+	example := map[string]string{
+		"date":  "2024-03-21",
+		"price": "150.75",
+	}
+	description := `CSV file should contain the following columns:
+- date: Price date in YYYY-MM-DD format
+- price: Fund price (decimal numbers)`
+
+	template := TemplateModel{
+		Headers:     headers,
+		Example:     example,
+		Description: description,
+	}
+
+	response.RespondJSON(w, http.StatusOK, template)
+}
+
+func (h *DeveloperHandler) GetTransactionCSVTemplate(w http.ResponseWriter, _ *http.Request) {
+
+	headers := []string{"date", "type", "shares", "cost_per_share"}
+	example := map[string]string{
+		"date":           "2024-03-21",
+		"type":           "buy/sell",
+		"shares":         "10.5",
+		"cost_per_share": "150.75",
+	}
+	description := `CSV file should contain the following columns:
+- date: Transaction date in YYYY-MM-DD format
+- type: Transaction type, either "buy" or "sell"
+- shares: Number of shares (decimal numbers allowed)
+- cost_per_share: Cost per share in the fund's currency`
+
+	template := TemplateModel{
+		Headers:     headers,
+		Example:     example,
+		Description: description,
+	}
+
+	response.RespondJSON(w, http.StatusOK, template)
 }
