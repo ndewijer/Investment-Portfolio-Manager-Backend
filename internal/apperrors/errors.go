@@ -11,6 +11,9 @@ var (
 	// ErrFundNotFound indicates that a fund with the given ID does not exist.
 	ErrFundNotFound = errors.New("fund not found")
 
+	// ErrFundPriceNotFound indicates no record for a specific fund and date combination.
+	ErrFundPriceNotFound = errors.New("fund price not found")
+
 	// ErrTransactionNotFound indicates that a transaction with the given ID does not exist.
 	ErrTransactionNotFound = errors.New("transaction not found")
 
@@ -30,6 +33,9 @@ var (
 
 	// ErrIbkrConfigNotFound indicates IBKR configuration has not been set up
 	ErrIbkrConfigNotFound = errors.New("ibkr configuration not found")
+
+	// ErrExchangeRateNotFound indicates no record for a specific currency and date combination
+	ErrExchangeRateNotFound = errors.New("exchange rate for currency/date not found")
 )
 
 // Business logic errors represent validation failures or constraint violations.
@@ -60,6 +66,8 @@ var (
 	ErrInvalidFundID        = errors.New("fund ID is required")
 	ErrInvalidSymbol        = errors.New("symbol is required")
 	ErrInvalidTransactionID = errors.New("transaction ID is required")
+	ErrInvalidCurrency      = errors.New("currency parameter is required")
+	ErrInvalidDate          = errors.New("date parameter is required")
 
 	// Generic operation failure constants
 	ErrFailedToRetrieve = errors.New("failed to retrieve data")
@@ -97,6 +105,12 @@ var (
 
 	// System operation errors
 	ErrFailedToGetVersionInfo = errors.New("failed to get version information")
+
+	// Developer operation errors
+	ErrFailedToRetrieveLogs          = errors.New("failed to retrieve logs")
+	ErrFailedToRetrieveLoggingConfig = errors.New("failed to retrieve logging configuration")
+	ErrFailedToRetrieveExchangeRate  = errors.New("failed to retrieve exchange rate")
+	ErrFailedToRetrieveFundPrice     = errors.New("failed to retrieve fund price")
 )
 
 // Data integrity errors represent inconsistencies or corruption in the data.

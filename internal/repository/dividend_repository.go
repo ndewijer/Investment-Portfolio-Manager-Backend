@@ -26,7 +26,7 @@ func NewDividendRepository(db *sql.DB) *DividendRepository {
 // Returns []Dividend.
 // Handles nullable fields like buy_order_date and reinvestment_transaction_id appropriately.
 // This grouping allows callers to decide how to aggregate (by portfolio, by fund, etc.) after retrieval.
-func (s *DividendRepository) GetDividend() ([]model.Dividend, error) {
+func (r *DividendRepository) GetDividend() ([]model.Dividend, error) {
 
 	// Retrieve all dividend based on returned portfolio_fund IDs
 	dividendQuery := `
@@ -36,7 +36,7 @@ func (s *DividendRepository) GetDividend() ([]model.Dividend, error) {
 		ORDER BY ex_dividend_date ASC
 	`
 
-	rows, err := s.db.Query(dividendQuery)
+	rows, err := r.db.Query(dividendQuery)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query dividend table: %w", err)
 	}
@@ -125,7 +125,7 @@ func (s *DividendRepository) GetDividend() ([]model.Dividend, error) {
 // Returns a map of portfolioFundID -> []Dividend, grouped for efficient per-fund calculations.
 // If pfIDs is empty, returns an empty map. The grouping allows callers to aggregate by
 // portfolio, fund, or other dimensions after retrieval.
-func (s *DividendRepository) GetDividendPerPF(pfIDs []string, startDate, endDate time.Time) (map[string][]model.Dividend, error) {
+func (r *DividendRepository) GetDividendPerPF(pfIDs []string, startDate, endDate time.Time) (map[string][]model.Dividend, error) {
 	if len(pfIDs) == 0 {
 		return make(map[string][]model.Dividend), nil
 	}
@@ -153,7 +153,7 @@ func (s *DividendRepository) GetDividendPerPF(pfIDs []string, startDate, endDate
 	dividendArgs = append(dividendArgs, startDate.Format("2006-01-02"))
 	dividendArgs = append(dividendArgs, endDate.Format("2006-01-02"))
 
-	rows, err := s.db.Query(dividendQuery, dividendArgs...)
+	rows, err := r.db.Query(dividendQuery, dividendArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query dividend table: %w", err)
 	}
@@ -184,7 +184,7 @@ func (s *DividendRepository) GetDividendPerPF(pfIDs []string, startDate, endDate
 			return nil, fmt.Errorf("failed to scan dividend table results: %w", err)
 		}
 
-		err = s.parseDividendRecords(&t, recordDateStr, exDividendStr, createdAtStr, buyOrderStr, reinvestmentTxID)
+		err = r.parseDividendRecords(&t, recordDateStr, exDividendStr, createdAtStr, buyOrderStr, reinvestmentTxID)
 		if err != nil {
 			return nil, err
 		}
@@ -219,7 +219,7 @@ func (s *DividendRepository) GetDividendPerPF(pfIDs []string, startDate, endDate
 //
 // Returns an error if any required date fails to parse or parses to a zero value.
 // Nullable fields are left at their zero values if NULL in the database.
-func (s *DividendRepository) parseDividendRecords(t *model.Dividend, recordDateStr, exDividendStr, createdAtStr string, buyOrderStr, reinvestmentTxID sql.NullString) error {
+func (r *DividendRepository) parseDividendRecords(t *model.Dividend, recordDateStr, exDividendStr, createdAtStr string, buyOrderStr, reinvestmentTxID sql.NullString) error {
 	var err error
 
 	t.RecordDate, err = ParseTime(recordDateStr)
@@ -262,7 +262,7 @@ func (s *DividendRepository) parseDividendRecords(t *model.Dividend, recordDateS
 //
 // Returns a slice of DividendFund containing all historical dividend payments for the portfolio.
 // The results include both reinvested and distributed dividends across all funds held in the portfolio.
-func (s *DividendRepository) GetDividendPerPortfolioFund(portfolioID string) ([]model.DividendFund, error) {
+func (r *DividendRepository) GetDividendPerPortfolioFund(portfolioID string) ([]model.DividendFund, error) {
 	if portfolioID == "" {
 		return []model.DividendFund{}, nil
 	}
@@ -279,7 +279,7 @@ func (s *DividendRepository) GetDividendPerPortfolioFund(portfolioID string) ([]
 	ORDER BY d.ex_dividend_date ASC
 	`
 
-	rows, err := s.db.Query(query, portfolioID)
+	rows, err := r.db.Query(query, portfolioID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query dividend table: %w", err)
 	}

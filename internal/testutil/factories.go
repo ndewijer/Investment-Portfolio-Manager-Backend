@@ -2,6 +2,7 @@ package testutil
 
 import (
 	"database/sql"
+	"fmt"
 	"testing"
 	"time"
 
@@ -707,4 +708,143 @@ func (b *SymbolInfoBuilder) Build(t *testing.T, db *sql.DB) model.Symbol {
 func CreateSymbol(t *testing.T, db *sql.DB, symbol string) model.Symbol {
 	t.Helper()
 	return NewSymbol().WithSymbol(symbol).Build(t, db)
+}
+
+// SystemSettingBuilder helps create test system settings.
+type SystemSettingBuilder struct {
+	ID        string
+	Key       string
+	Value     string
+	UpdatedAt *time.Time
+}
+
+// NewSystemSetting creates a SystemSettingBuilder with sensible defaults.
+func NewSystemSetting(key, value string) *SystemSettingBuilder {
+	now := time.Now()
+	return &SystemSettingBuilder{
+		ID:        MakeID(),
+		Key:       key,
+		Value:     value,
+		UpdatedAt: &now,
+	}
+}
+
+// WithValue sets a custom value.
+func (b *SystemSettingBuilder) WithValue(value string) *SystemSettingBuilder {
+	b.Value = value
+	return b
+}
+
+// WithUpdatedAt sets the updated_at timestamp.
+func (b *SystemSettingBuilder) WithUpdatedAt(t time.Time) *SystemSettingBuilder {
+	b.UpdatedAt = &t
+	return b
+}
+
+// Build creates the system setting in the database and returns it.
+func (b *SystemSettingBuilder) Build(t *testing.T, db *sql.DB) model.SystemSetting {
+	t.Helper()
+
+	query := `
+        INSERT INTO system_setting (id, key, value, updated_at)
+        VALUES (?, ?, ?, ?)
+    `
+
+	_, err := db.Exec(query, b.ID, b.Key, b.Value, b.UpdatedAt)
+	if err != nil {
+		t.Fatalf("Failed to create test system setting: %v", err)
+	}
+
+	return model.SystemSetting{
+		ID:        b.ID,
+		Key:       b.Key,
+		Value:     b.Value,
+		UpdatedAt: b.UpdatedAt,
+	}
+}
+
+// Convenience functions for specific settings
+
+// NewLoggingEnabled creates a builder for the LOGGING_ENABLED setting.
+func NewLoggingEnabled(enabled bool) *SystemSettingBuilder {
+	value := "false"
+	if enabled {
+		value = "true"
+	}
+	return NewSystemSetting("LOGGING_ENABLED", value)
+}
+
+// NewLoggingLevel creates a builder for the LOGGING_LEVEL setting.
+// Valid levels: debug, info, warning, error, critical
+func NewLoggingLevel(level string) *SystemSettingBuilder {
+	validLevels := map[string]bool{
+		"debug":    true,
+		"info":     true,
+		"warning":  true,
+		"error":    true,
+		"critical": true,
+	}
+
+	if !validLevels[level] {
+		panic(fmt.Sprintf("invalid logging level: %s (must be debug, info, warning, error, or critical)", level))
+	}
+
+	return NewSystemSetting("LOGGING_LEVEL", level)
+}
+
+// ExchangeRateBuilder provides a fluent interface for creating exchange rates.
+//
+// Example usage:
+//
+//	rate := testutil.NewExchangeRate("USD", "EUR", "2024-01-01", 0.85).Build(t, db)
+type ExchangeRateBuilder struct {
+	ID           string
+	FromCurrency string
+	ToCurrency   string
+	Rate         float64
+	Date         time.Time
+}
+
+// NewExchangeRate creates an ExchangeRateBuilder with the provided parameters.
+func NewExchangeRate(fromCurrency, toCurrency, date string, rate float64) *ExchangeRateBuilder {
+	parsedDate, err := time.Parse("2006-01-02", date)
+	if err != nil {
+		panic(fmt.Sprintf("invalid date format: %s (must be YYYY-MM-DD)", date))
+	}
+
+	return &ExchangeRateBuilder{
+		ID:           MakeID(),
+		FromCurrency: fromCurrency,
+		ToCurrency:   toCurrency,
+		Rate:         rate,
+		Date:         parsedDate,
+	}
+}
+
+// WithRate sets a custom rate.
+func (b *ExchangeRateBuilder) WithRate(rate float64) *ExchangeRateBuilder {
+	b.Rate = rate
+	return b
+}
+
+// Build creates the exchange rate in the database and returns it.
+func (b *ExchangeRateBuilder) Build(t *testing.T, db *sql.DB) model.ExchangeRate {
+	t.Helper()
+
+	query := `
+		INSERT INTO exchange_rate (id, from_currency, to_currency, rate, date, created_at)
+		VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+	`
+
+	_, err := db.Exec(query, b.ID, b.FromCurrency, b.ToCurrency, b.Rate, b.Date.Format("2006-01-02"))
+	if err != nil {
+		t.Fatalf("Failed to create test exchange rate: %v", err)
+	}
+
+	return model.ExchangeRate{
+		FromCurrency: b.FromCurrency,
+		ToCurrency:   b.ToCurrency,
+		Rate:         b.Rate,
+		Date:         b.Date,
+	}
 }

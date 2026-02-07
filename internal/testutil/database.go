@@ -262,6 +262,23 @@ func createTestSchema(db *sql.DB) error {
 			CONSTRAINT uq_portfolio_fund_date UNIQUE (portfolio_fund_id, date)
 		);
 
+		-- Log table
+		CREATE TABLE log (
+			id VARCHAR(36) NOT NULL PRIMARY KEY,
+			timestamp DATETIME NOT NULL,
+			level VARCHAR(8) NOT NULL,
+			category VARCHAR(11) NOT NULL,
+			message TEXT NOT NULL,
+			details TEXT,
+			source VARCHAR(255) NOT NULL,
+			user_id VARCHAR(36),
+			request_id VARCHAR(36),
+			stack_trace TEXT,
+			http_status INTEGER,
+			ip_address VARCHAR(45),
+			user_agent VARCHAR(255)
+		);
+
 		-- Indexes for performance
 		CREATE INDEX IF NOT EXISTS ix_realized_gain_loss_portfolio_id ON realized_gain_loss(portfolio_id);
 		CREATE INDEX IF NOT EXISTS ix_realized_gain_loss_fund_id ON realized_gain_loss(fund_id);
@@ -287,6 +304,9 @@ func createTestSchema(db *sql.DB) error {
 		CREATE INDEX IF NOT EXISTS ix_dividend_fund_id ON dividend(fund_id);
 		CREATE INDEX IF NOT EXISTS ix_dividend_portfolio_fund_id ON dividend(portfolio_fund_id);
 		CREATE INDEX IF NOT EXISTS ix_dividend_record_date ON dividend(record_date);
+		CREATE INDEX IF NOT EXISTS ix_log_timestamp_id ON log(timestamp, id);
+		CREATE INDEX IF NOT EXISTS ix_log_level ON log(level);
+		CREATE INDEX IF NOT EXISTS ix_log_category ON log(category);
 	`
 
 	_, err := db.Exec(schema)
@@ -330,6 +350,7 @@ func CleanDatabase(t *testing.T, db *sql.DB) {
 		"exchange_rate",
 		"system_setting",
 		"symbol_info",
+		"log",
 	}
 
 	for _, table := range tables {
