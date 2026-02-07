@@ -66,6 +66,8 @@ var (
 	ErrInvalidFundID        = errors.New("fund ID is required")
 	ErrInvalidSymbol        = errors.New("symbol is required")
 	ErrInvalidTransactionID = errors.New("transaction ID is required")
+	ErrInvalidCurrency      = errors.New("currency parameter is required")
+	ErrInvalidDate          = errors.New("date parameter is required")
 
 	// Generic operation failure constants
 	ErrFailedToRetrieve = errors.New("failed to retrieve data")
@@ -103,6 +105,12 @@ var (
 
 	// System operation errors
 	ErrFailedToGetVersionInfo = errors.New("failed to get version information")
+
+	// Developer operation errors
+	ErrFailedToRetrieveLogs          = errors.New("failed to retrieve logs")
+	ErrFailedToRetrieveLoggingConfig = errors.New("failed to retrieve logging configuration")
+	ErrFailedToRetrieveExchangeRate  = errors.New("failed to retrieve exchange rate")
+	ErrFailedToRetrieveFundPrice     = errors.New("failed to retrieve fund price")
 )
 
 // Data integrity errors represent inconsistencies or corruption in the data.

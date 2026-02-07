@@ -23,6 +23,18 @@ func NewDeveloperRepository(db *sql.DB) *DeveloperRepository {
 	return &DeveloperRepository{db: db}
 }
 
+// GetLogs retrieves log entries from the database with dynamic filtering and cursor-based pagination.
+// Builds a WHERE clause dynamically based on provided filters and supports multiple filter types:
+//   - Level filtering: Filters by one or more log levels (debug, info, warning, error, critical)
+//   - Category filtering: Filters by one or more categories (portfolio, fund, transaction, etc.)
+//   - Date range filtering: Filters by start and/or end timestamps
+//   - Source filtering: Partial match on source field using LIKE
+//   - Message filtering: Partial match on message content using LIKE
+//   - Cursor pagination: Supports efficient pagination using timestamp+id cursor
+//
+// The pagination uses cursor-based approach for efficiency with large result sets.
+// Returns one extra record beyond perPage to determine if more results exist.
+//
 //nolint:gocyclo,funlen // Complex filtering logic with dynamic WHERE clause requires length
 func (r *DeveloperRepository) GetLogs(filters *request.LogFilters) (*model.LogResponse, error) {
 	// Build dynamic WHERE clause
@@ -201,6 +213,10 @@ func (r *DeveloperRepository) GetLogs(filters *request.LogFilters) (*model.LogRe
 	}, nil
 }
 
+// GetLoggingConfig retrieves the current logging configuration from system_setting table.
+// Returns the LOGGING_ENABLED and LOGGING_LEVEL settings.
+// If settings are not configured, returns default values: enabled=true, level="info".
+// Logs a warning message when default values are used.
 func (r *DeveloperRepository) GetLoggingConfig() (model.LoggingSetting, error) {
 
 	queryEnabled := `
@@ -239,6 +255,10 @@ func (r *DeveloperRepository) GetLoggingConfig() (model.LoggingSetting, error) {
 	return conf, nil
 }
 
+// GetExchangeRate retrieves an exchange rate for a specific currency pair and date.
+// Queries the exchange_rate table for an exact match on from_currency, to_currency, and date.
+// Returns ErrExchangeRateNotFound if no matching rate exists.
+// The date parameter should be in the format YYYY-MM-DD.
 func (r *DeveloperRepository) GetExchangeRate(fromCurrency, toCurrency string, dateTime time.Time) (*model.ExchangeRate, error) {
 
 	query := `

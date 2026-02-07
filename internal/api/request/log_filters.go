@@ -7,17 +7,18 @@ import (
 	"time"
 )
 
-// LogFilters represents parsed and validated log filter parameters
+// LogFilters represents parsed and validated log filter parameters for querying system logs.
+// All filter fields are optional and can be combined for more specific queries.
 type LogFilters struct {
-	Levels     []string
-	Categories []string
-	StartDate  *time.Time
-	EndDate    *time.Time
-	Source     string
-	Message    string
-	SortDir    string
-	Cursor     string
-	PerPage    int
+	Levels     []string   // Log levels to filter by (debug, info, warning, error, critical)
+	Categories []string   // Categories to filter by (portfolio, fund, transaction, etc.)
+	StartDate  *time.Time // Filter logs from this timestamp onwards (inclusive)
+	EndDate    *time.Time // Filter logs up to this timestamp (inclusive)
+	Source     string     // Filter by source field using partial match
+	Message    string     // Filter by message content using partial match
+	SortDir    string     // Sort direction: "asc" or "desc" (default: "desc")
+	Cursor     string     // Pagination cursor from previous response (format: "timestamp_id")
+	PerPage    int        // Number of results per page (1-100, default: 50)
 }
 
 // ValidLogLevels are the accepted log level values
@@ -31,7 +32,20 @@ var ValidCategories = map[string]bool{
 	"system": true, "database": true, "security": true, "ibkr": true, "developer": true,
 }
 
-// ParseLogFilters extracts and validates log filters from query parameters
+// ParseLogFilters extracts and validates log filters from query parameters.
+// Converts raw query string parameters into a validated LogFilters struct.
+//
+// Parameters are expected as comma-separated strings (for levels and categories)
+// or single values (for other fields). All parameters are optional.
+//
+// Validation rules:
+//   - levels: Must be valid log levels (debug, info, warning, error, critical)
+//   - categories: Must be valid categories (portfolio, fund, transaction, etc.)
+//   - startDate/endDate: Must be valid date/datetime strings (YYYY-MM-DD or RFC3339)
+//   - sortDir: Must be "asc" or "desc" (defaults to "desc")
+//   - perPage: Must be between 1 and 100 (defaults to 50)
+//
+// Returns an error if any parameter fails validation.
 //
 //nolint:gocyclo // Complex validation logic is intentional and clear
 func ParseLogFilters(
@@ -114,7 +128,13 @@ func ParseLogFilters(
 	return filters, nil
 }
 
-// ParseTime parses date strings in multiple formats
+// ParseTime parses date strings in multiple formats and returns a time.Time value.
+// Attempts to parse the input string using the following formats in order:
+//  1. Date-only format: "2006-01-02" (YYYY-MM-DD)
+//  2. RFC3339 format: "2006-01-02T15:04:05Z07:00" (ISO 8601 with timezone)
+//  3. RFC3339 with milliseconds: "2006-01-02T15:04:05.000Z07:00"
+//
+// Returns the parsed time on success, or an error if none of the formats match.
 func ParseTime(str string) (time.Time, error) {
 	// Try date-only format first
 	t, err := time.Parse("2006-01-02", str)

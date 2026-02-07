@@ -398,13 +398,7 @@ func TestDeveloperHandler_GetFundPriceCSVTemplate(t *testing.T) {
 		t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 
-	type TemplateModel struct {
-		Headers     []string          `json:"headers"`
-		Example     map[string]string `json:"example"`
-		Description string            `json:"description"`
-	}
-
-	var response TemplateModel
+	var response model.TemplateModel
 	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
 		t.Fatalf("Failed to decode response: %v", err)
 	}
@@ -433,13 +427,7 @@ func TestDeveloperHandler_GetTransactionCSVTemplate(t *testing.T) {
 		t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 
-	type TemplateModel struct {
-		Headers     []string          `json:"headers"`
-		Example     map[string]string `json:"example"`
-		Description string            `json:"description"`
-	}
-
-	var response TemplateModel
+	var response model.TemplateModel
 	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
 		t.Fatalf("Failed to decode response: %v", err)
 	}
@@ -583,19 +571,17 @@ func TestDeveloperHandler_GetExchangeRate(t *testing.T) {
 		}
 	})
 
-	t.Run("panics on invalid date format", func(t *testing.T) {
+	t.Run("returns 400 on invalid date format", func(t *testing.T) {
 		handler, _ := setupHandler(t)
 
 		req := httptest.NewRequest(http.MethodGet, "/api/developer/exchange-rate?fromCurrency=USD&toCurrency=EUR&date=invalid-date", nil)
 		w := httptest.NewRecorder()
 
-		defer func() {
-			if r := recover(); r == nil {
-				t.Error("Expected panic on invalid date format, but no panic occurred")
-			}
-		}()
-
 		handler.GetExchangeRate(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		}
 	})
 
 	t.Run("returns 500 on database error", func(t *testing.T) {
@@ -661,6 +647,7 @@ func TestDeveloperHandler_GetExchangeRate(t *testing.T) {
 	})
 }
 
+//nolint:gocyclo // Test functions naturally have high complexity due to many test cases
 func TestDeveloperHandler_GetFundPrice(t *testing.T) {
 	setupHandler := func(t *testing.T) (*DeveloperHandler, *sql.DB) {
 		t.Helper()
@@ -733,7 +720,48 @@ func TestDeveloperHandler_GetFundPrice(t *testing.T) {
 		}
 	})
 
-	t.Run("panics on invalid date format", func(t *testing.T) {
+	t.Run("returns 400 when fundId is missing", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/developer/fund-price?date=2024-01-15", nil)
+		w := httptest.NewRecorder()
+
+		handler.GetFundPrice(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("returns 400 when date is missing", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		fund := testutil.NewFund().Build(t, db)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/developer/fund-price?fundId="+fund.ID, nil)
+		w := httptest.NewRecorder()
+
+		handler.GetFundPrice(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("returns 400 when all parameters are missing", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/developer/fund-price", nil)
+		w := httptest.NewRecorder()
+
+		handler.GetFundPrice(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("returns 400 on invalid date format", func(t *testing.T) {
 		handler, db := setupHandler(t)
 
 		fund := testutil.NewFund().Build(t, db)
@@ -741,13 +769,11 @@ func TestDeveloperHandler_GetFundPrice(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/developer/fund-price?fundId="+fund.ID+"&date=invalid-date", nil)
 		w := httptest.NewRecorder()
 
-		defer func() {
-			if r := recover(); r == nil {
-				t.Error("Expected panic on invalid date format, but no panic occurred")
-			}
-		}()
-
 		handler.GetFundPrice(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		}
 	})
 
 	t.Run("returns 500 on database error", func(t *testing.T) {
