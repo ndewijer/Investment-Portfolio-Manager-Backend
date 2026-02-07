@@ -105,6 +105,7 @@ func createRepoAndServices(db *sql.DB) (
 
 	developerService := service.NewDeveloperService(
 		developerRepo,
+		fundRepo,
 	)
 
 	realizedGainLossService := service.NewRealizedGainLossService(

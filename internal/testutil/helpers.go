@@ -150,7 +150,8 @@ func NewTestDeveloperService(t *testing.T, db *sql.DB) *service.DeveloperService
 	t.Helper()
 
 	developerRepo := repository.NewDeveloperRepository(db)
-	return service.NewDeveloperService(developerRepo)
+	fundRepo := repository.NewFundRepository(db)
+	return service.NewDeveloperService(developerRepo, fundRepo)
 }
 
 // MakeID generates a UUID string for use in tests.

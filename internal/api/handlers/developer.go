@@ -152,3 +152,25 @@ func (h *DeveloperHandler) GetExchangeRate(w http.ResponseWriter, r *http.Reques
 
 	response.RespondJSON(w, http.StatusOK, exchangeResponse)
 }
+
+func (h *DeveloperHandler) GetFundPrice(w http.ResponseWriter, r *http.Request) {
+	fundID := r.URL.Query().Get("fundId")
+	dateStr := r.URL.Query().Get("date")
+
+	parsedDate, err := (time.Parse("2006-01-02", dateStr))
+	if err != nil {
+		panic("impossible: hardcoded date failed to parse: " + err.Error())
+	}
+
+	fundPrice, err := h.DeveloperService.GetFundPrice(fundID, parsedDate)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrFundPriceNotFound) {
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrFundPriceNotFound.Error(), err.Error())
+			return
+		}
+		response.RespondError(w, http.StatusInternalServerError, "Failed to retreived exchange rate", err.Error())
+		return
+	}
+
+	response.RespondJSON(w, http.StatusOK, fundPrice)
+}

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/testutil"
@@ -656,6 +657,189 @@ func TestDeveloperHandler_GetExchangeRate(t *testing.T) {
 
 		if response.Date != "2024-12-31" {
 			t.Errorf("Expected date to be 2024-12-31, got %s", response.Date)
+		}
+	})
+}
+
+func TestDeveloperHandler_GetFundPrice(t *testing.T) {
+	setupHandler := func(t *testing.T) (*DeveloperHandler, *sql.DB) {
+		t.Helper()
+		db := testutil.SetupTestDB(t)
+		ds := testutil.NewTestDeveloperService(t, db)
+		return NewDeveloperHandler(ds), db
+	}
+
+	t.Run("returns 200 with fund price when it exists", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		// Create test data
+		fund := testutil.NewFund().WithSymbol("AAPL").Build(t, db)
+		priceDate := time.Date(2024, 1, 15, 0, 0, 0, 0, time.UTC)
+
+		testutil.NewFundPrice(fund.ID).
+			WithDate(priceDate).
+			WithPrice(150.75).
+			Build(t, db)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/developer/fund-price?fundId="+fund.ID+"&date=2024-01-15", nil)
+		w := httptest.NewRecorder()
+
+		handler.GetFundPrice(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var response model.FundPrice
+		if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+			t.Fatalf("Failed to decode response: %v", err)
+		}
+
+		if response.FundID != fund.ID {
+			t.Errorf("Expected fundID %s, got %s", fund.ID, response.FundID)
+		}
+
+		if response.Price != 150.75 {
+			t.Errorf("Expected price 150.75, got %f", response.Price)
+		}
+	})
+
+	t.Run("returns 404 when fund price not found", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		// Create fund but no price for the requested date
+		fund := testutil.NewFund().WithSymbol("MSFT").Build(t, db)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/developer/fund-price?fundId="+fund.ID+"&date=2024-01-15", nil)
+		w := httptest.NewRecorder()
+
+		handler.GetFundPrice(w, req)
+
+		if w.Code != http.StatusNotFound {
+			t.Errorf("Expected 404, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("returns 404 when fund does not exist", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/developer/fund-price?fundId=non-existent-id&date=2024-01-15", nil)
+		w := httptest.NewRecorder()
+
+		handler.GetFundPrice(w, req)
+
+		if w.Code != http.StatusNotFound {
+			t.Errorf("Expected 404, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("panics on invalid date format", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		fund := testutil.NewFund().Build(t, db)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/developer/fund-price?fundId="+fund.ID+"&date=invalid-date", nil)
+		w := httptest.NewRecorder()
+
+		defer func() {
+			if r := recover(); r == nil {
+				t.Error("Expected panic on invalid date format, but no panic occurred")
+			}
+		}()
+
+		handler.GetFundPrice(w, req)
+	})
+
+	t.Run("returns 500 on database error", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		fund := testutil.NewFund().Build(t, db)
+		db.Close()
+
+		req := httptest.NewRequest(http.MethodGet, "/api/developer/fund-price?fundId="+fund.ID+"&date=2024-01-15", nil)
+		w := httptest.NewRecorder()
+
+		handler.GetFundPrice(w, req)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Errorf("Expected 500, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("handles different funds correctly", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		// Create two funds with prices
+		fund1 := testutil.NewFund().WithSymbol("AAPL").Build(t, db)
+		fund2 := testutil.NewFund().WithSymbol("GOOGL").Build(t, db)
+
+		priceDate := time.Date(2024, 1, 15, 0, 0, 0, 0, time.UTC)
+
+		testutil.NewFundPrice(fund1.ID).
+			WithDate(priceDate).
+			WithPrice(150.00).
+			Build(t, db)
+
+		testutil.NewFundPrice(fund2.ID).
+			WithDate(priceDate).
+			WithPrice(2800.00).
+			Build(t, db)
+
+		// Request fund1
+		req := httptest.NewRequest(http.MethodGet, "/api/developer/fund-price?fundId="+fund1.ID+"&date=2024-01-15", nil)
+		w := httptest.NewRecorder()
+
+		handler.GetFundPrice(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var response model.FundPrice
+		if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+			t.Fatalf("Failed to decode response: %v", err)
+		}
+
+		if response.FundID != fund1.ID {
+			t.Errorf("Expected fundID %s, got %s", fund1.ID, response.FundID)
+		}
+
+		if response.Price != 150.00 {
+			t.Errorf("Expected price 150.00, got %f", response.Price)
+		}
+	})
+
+	t.Run("handles different dates correctly", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		fund := testutil.NewFund().WithSymbol("TSLA").Build(t, db)
+
+		// Create prices for different dates
+		date1 := time.Date(2024, 1, 10, 0, 0, 0, 0, time.UTC)
+		date2 := time.Date(2024, 1, 15, 0, 0, 0, 0, time.UTC)
+		date3 := time.Date(2024, 1, 20, 0, 0, 0, 0, time.UTC)
+
+		testutil.NewFundPrice(fund.ID).WithDate(date1).WithPrice(100.00).Build(t, db)
+		testutil.NewFundPrice(fund.ID).WithDate(date2).WithPrice(105.50).Build(t, db)
+		testutil.NewFundPrice(fund.ID).WithDate(date3).WithPrice(110.00).Build(t, db)
+
+		// Request middle date
+		req := httptest.NewRequest(http.MethodGet, "/api/developer/fund-price?fundId="+fund.ID+"&date=2024-01-15", nil)
+		w := httptest.NewRecorder()
+
+		handler.GetFundPrice(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var response model.FundPrice
+		if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+			t.Fatalf("Failed to decode response: %v", err)
+		}
+
+		if response.Price != 105.50 {
+			t.Errorf("Expected price 105.50, got %f", response.Price)
 		}
 	})
 }

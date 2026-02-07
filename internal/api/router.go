@@ -141,6 +141,7 @@ func NewRouter(
 			r.Get("/csv/fund-prices/template", developerHandler.GetFundPriceCSVTemplate)
 			r.Get("/csv/transactions/template", developerHandler.GetTransactionCSVTemplate)
 			r.Get("/exchange-rate", developerHandler.GetExchangeRate)
+			r.Get("/fund-price", developerHandler.GetFundPrice)
 		})
 	})
 

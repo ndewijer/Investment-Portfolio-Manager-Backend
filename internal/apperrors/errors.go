@@ -11,6 +11,9 @@ var (
 	// ErrFundNotFound indicates that a fund with the given ID does not exist.
 	ErrFundNotFound = errors.New("fund not found")
 
+	// ErrFundPriceNotFound indicates no record for a specific fund and date combination.
+	ErrFundPriceNotFound = errors.New("fund price not found")
+
 	// ErrTransactionNotFound indicates that a transaction with the given ID does not exist.
 	ErrTransactionNotFound = errors.New("transaction not found")
 
