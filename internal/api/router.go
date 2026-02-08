@@ -22,6 +22,7 @@ func NewRouter(
 	materializedService *service.MaterializedService,
 	transactionService *service.TransactionService,
 	ibkrService *service.IbkrService,
+	developerService *service.DeveloperService,
 	cfg *config.Config,
 ) http.Handler {
 	r := chi.NewRouter()
@@ -131,6 +132,16 @@ func NewRouter(
 				r.Get("/allocations", ibkrHandler.GetTransactionAllocations)
 				r.Get("/eligible-portfolios", ibkrHandler.GetEligiblePortfolios)
 			})
+		})
+
+		r.Route("/developer", func(r chi.Router) {
+			developerHandler := handlers.NewDeveloperHandler(developerService)
+			r.Get("/logs", developerHandler.GetLogs)
+			r.Get("/system-settings/logging", developerHandler.GetLoggingConfig)
+			r.Get("/csv/fund-prices/template", developerHandler.GetFundPriceCSVTemplate)
+			r.Get("/csv/transactions/template", developerHandler.GetTransactionCSVTemplate)
+			r.Get("/exchange-rate", developerHandler.GetExchangeRate)
+			r.Get("/fund-price", developerHandler.GetFundPrice)
 		})
 	})
 
