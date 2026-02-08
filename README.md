@@ -62,7 +62,7 @@ This backend aims to replicate all 73 endpoints from the Python backend. Below i
 │   ├── POST   /update-all-prices               ⬜ Update all fund prices
 │   └── POST   /import-prices                   ⬜ Import prices from CSV
 │
-├── /transaction (2/6 endpoints) ⬜
+├── /transaction (3/6 endpoints) ⬜
 │   ├── GET    /                                ✅ List all transactions
 │   ├── POST   /                                ⬜ Create transaction
 │   ├── GET    /{id}                            ✅ Get transaction by ID
@@ -79,7 +79,7 @@ This backend aims to replicate all 73 endpoints from the Python backend. Below i
 │   ├── DELETE /{id}                            ⬜ Delete dividend
 │   └── POST   /{id}/process-reinvestment       ⬜ Process dividend reinvestment
 │
-├── /ibkr (0/19 endpoints) ⬜
+├── /ibkr (7/19 endpoints) ⬜
 │   ├── POST    /config                                    ⬜ Create or update IBKR configuration
 │   ├── GET     /config                                    ✅ Get IBKR configuration status
 │   ├── DELETE  /config                                    ⬜ Delete IBKR configuration
@@ -100,7 +100,7 @@ This backend aims to replicate all 73 endpoints from the Python backend. Below i
 │   ├── POST    /inbox/{transactionId}/unallocate          ⬜ Unallocate a processed IBKR transaction
 │   └── GET     /portfolios                                ✅ Get available portfolios for transaction allocation
 │
-└── /developer (0/15 endpoints) ⬜
+└── /developer (6/12 endpoints) ⬜
     ├── GET /csv/fund-prices/template     ✅ Get CSV template for fund price import
     ├── GET /csv/transactions/template    ✅ Get CSV template for transaction import
     ├── GET /exchange-rate                ✅ Get exchange rate for currency pair
@@ -115,7 +115,7 @@ This backend aims to replicate all 73 endpoints from the Python backend. Below i
     └── PUT /system-settings/logging      ⬜ Update logging configuration settings
 
 Legend: ✅ Implemented | 🚧 In Progress | ⬜ Planned
-Overall Progress: 10/73 endpoints (14%)
+Overall Progress: 37/72 endpoints (51%)
 ```
 
 ## Quick Start
