@@ -76,6 +76,7 @@ func NewRouter(
 		r.Route("/fund", func(r chi.Router) {
 			fundHandler := handlers.NewFundHandler(fundService, materializedService)
 			r.Get("/", fundHandler.GetAllFunds)
+			r.Post("/", fundHandler.CreateFund)
 			r.Get("/symbol/{symbol}", fundHandler.GetSymbol)
 
 			r.Route("/fund-prices/{uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", func(r chi.Router) {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/request"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/repository"
@@ -149,4 +150,23 @@ func (s *FundService) DeletePortfolioFund(ctx context.Context, pfID string) erro
 	}
 
 	return nil
+}
+
+func (s *FundService) CreateFund(ctx context.Context, req request.CreateFundRequest) (*model.Fund, error) {
+	fund := &model.Fund{
+		ID:             uuid.New().String(),
+		Name:           req.Name,
+		Isin:           req.Isin,
+		Symbol:         req.Symbol,
+		Exchange:       req.Exchange,
+		Currency:       req.Currency,
+		InvestmentType: req.InvestmentType,
+		DividendType:   req.DividendType,
+	}
+
+	if err := s.fundRepo.InsertFund(ctx, fund); err != nil {
+		return nil, fmt.Errorf("failed to create fund: %w", err)
+	}
+
+	return fund, nil
 }

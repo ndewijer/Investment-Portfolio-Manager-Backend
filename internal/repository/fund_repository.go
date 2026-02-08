@@ -546,3 +546,27 @@ func (r *FundRepository) DeletePortfolioFund(ctx context.Context, portfolioFundI
 
 	return nil
 }
+
+func (r *FundRepository) InsertFund(ctx context.Context, f *model.Fund) error {
+	query := `
+        INSERT INTO fund (id, name, isin, symbol, exchange, currency, investment_type, dividend_type)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `
+
+	_, err := r.getQuerier().ExecContext(ctx, query,
+		f.ID,
+		f.Name,
+		f.Isin,
+		f.Symbol,
+		f.Exchange,
+		f.Currency,
+		f.InvestmentType,
+		f.DividendType,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to insert portfolio: %w", err)
+	}
+
+	return nil
+}

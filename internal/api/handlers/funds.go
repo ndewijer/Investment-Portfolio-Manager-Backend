@@ -7,9 +7,11 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/request"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/response"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/apperrors"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/service"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/validation"
 )
 
 // FundHandler handles HTTP requests for fund endpoints.
@@ -157,4 +159,28 @@ func (h *FundHandler) GetFundPrices(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.RespondJSON(w, http.StatusOK, funds[fundID])
+}
+
+func (h *FundHandler) CreateFund(w http.ResponseWriter, r *http.Request) {
+	req, err := parseJSON[request.CreateFundRequest](r)
+	if err != nil {
+
+		response.RespondError(w, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
+
+	if err := validation.ValidateCreateFund(req); err != nil {
+
+		response.RespondError(w, http.StatusBadRequest, "validation failed", err.Error())
+		return
+	}
+
+	portfolio, err := h.fundService.CreateFund(r.Context(), req)
+	if err != nil {
+
+		response.RespondError(w, http.StatusInternalServerError, "failed to create fund", err.Error())
+		return
+	}
+
+	response.RespondJSON(w, http.StatusCreated, portfolio)
 }

@@ -1,23 +1,10 @@
 package validation
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/request"
 )
-
-type Error struct {
-	Fields map[string]string
-}
-
-func (e *Error) Error() string {
-	msgs := make([]string, 0, len(e.Fields))
-	for field, msg := range e.Fields {
-		msgs = append(msgs, fmt.Sprintf("%s: %s", field, msg))
-	}
-	return strings.Join(msgs, "; ")
-}
 
 func ValidateCreatePortfolio(req request.CreatePortfolioRequest) error {
 	errors := make(map[string]string)
