@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/handlers"
@@ -682,6 +683,7 @@ func TestFundHandler_CheckUsage(t *testing.T) {
 	})
 }
 
+//nolint:gocyclo // Comprehensive integration test with multiple subtests
 func TestFundHandler_CreateFund(t *testing.T) {
 	t.Run("creates fund successfully with valid data", func(t *testing.T) {
 		db := testutil.SetupTestDB(t)
@@ -689,18 +691,17 @@ func TestFundHandler_CreateFund(t *testing.T) {
 		ms := testutil.NewTestMaterializedService(t, db)
 		handler := handlers.NewFundHandler(fs, ms)
 
-		payload := map[string]interface{}{
+		reqBody := `{
 			"name":           "Apple Inc.",
 			"isin":           "US0378331005",
 			"symbol":         "AAPL",
 			"currency":       "USD",
 			"exchange":       "NASDAQ",
 			"investmentType": "STOCK",
-			"dividendType":   "CASH",
-		}
+			"dividendType":   "CASH"
+		}`
 
-		body, _ := json.Marshal(payload)
-		req := httptest.NewRequest(http.MethodPost, "/api/fund", bytes.NewReader(body))
+		req := httptest.NewRequest(http.MethodPost, "/api/fund", strings.NewReader(reqBody))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 
@@ -750,16 +751,15 @@ func TestFundHandler_CreateFund(t *testing.T) {
 		ms := testutil.NewTestMaterializedService(t, db)
 		handler := handlers.NewFundHandler(fs, ms)
 
-		payload := map[string]interface{}{
+		reqBody := `{
 			"isin":           "US0378331005",
 			"currency":       "USD",
 			"exchange":       "NASDAQ",
 			"investmentType": "STOCK",
-			"dividendType":   "CASH",
-		}
+			"dividendType":   "CASH"
+		}`
 
-		body, _ := json.Marshal(payload)
-		req := httptest.NewRequest(http.MethodPost, "/api/fund", bytes.NewReader(body))
+		req := httptest.NewRequest(http.MethodPost, "/api/fund", strings.NewReader(reqBody))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 
@@ -770,6 +770,8 @@ func TestFundHandler_CreateFund(t *testing.T) {
 		}
 
 		var response map[string]interface{}
+
+		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
 		json.NewDecoder(w.Body).Decode(&response)
 
 		if response["error"] != "validation failed" {
@@ -783,17 +785,16 @@ func TestFundHandler_CreateFund(t *testing.T) {
 		ms := testutil.NewTestMaterializedService(t, db)
 		handler := handlers.NewFundHandler(fs, ms)
 
-		payload := map[string]interface{}{
+		reqBody := `{
 			"name":           "Apple Inc.",
 			"isin":           "INVALID",
 			"currency":       "USD",
 			"exchange":       "NASDAQ",
 			"investmentType": "STOCK",
-			"dividendType":   "CASH",
-		}
+			"dividendType":   "CASH"
+		}`
 
-		body, _ := json.Marshal(payload)
-		req := httptest.NewRequest(http.MethodPost, "/api/fund", bytes.NewReader(body))
+		req := httptest.NewRequest(http.MethodPost, "/api/fund", strings.NewReader(reqBody))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 
@@ -810,17 +811,16 @@ func TestFundHandler_CreateFund(t *testing.T) {
 		ms := testutil.NewTestMaterializedService(t, db)
 		handler := handlers.NewFundHandler(fs, ms)
 
-		payload := map[string]interface{}{
+		reqBody := `{
 			"name":           "Apple Inc.",
 			"isin":           "US0378331005",
 			"currency":       "USD",
 			"exchange":       "NASDAQ",
 			"investmentType": "INVALID",
-			"dividend_type":  "CASH",
-		}
+			"dividend_type":  "CASH"
+		}`
 
-		body, _ := json.Marshal(payload)
-		req := httptest.NewRequest(http.MethodPost, "/api/fund", bytes.NewReader(body))
+		req := httptest.NewRequest(http.MethodPost, "/api/fund", strings.NewReader(reqBody))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 
@@ -837,17 +837,16 @@ func TestFundHandler_CreateFund(t *testing.T) {
 		ms := testutil.NewTestMaterializedService(t, db)
 		handler := handlers.NewFundHandler(fs, ms)
 
-		payload := map[string]interface{}{
+		reqBody := `{
 			"name":            "Apple Inc.",
 			"isin":            "US0378331005",
 			"currency":        "USD",
 			"exchange":        "NASDAQ",
 			"investment_type": "STOCK",
-			"dividendType":    "INVALID",
-		}
+			"dividendType":    "INVALID"
+		}`
 
-		body, _ := json.Marshal(payload)
-		req := httptest.NewRequest(http.MethodPost, "/api/fund", bytes.NewReader(body))
+		req := httptest.NewRequest(http.MethodPost, "/api/fund", strings.NewReader(reqBody))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 
@@ -875,6 +874,8 @@ func TestFundHandler_CreateFund(t *testing.T) {
 		}
 
 		var response map[string]string
+
+		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
 		json.NewDecoder(w.Body).Decode(&response)
 
 		if response["error"] != "invalid request body" {
@@ -890,17 +891,16 @@ func TestFundHandler_CreateFund(t *testing.T) {
 
 		db.Close() // Force database error
 
-		payload := map[string]interface{}{
+		reqBody := `{
 			"name":           "Apple Inc.",
 			"isin":           "US0378331005",
 			"currency":       "USD",
 			"exchange":       "NASDAQ",
 			"investmentType": "STOCK",
-			"dividendType":   "CASH",
-		}
+			"dividendType":   "CASH"
+		}`
 
-		body, _ := json.Marshal(payload)
-		req := httptest.NewRequest(http.MethodPost, "/api/fund", bytes.NewReader(body))
+		req := httptest.NewRequest(http.MethodPost, "/api/fund", strings.NewReader(reqBody))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 
@@ -924,20 +924,17 @@ func TestFundHandler_UpdateFund(t *testing.T) {
 			WithSymbol("OLD").
 			Build(t, db)
 
-		newName := "New Name"
-		newSymbol := "NEW"
-		payload := map[string]interface{}{
-			"name":   newName,
-			"symbol": newSymbol,
-		}
+		reqBody := `{
+			"name":   "New Name",
+			"symbol": "NEW"
+		}`
 
-		body, _ := json.Marshal(payload)
 		req := testutil.NewRequestWithURLParams(
 			http.MethodPut,
 			"/api/fund/"+fund.ID,
 			map[string]string{"uuid": fund.ID},
 		)
-		req.Body = io.NopCloser(bytes.NewReader(body))
+		req.Body = io.NopCloser(strings.NewReader(reqBody))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 
@@ -953,11 +950,11 @@ func TestFundHandler_UpdateFund(t *testing.T) {
 			t.Fatalf("Failed to decode response: %v", err)
 		}
 
-		if response.Name != newName {
-			t.Errorf("Expected name '%s', got '%s'", newName, response.Name)
+		if response.Name != "New Name" {
+			t.Errorf("Expected name 'New Name', got '%s'", response.Name)
 		}
-		if response.Symbol != newSymbol {
-			t.Errorf("Expected symbol '%s', got '%s'", newSymbol, response.Symbol)
+		if response.Symbol != "NEW" {
+			t.Errorf("Expected symbol 'NEW', got '%s'", response.Symbol)
 		}
 	})
 
@@ -968,17 +965,17 @@ func TestFundHandler_UpdateFund(t *testing.T) {
 		handler := handlers.NewFundHandler(fs, ms)
 
 		nonExistentID := testutil.MakeID()
-		payload := map[string]interface{}{
-			"name": "New Name",
-		}
 
-		body, _ := json.Marshal(payload)
+		reqBody := `{
+			"name": "New Name"
+		}`
+
 		req := testutil.NewRequestWithURLParams(
 			http.MethodPut,
 			"/api/fund/"+nonExistentID,
 			map[string]string{"uuid": nonExistentID},
 		)
-		req.Body = io.NopCloser(bytes.NewReader(body))
+		req.Body = io.NopCloser(strings.NewReader(reqBody))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 
@@ -989,6 +986,8 @@ func TestFundHandler_UpdateFund(t *testing.T) {
 		}
 
 		var response map[string]string
+
+		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
 		json.NewDecoder(w.Body).Decode(&response)
 
 		if response["error"] != apperrors.ErrFundNotFound.Error() {
@@ -1004,17 +1003,16 @@ func TestFundHandler_UpdateFund(t *testing.T) {
 
 		fund := testutil.NewFund().Build(t, db)
 
-		payload := map[string]interface{}{
-			"isin": "INVALID",
-		}
+		reqBody := `{
+			"isin": "INVALID"
+		}`
 
-		body, _ := json.Marshal(payload)
 		req := testutil.NewRequestWithURLParams(
 			http.MethodPut,
 			"/api/fund/"+fund.ID,
 			map[string]string{"uuid": fund.ID},
 		)
-		req.Body = io.NopCloser(bytes.NewReader(body))
+		req.Body = io.NopCloser(strings.NewReader(reqBody))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 
@@ -1049,6 +1047,8 @@ func TestFundHandler_UpdateFund(t *testing.T) {
 		}
 
 		var response map[string]string
+
+		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
 		json.NewDecoder(w.Body).Decode(&response)
 
 		if response["error"] != "invalid request body" {
@@ -1065,17 +1065,16 @@ func TestFundHandler_UpdateFund(t *testing.T) {
 		fund := testutil.NewFund().Build(t, db)
 		db.Close() // Force database error
 
-		payload := map[string]interface{}{
-			"name": "New Name",
-		}
+		reqBody := `{
+			"name": "New Name"
+		}`
 
-		body, _ := json.Marshal(payload)
 		req := testutil.NewRequestWithURLParams(
 			http.MethodPut,
 			"/api/fund/"+fund.ID,
 			map[string]string{"uuid": fund.ID},
 		)
-		req.Body = io.NopCloser(bytes.NewReader(body))
+		req.Body = io.NopCloser(strings.NewReader(reqBody))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 
@@ -1141,6 +1140,8 @@ func TestFundHandler_DeleteFund(t *testing.T) {
 		}
 
 		var response map[string]string
+
+		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
 		json.NewDecoder(w.Body).Decode(&response)
 
 		if response["error"] != apperrors.ErrFundNotFound.Error() {
