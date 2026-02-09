@@ -2,6 +2,7 @@ package validation
 
 import (
 	"fmt"
+	"regexp"
 
 	"github.com/google/uuid"
 )
@@ -62,4 +63,40 @@ func ValidateUUIDs(ids []string) error {
 		}
 	}
 	return nil
+}
+
+func validateISIN(isin string) bool {
+	// Check format first
+	isinRegex := regexp.MustCompile(`^([A-Z]{2})([A-Z0-9]{9})([0-9]{1})$`)
+	if !isinRegex.MatchString(isin) {
+		return false
+	}
+
+	// Convert letters to numbers (A=10, B=11, ..., Z=35)
+	var digits []int
+	for _, char := range isin[:11] {
+		if char >= 'A' && char <= 'Z' {
+			num := int(char - 'A' + 10)
+			digits = append(digits, num/10, num%10)
+		} else {
+			digits = append(digits, int(char-'0'))
+		}
+	}
+
+	// Apply Luhn algorithm
+	sum := 0
+	for i := len(digits) - 1; i >= 0; i-- {
+		digit := digits[i]
+		if (len(digits)-1-i)%2 == 0 {
+			digit *= 2
+			if digit > 9 {
+				digit -= 9
+			}
+		}
+		sum += digit
+	}
+
+	// Verify checksum
+	checkDigit := (10 - (sum % 10)) % 10
+	return checkDigit == int(isin[11]-'0')
 }

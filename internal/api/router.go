@@ -76,6 +76,7 @@ func NewRouter(
 		r.Route("/fund", func(r chi.Router) {
 			fundHandler := handlers.NewFundHandler(fundService, materializedService)
 			r.Get("/", fundHandler.GetAllFunds)
+			r.Post("/", fundHandler.CreateFund)
 			r.Get("/symbol/{symbol}", fundHandler.GetSymbol)
 
 			r.Route("/fund-prices/{uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", func(r chi.Router) {
@@ -91,6 +92,9 @@ func NewRouter(
 			r.Route("/{uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", func(r chi.Router) {
 				r.Use(custommiddleware.ValidateUUIDMiddleware)
 				r.Get("/", fundHandler.GetFund)
+				r.Put("/", fundHandler.UpdateFund)
+				r.Get("/check-usage", fundHandler.CheckUsage)
+				r.Delete("/", fundHandler.DeleteFund)
 			})
 		})
 

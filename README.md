@@ -47,21 +47,20 @@ This backend aims to replicate all 73 endpoints from the Python backend. Below i
 │   └── DELETE /fund/{id}                       ✅ Remove fund from portfolio
 │
 ├── /fund (5/13 endpoints) 🚧
-│   ├── GET    /                                ✅ List all funds
-│   ├── POST   /                                ⬜ Create fund
-│   ├── GET    /{id}                            ✅ Get fund by ID
-│   ├── PUT    /{id}                            ⬜ Update fund
-│   ├── DELETE /{id}                            ⬜ Delete fund
-│   ├── GET    /history/{portfolioID}           ✅ Portfolio-fund history
-│   ├── GET    /symbol/{symbol}                 ✅ Get fund by Symbol
-│   ├── GET    /fund-prices/{id}                ✅ Get fund prices
-│   ├── POST   /{id}/prices                     ⬜ Add fund price
-│   ├── PUT    /{id}/prices/{price_id}          ⬜ Update fund price
-│   ├── DELETE /{id}/prices/{price_id}          ⬜ Delete fund price
-│   ├── POST   /{id}/update-price               ⬜ Update current price
-│   ├── POST   /update-all-prices               ⬜ Update all fund prices
-│   └── POST   /import-prices                   ⬜ Import prices from CSV
-│
+│   ├── GET         /                           ✅ Get all funds
+│   ├── POST        /                           ✅ Create a new fund
+│   ├── GET         /{id}                       ✅ Get fund details
+│   ├── PUT         /{id}                       ✅ Update fund information
+│   ├── DELETE      /{id}                       ✅ Delete a fund
+│   ├── GET         /fund-prices/{id}           ✅ Get price history for a fund
+│   ├── POST        /fund-prices/{id}/update    ⬜ Update fund prices from external source
+│   ├── GET         /history/{portfolioID}      ✅ Get historical fund values for a portfolio
+│   ├── GET         /symbol/{symbol}            ✅ Get information about a trading symbol
+│   ├── POST        /update-all-prices          ⬜ Update prices for all funds
+│   ├── GET         /{id}/check-usage           ✅ Check if fund is being used
+│   ├── POST        /{id}/price/historical      ⬜ Update historical prices for a fund
+│   └── POST        /{id}/price/today           ⬜ Update today's price for a fund
+|
 ├── /transaction (3/6 endpoints) ⬜
 │   ├── GET    /                                ✅ List all transactions
 │   ├── POST   /                                ⬜ Create transaction

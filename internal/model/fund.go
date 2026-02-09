@@ -12,7 +12,7 @@ type Fund struct {
 	Exchange       string  `json:"exchange"`
 	InvestmentType string  `json:"investmentType"`
 	DividendType   string  `json:"dividendType"`
-	LatestPrice    float64 `json:"latest_price"`
+	LatestPrice    float64 `json:"latestPrice,omitempty"`
 }
 
 // PortfolioFund represends a portfolio_fund record from the database
@@ -99,4 +99,15 @@ type Symbol struct {
 	LastUpdated time.Time `json:"lastUpdated"`
 	DataSource  string    `json:"dataSource"`
 	IsValid     bool      `json:"isValid"`
+}
+
+type FundUsage struct {
+	InUsage    bool                   `json:"inUse"`
+	Portfolios []PortfolioTransaction `json:"portfolios,omitempty"`
+}
+
+type PortfolioTransaction struct {
+	ID               string `json:"id"`
+	Name             string `json:"name"`
+	TransactionCount int    `json:"transactionCount"`
 }
