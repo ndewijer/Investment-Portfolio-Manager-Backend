@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/request"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/apperrors"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/repository"
 )
@@ -125,9 +126,16 @@ func (s *FundService) LoadFundPrices(fundIDs []string, startDate, endDate time.T
 }
 
 // CheckUsage checks if a fund is currently in use by any portfolios.
-// Returns a FundUsage object indicating whether the fund is in use and which portfolios use it.
-// If the fund is not in use, InUsage will be false and Portfolios will be empty.
-// If the fund is in use, InUsage will be true and Portfolios will contain the portfolio information.
+// A fund is considered "in use" if it has portfolio_fund relationships with transactions.
+// This check is critical for data integrity - funds with usage history should not be deleted
+// to preserve portfolio history and fund price data for historical calculations.
+//
+// Returns a FundUsage object:
+//   - InUsage: true if the fund has been used in any portfolio (has transactions)
+//   - Portfolios: list of portfolios using the fund with transaction counts
+//   - Empty Portfolios slice means the fund can be safely deleted
+//
+// Use case: Call before deletion to prevent losing historical data.
 func (s *FundService) CheckUsage(fundID string) (model.FundUsage, error) {
 	checkUsage, err := s.fundRepo.CheckUsage(fundID)
 	if err != nil {
@@ -234,6 +242,10 @@ func (s *FundService) DeletePortfolioFund(ctx context.Context, pfID string) erro
 // CreateFund creates a new fund with the provided details.
 // Generates a new UUID for the fund and inserts it into the database.
 //
+// Note: Once a fund is used in a portfolio (has transactions), it becomes permanent
+// and cannot be deleted. This preserves portfolio history and fund price data.
+// Only delete unused funds (e.g., created by mistake).
+//
 // Parameters:
 //   - ctx: Context for the operation
 //   - req: CreateFundRequest containing all required fund fields
@@ -259,13 +271,18 @@ func (s *FundService) CreateFund(ctx context.Context, req request.CreateFundRequ
 }
 
 // DeleteFund removes a fund from the database.
-// Validates that the fund exists before deletion.
+// Validates that the fund exists and is not in use before deletion.
+// A fund is considered "in use" if it has been associated with any portfolios
+// (has transactions). This preserves portfolio history and fund price data.
 //
 // Parameters:
 //   - ctx: Context for the operation
 //   - id: The fund ID to delete
 //
-// Returns an error if the fund doesn't exist or deletion fails.
+// Returns:
+//   - apperrors.ErrFundNotFound if the fund doesn't exist
+//   - apperrors.ErrFundInUse if the fund is being used by portfolios
+//   - error if deletion fails
 func (s *FundService) DeleteFund(ctx context.Context, id string) error {
 
 	_, err := s.fundRepo.GetFund(id)
@@ -273,9 +290,19 @@ func (s *FundService) DeleteFund(ctx context.Context, id string) error {
 		return err
 	}
 
+	// Check if fund is in use by any portfolios
+	usage, err := s.CheckUsage(id)
+	if err != nil {
+		return fmt.Errorf("failed to check fund usage: %w", err)
+	}
+
+	if usage.InUsage {
+		return apperrors.ErrFundInUse
+	}
+
 	err = s.fundRepo.DeleteFund(ctx, id)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to delete fund: %w", err)
 	}
 
 	return nil

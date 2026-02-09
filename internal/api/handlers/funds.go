@@ -271,12 +271,15 @@ func (h *FundHandler) UpdateFund(w http.ResponseWriter, r *http.Request) {
 }
 
 // DeleteFund handles DELETE requests to remove a fund.
-// Checks if the fund exists before deletion.
+// Checks if the fund exists and is not in use before deletion.
+// A fund cannot be deleted if it has been used in any portfolios (has transactions),
+// as this would destroy portfolio history and fund price data.
 //
 // Endpoint: DELETE /api/fund/{uuid}
 // Response: 204 No Content on successful deletion
 // Error: 400 Bad Request if fund ID is invalid (validated by middleware)
 // Error: 404 Not Found if fund does not exist
+// Error: 409 Conflict if fund is in use by portfolios
 // Error: 500 Internal Server Error if deletion fails
 func (h *FundHandler) DeleteFund(w http.ResponseWriter, r *http.Request) {
 	fundID := chi.URLParam(r, "uuid")
@@ -286,6 +289,12 @@ func (h *FundHandler) DeleteFund(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, apperrors.ErrFundNotFound) {
 
 			response.RespondError(w, http.StatusNotFound, apperrors.ErrFundNotFound.Error(), err.Error())
+			return
+		}
+
+		if errors.Is(err, apperrors.ErrFundInUse) {
+
+			response.RespondError(w, http.StatusConflict, "cannot delete fund: in use by portfolio", err.Error())
 			return
 		}
 

@@ -61,6 +61,9 @@ var (
 	// ErrDuplicateEntry indicates that an entity with the same unique constraint already exists.
 	ErrDuplicateEntry = errors.New("duplicate entry")
 
+	// ErrFundInUse indicates that a fund cannot be deleted because it is being used by portfolios.
+	ErrFundInUse = errors.New("fund is in use")
+
 	// Validation errors for required fields
 	ErrInvalidPortfolioID   = errors.New("portfolio ID is required")
 	ErrInvalidFundID        = errors.New("fund ID is required")

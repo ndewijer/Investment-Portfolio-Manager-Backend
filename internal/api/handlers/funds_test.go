@@ -1149,6 +1149,47 @@ func TestFundHandler_DeleteFund(t *testing.T) {
 		}
 	})
 
+	t.Run("returns 409 when fund is in use", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		fs := testutil.NewTestFundService(t, db)
+		ms := testutil.NewTestMaterializedService(t, db)
+		handler := handlers.NewFundHandler(fs, ms)
+
+		// Create fund with portfolio and transaction (makes it "in use")
+		fund := testutil.NewFund().Build(t, db)
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		pf := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+		testutil.NewTransaction(pf.ID).Build(t, db)
+
+		req := testutil.NewRequestWithURLParams(
+			http.MethodDelete,
+			"/api/fund/"+fund.ID,
+			map[string]string{"uuid": fund.ID},
+		)
+		w := httptest.NewRecorder()
+
+		handler.DeleteFund(w, req)
+
+		if w.Code != http.StatusConflict {
+			t.Errorf("Expected status 409, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var response map[string]string
+
+		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if response["error"] != "cannot delete fund: in use by portfolio" {
+			t.Errorf("Expected 'cannot delete fund: in use by portfolio' error, got '%s'", response["error"])
+		}
+
+		// Verify fund still exists
+		_, err := fs.GetFund(fund.ID)
+		if err != nil {
+			t.Errorf("Fund should still exist after failed deletion, got error: %v", err)
+		}
+	})
+
 	t.Run("returns 500 on database error", func(t *testing.T) {
 		db := testutil.SetupTestDB(t)
 		fs := testutil.NewTestFundService(t, db)
