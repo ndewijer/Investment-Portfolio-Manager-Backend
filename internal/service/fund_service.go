@@ -43,8 +43,12 @@ func NewFundService(
 // GetFund retrieves funds from the database. If fundID is empty, returns all funds.
 // If fundID is provided, returns only the fund with that ID.
 // Returns fund metadata including latest prices.
-func (s *FundService) GetFund(fundID string) ([]model.Fund, error) {
+func (s *FundService) GetFund(fundID string) (model.Fund, error) {
 	return s.fundRepo.GetFund(fundID)
+}
+
+func (s *FundService) GetAllFunds() ([]model.Fund, error) {
+	return s.fundRepo.GetAllFunds()
 }
 
 // GetSymbol retrieves symbol information by ticker symbol.
@@ -119,6 +123,22 @@ func (s *FundService) LoadFundPrices(fundIDs []string, startDate, endDate time.T
 	return s.fundRepo.GetFundPrice(fundIDs, startDate, endDate, ascending)
 }
 
+func (s *FundService) CheckUsage(fundID string) (model.FundUsage, error) {
+	checkUsage, err := s.fundRepo.CheckUsage(fundID)
+	if err != nil {
+		return model.FundUsage{}, err
+	}
+	var fundUsage model.FundUsage
+	if len(checkUsage) == 0 {
+		fundUsage.InUsage = false
+	} else {
+		fundUsage.InUsage = true
+		fundUsage.Portfolios = checkUsage
+	}
+
+	return fundUsage, nil
+}
+
 func (s *FundService) CreatePortfolioFund(ctx context.Context, req request.CreatePortfolioFundRequest) error {
 	_, err := s.portfolioService.GetPortfolio(req.PortfolioID)
 	if err != nil {
@@ -135,6 +155,48 @@ func (s *FundService) CreatePortfolioFund(ctx context.Context, req request.Creat
 	}
 
 	return nil
+}
+
+func (s *FundService) UpdateFund(
+	ctx context.Context,
+	id string,
+	req request.UpdateFundRequest,
+) (*model.Fund, error) {
+	fund, err := s.fundRepo.GetFund(id)
+	if err != nil {
+		return nil, err
+	}
+
+	if req.ID != nil {
+		fund.ID = *req.ID
+	}
+	if req.Name != nil {
+		fund.Name = *req.Name
+	}
+	if req.Isin != nil {
+		fund.Isin = *req.Isin
+	}
+	if req.Symbol != nil {
+		fund.Symbol = *req.Symbol
+	}
+	if req.Currency != nil {
+		fund.Currency = *req.Currency
+	}
+	if req.Exchange != nil {
+		fund.Exchange = *req.Exchange
+	}
+	if req.InvestmentType != nil {
+		fund.InvestmentType = *req.InvestmentType
+	}
+	if req.DividendType != nil {
+		fund.DividendType = *req.DividendType
+	}
+
+	if err := s.fundRepo.UpdateFund(ctx, &fund); err != nil {
+		return nil, fmt.Errorf("failed to update portfolio: %w", err)
+	}
+
+	return &fund, nil
 }
 
 func (s *FundService) DeletePortfolioFund(ctx context.Context, pfID string) error {
@@ -169,4 +231,19 @@ func (s *FundService) CreateFund(ctx context.Context, req request.CreateFundRequ
 	}
 
 	return fund, nil
+}
+
+func (s *FundService) DeleteFund(ctx context.Context, id string) error {
+
+	_, err := s.fundRepo.GetFund(id)
+	if err != nil {
+		return err
+	}
+
+	err = s.fundRepo.DeleteFund(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

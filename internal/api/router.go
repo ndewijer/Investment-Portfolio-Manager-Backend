@@ -92,6 +92,9 @@ func NewRouter(
 			r.Route("/{uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", func(r chi.Router) {
 				r.Use(custommiddleware.ValidateUUIDMiddleware)
 				r.Get("/", fundHandler.GetFund)
+				r.Put("/", fundHandler.UpdateFund)
+				r.Get("/check-usage", fundHandler.CheckUsage)
+				r.Delete("/", fundHandler.DeleteFund)
 			})
 		})
 

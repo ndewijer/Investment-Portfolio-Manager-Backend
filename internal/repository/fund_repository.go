@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -47,7 +48,7 @@ func (r *FundRepository) getQuerier() interface {
 
 // GetFund retrieves all funds from the database.
 // Returns an empty slice if no funds are found.
-func (r *FundRepository) GetFund(fundID string) ([]model.Fund, error) {
+func (r *FundRepository) GetAllFunds() ([]model.Fund, error) {
 	query := `
         SELECT f.id, f.name, f.isin, f.symbol, f.currency, f.exchange, f.investment_type, f.dividend_type, fp.price
 		FROM fund f
@@ -62,14 +63,7 @@ func (r *FundRepository) GetFund(fundID string) ([]model.Fund, error) {
 		)  fp ON f.id = fp.fund_id
       `
 
-	var args []any
-
-	if fundID != "" {
-		query += ` WHERE f.id = ?`
-		args = append(args, fundID)
-	}
-
-	rows, err := r.db.Query(query, args...)
+	rows, err := r.db.Query(query)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to query fund table: %w", err)
@@ -109,11 +103,49 @@ func (r *FundRepository) GetFund(fundID string) ([]model.Fund, error) {
 		return nil, fmt.Errorf("error iterating fund table: %w", err)
 	}
 
-	if fundID != "" && len(funds) == 0 {
-		return nil, apperrors.ErrFundNotFound
+	return funds, nil
+}
+
+func (r *FundRepository) GetFund(fundID string) (model.Fund, error) {
+	query := `
+        SELECT f.id, f.name, f.isin, f.symbol, f.currency, f.exchange, f.investment_type, f.dividend_type, fp.price
+		FROM fund f
+		LEFT JOIN (
+			SELECT fp.fund_id, fp.price, fp.date
+			FROM fund_price fp
+			INNER JOIN (
+				SELECT fund_id, MAX(date) as latest_date
+				FROM fund_price
+				GROUP BY fund_id
+			) latest ON fp.fund_id = latest.fund_id AND fp.date = latest.latest_date
+		)  fp ON f.id = fp.fund_id
+ 		WHERE f.id = ?
+		`
+
+	var f model.Fund
+	var priceStr sql.NullFloat64
+	err := r.db.QueryRow(query, fundID).Scan(
+		&f.ID,
+		&f.Name,
+		&f.Isin,
+		&f.Symbol,
+		&f.Currency,
+		&f.Exchange,
+		&f.InvestmentType,
+		&f.DividendType,
+		&priceStr,
+	)
+	if err == sql.ErrNoRows {
+		return model.Fund{}, apperrors.ErrFundNotFound
+	}
+	if err != nil {
+		return model.Fund{}, err
+	}
+	if priceStr.Valid {
+		f.LatestPrice = priceStr.Float64
 	}
 
-	return funds, nil
+	return f, nil
 }
 
 // GetFunds retrieves fund records for the given fund IDs.
@@ -126,9 +158,18 @@ func (r *FundRepository) GetFunds(fundIDs []string) ([]model.Fund, error) {
 
 	//#nosec G202 -- Safe: placeholders are generated programmatically, not from user input
 	fundQuery := `
-      SELECT id, name, isin, symbol, currency, exchange, investment_type, dividend_type
-      FROM fund
-      WHERE id IN (` + strings.Join(fundPlaceholders, ",") + `)
+		SELECT f.id, f.name, f.isin, f.symbol, f.currency, f.exchange, f.investment_type, f.dividend_type, fp.price
+		FROM fund f
+		LEFT JOIN (
+			SELECT fp.fund_id, fp.price, fp.date
+			FROM fund_price fp
+			INNER JOIN (
+				SELECT fund_id, MAX(date) as latest_date
+				FROM fund_price
+				GROUP BY fund_id
+			) latest ON fp.fund_id = latest.fund_id AND fp.date = latest.latest_date
+		)  fp ON f.id = fp.fund_id
+      WHERE f.id IN (` + strings.Join(fundPlaceholders, ",") + `)
   `
 
 	fundArgs := make([]any, len(fundIDs))
@@ -142,7 +183,7 @@ func (r *FundRepository) GetFunds(fundIDs []string) ([]model.Fund, error) {
 	}
 	defer rows.Close()
 
-	fundsByPortfolio := []model.Fund{}
+	funds := []model.Fund{}
 
 	for rows.Next() {
 		var f model.Fund
@@ -161,13 +202,13 @@ func (r *FundRepository) GetFunds(fundIDs []string) ([]model.Fund, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan fund table results: %w", err)
 		}
-		fundsByPortfolio = append(fundsByPortfolio, f)
+		funds = append(funds, f)
 	}
 	if err = rows.Err(); err != nil {
 		return nil, fmt.Errorf("error iterating fund table: %w", err)
 	}
 
-	return fundsByPortfolio, nil
+	return funds, nil
 }
 
 // GetFundPrice retrieves historical price data for the given fund IDs within the specified date range.
@@ -480,9 +521,108 @@ func (r *FundRepository) GetFundBySymbolOrIsin(symbol, isin string) (model.Fund,
 
 }
 
+func (r *FundRepository) GetPortfolioFundsbyFundID(fundID string) ([]model.PortfolioFund, error) {
+
+	if fundID == "" {
+		return nil, apperrors.ErrInvalidFundID
+	}
+
+	query := `
+		SELECT id, portfolio_id, fund_id
+		FROM portfolio_fund
+		WHERE fund_id = ?
+	`
+
+	rows, err := r.db.Query(query, fundID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query portfolio_fund listings: %w", err)
+	}
+	defer rows.Close()
+
+	pfs := []model.PortfolioFund{}
+
+	for rows.Next() {
+		var pf model.PortfolioFund
+		err := rows.Scan(
+			&pf.ID,
+			&pf.PortfolioID,
+			&pf.FundID,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan portfolio_fund listing: %w", err)
+		}
+		pfs = append(pfs, pf)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating portfolio_fund listings: %w", err)
+	}
+
+	if len(pfs) == 0 {
+		return nil, apperrors.ErrPortfolioFundNotFound
+	}
+
+	return pfs, nil
+}
+
+func (r *FundRepository) CheckUsage(fundID string) ([]model.PortfolioTransaction, error) {
+
+	pfs, err := r.GetPortfolioFundsbyFundID(fundID)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrPortfolioFundNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	pfIDs := make([]any, len(pfs))
+	placeholders := make([]string, len(pfs))
+	for i, v := range pfs {
+		pfIDs[i] = v.ID
+		placeholders[i] = "?"
+	}
+
+	//#nosec G202 -- Safe: placeholders are generated programmatically, not from user input
+	query := `
+		SELECT  pf.portfolio_id, p.name, COALESCE(COUNT(t.id), 0) as transaction_count
+        FROM portfolio_fund pf
+        JOIN portfolio p ON p.id = pf.portfolio_id
+        LEFT JOIN "transaction" t ON t.portfolio_fund_id = pf.id
+        WHERE pf.id IN (` + strings.Join(placeholders, ",") + `)
+        GROUP BY pf.portfolio_id, p.name
+		`
+
+	PFTs := make([]model.PortfolioTransaction, 0, len(pfs))
+
+	rows, err := r.db.Query(query, pfIDs...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query transaction table: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var pft model.PortfolioTransaction
+		err := rows.Scan(
+			&pft.ID,
+			&pft.Name,
+			&pft.TransactionCount,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan transaction or portfolio_fund table results: %w", err)
+		}
+
+		PFTs = append(PFTs, pft)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating transaction or portfolio_fund listings: %w", err)
+	}
+
+	return PFTs, nil
+}
+
 func (r *FundRepository) GetPortfolioFund(pfID string) (model.PortfolioFund, error) {
 	if pfID == "" {
-		return model.PortfolioFund{}, fmt.Errorf("portfolio_fund ID required")
+		return model.PortfolioFund{}, apperrors.ErrInvalidPortfolioID
 	}
 
 	query := `
@@ -565,7 +705,61 @@ func (r *FundRepository) InsertFund(ctx context.Context, f *model.Fund) error {
 	)
 
 	if err != nil {
-		return fmt.Errorf("failed to insert portfolio: %w", err)
+		return fmt.Errorf("failed to insert fund: %w", err)
+	}
+
+	return nil
+}
+
+func (r *FundRepository) UpdateFund(ctx context.Context, f *model.Fund) error {
+	query := `
+        UPDATE fund
+        SET name = ?, isin = ?, symbol = ?, exchange = ?, currency = ?, investment_type = ?, dividend_type = ?
+        WHERE id = ?
+    `
+
+	result, err := r.getQuerier().ExecContext(ctx, query,
+		f.Name,
+		f.Isin,
+		f.Symbol,
+		f.Exchange,
+		f.Currency,
+		f.InvestmentType,
+		f.DividendType,
+		f.ID,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to update fund: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return apperrors.ErrFundNotFound
+	}
+
+	return nil
+}
+
+func (r *FundRepository) DeleteFund(ctx context.Context, fundID string) error {
+	query := `DELETE FROM fund WHERE id = ?`
+
+	result, err := r.getQuerier().ExecContext(ctx, query, fundID)
+	if err != nil {
+		return fmt.Errorf("failed to delete fund: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return apperrors.ErrFundNotFound
 	}
 
 	return nil

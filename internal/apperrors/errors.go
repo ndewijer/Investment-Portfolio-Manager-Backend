@@ -85,6 +85,7 @@ var (
 	ErrFailedToRetrieveFund        = errors.New("failed to retrieve fund")
 	ErrFailedToRetrieveFundHistory = errors.New("failed to retrieve fund history")
 	ErrFailedToRetrieveSymbol      = errors.New("failed to retrieve symbol")
+	ErrFailedToRetrieveUsage       = errors.New("failed to retrieve fund usage")
 
 	// Portfolio operation errors
 	ErrFailedToRetrievePortfolios     = errors.New("failed to retrieve portfolios")

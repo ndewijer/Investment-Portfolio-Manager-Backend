@@ -41,7 +41,7 @@ func NewFundHandler(fundService *service.FundService, materializedService *servi
 // Error: 500 Internal Server Error if retrieval fails
 func (h *FundHandler) GetAllFunds(w http.ResponseWriter, _ *http.Request) {
 
-	funds, err := h.fundService.GetFund("")
+	funds, err := h.fundService.GetAllFunds()
 	if err != nil {
 		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToRetrieveFunds.Error(), err.Error())
 		return
@@ -62,7 +62,7 @@ func (h *FundHandler) GetFund(w http.ResponseWriter, r *http.Request) {
 
 	fundID := chi.URLParam(r, "uuid")
 
-	funds, err := h.fundService.GetFund(fundID)
+	fund, err := h.fundService.GetFund(fundID)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrFundNotFound) {
 			response.RespondError(w, http.StatusNotFound, apperrors.ErrFundNotFound.Error(), err.Error())
@@ -73,7 +73,7 @@ func (h *FundHandler) GetFund(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response.RespondJSON(w, http.StatusOK, funds[0])
+	response.RespondJSON(w, http.StatusOK, fund)
 }
 
 // GetSymbol handles GET requests to retrieve symbol information by ticker symbol.
@@ -161,6 +161,17 @@ func (h *FundHandler) GetFundPrices(w http.ResponseWriter, r *http.Request) {
 	response.RespondJSON(w, http.StatusOK, funds[fundID])
 }
 
+func (h *FundHandler) CheckUsage(w http.ResponseWriter, r *http.Request) {
+	fundID := chi.URLParam(r, "uuid")
+
+	fundUsage, err := h.fundService.CheckUsage(fundID)
+	if err != nil {
+		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToRetrieveUsage.Error(), err.Error())
+	}
+
+	response.RespondJSON(w, http.StatusOK, fundUsage)
+}
+
 func (h *FundHandler) CreateFund(w http.ResponseWriter, r *http.Request) {
 	req, err := parseJSON[request.CreateFundRequest](r)
 	if err != nil {
@@ -183,4 +194,53 @@ func (h *FundHandler) CreateFund(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.RespondJSON(w, http.StatusCreated, portfolio)
+}
+
+func (h *FundHandler) UpdateFund(w http.ResponseWriter, r *http.Request) {
+	fundID := chi.URLParam(r, "uuid")
+
+	req, err := parseJSON[request.UpdateFundRequest](r)
+	if err != nil {
+
+		response.RespondError(w, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
+
+	if err := validation.ValidateUpdateFund(req); err != nil {
+
+		response.RespondError(w, http.StatusBadRequest, "validation failed", err.Error())
+		return
+	}
+
+	portfolio, err := h.fundService.UpdateFund(r.Context(), fundID, req)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrPortfolioNotFound) {
+
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrPortfolioNotFound.Error(), err.Error())
+			return
+		}
+
+		response.RespondError(w, http.StatusInternalServerError, "failed to update portfolio", err.Error())
+		return
+	}
+
+	response.RespondJSON(w, http.StatusOK, portfolio)
+}
+
+func (h *FundHandler) DeleteFund(w http.ResponseWriter, r *http.Request) {
+	fundID := chi.URLParam(r, "uuid")
+
+	err := h.fundService.DeleteFund(r.Context(), fundID)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrFundNotFound) {
+
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrFundNotFound.Error(), err.Error())
+			return
+		}
+
+		response.RespondError(w, http.StatusInternalServerError, "failed to delete fund", err.Error())
+		return
+	}
+
+	response.RespondJSON(w, http.StatusNoContent, nil)
 }
