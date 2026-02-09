@@ -174,6 +174,7 @@ func (h *FundHandler) CheckUsage(w http.ResponseWriter, r *http.Request) {
 	fundUsage, err := h.fundService.CheckUsage(fundID)
 	if err != nil {
 		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToRetrieveUsage.Error(), err.Error())
+		return
 	}
 
 	response.RespondJSON(w, http.StatusOK, fundUsage)
@@ -226,7 +227,6 @@ func (h *FundHandler) CreateFund(w http.ResponseWriter, r *http.Request) {
 //
 // Endpoint: PUT /api/fund/{uuid}
 // Request Body: UpdateFundRequest (JSON) - all fields optional but validated if provided:
-//   - id: New fund ID
 //   - name: New fund name (max 100 chars)
 //   - isin: New ISIN code (format: 2 letters + 9 alphanumeric + 1 digit)
 //   - currency: New currency code (max 3 chars, e.g., USD, EUR)

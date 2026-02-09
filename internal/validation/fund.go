@@ -2,7 +2,6 @@ package validation
 
 import (
 	"fmt"
-	"regexp"
 	"strings"
 
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/request"
@@ -47,11 +46,7 @@ func ValidateCreateFund(req request.CreateFundRequest) error {
 	if strings.TrimSpace(req.Isin) == "" {
 		errors["isin"] = "isin is required"
 	}
-	match, err := regexp.MatchString("^([A-Z]{2})([A-Z0-9]{9})([0-9]{1})$", req.Isin)
-	if err != nil {
-		return err
-	}
-	if !match {
+	if !validateISIN(req.Isin) {
 		errors["isin"] = "isin structure is not correct"
 	}
 
@@ -74,9 +69,9 @@ func ValidateCreateFund(req request.CreateFundRequest) error {
 	}
 
 	if strings.TrimSpace(req.InvestmentType) == "" {
-		errors["investmentType"] = "investement type is required"
+		errors["investmentType"] = "investment type is required"
 	} else if !ValidInvestmentType[req.InvestmentType] {
-		errors["investmentType"] = fmt.Sprintf("invalid investement type: %s", req.InvestmentType)
+		errors["investmentType"] = fmt.Sprintf("invalid investment type: %s", req.InvestmentType)
 	}
 
 	// optional
@@ -120,11 +115,8 @@ func ValidateUpdateFund(req request.UpdateFundRequest) error {
 		if strings.TrimSpace(*req.Isin) == "" {
 			errors["isin"] = "isin is required"
 		}
-		match, err := regexp.MatchString("^([A-Z]{2})([A-Z0-9]{9})([0-9]{1})$", *req.Isin)
-		if err != nil {
-			return err
-		}
-		if !match {
+
+		if !validateISIN(*req.Isin) {
 			errors["isin"] = "isin structure is not correct"
 		}
 	}
@@ -151,9 +143,9 @@ func ValidateUpdateFund(req request.UpdateFundRequest) error {
 	}
 	if req.InvestmentType != nil {
 		if strings.TrimSpace(*req.InvestmentType) == "" {
-			errors["investmentType"] = "investement type is required"
+			errors["investmentType"] = "investment type is required"
 		} else if !ValidInvestmentType[*req.InvestmentType] {
-			errors["investmentType"] = fmt.Sprintf("invalid investement type: %s", *req.InvestmentType)
+			errors["investmentType"] = fmt.Sprintf("invalid investment type: %s", *req.InvestmentType)
 		}
 	}
 	// optional

@@ -217,8 +217,8 @@ func (b *FundBuilder) WithExchange(exchange string) *FundBuilder {
 	return b
 }
 
-// WithInvestementType sets the investment type.
-func (b *FundBuilder) WithInvestementType(investmentType string) *FundBuilder {
+// WithInvestmentType sets the investment type.
+func (b *FundBuilder) WithInvestmentType(investmentType string) *FundBuilder {
 	b.InvestmentType = investmentType
 	return b
 }

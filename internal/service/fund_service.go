@@ -184,10 +184,6 @@ func (s *FundService) UpdateFund(
 	if err != nil {
 		return nil, err
 	}
-
-	if req.ID != nil {
-		fund.ID = *req.ID
-	}
 	if req.Name != nil {
 		fund.Name = *req.Name
 	}
@@ -211,7 +207,7 @@ func (s *FundService) UpdateFund(
 	}
 
 	if err := s.fundRepo.UpdateFund(ctx, &fund); err != nil {
-		return nil, fmt.Errorf("failed to update portfolio: %w", err)
+		return nil, fmt.Errorf("failed to update fund: %w", err)
 	}
 
 	return &fund, nil

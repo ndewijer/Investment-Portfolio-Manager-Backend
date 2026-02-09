@@ -116,7 +116,7 @@ func TestFundHandler_GetAllFunds(t *testing.T) {
 			WithExchange("NSE").
 			WithISIN("ISIN12345").
 			WithSymbol("APPL").
-			WithInvestementType("stock").
+			WithInvestmentType("stock").
 			WithDividendType("none").
 			Build(t, db)
 
