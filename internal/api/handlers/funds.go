@@ -161,6 +161,13 @@ func (h *FundHandler) GetFundPrices(w http.ResponseWriter, r *http.Request) {
 	response.RespondJSON(w, http.StatusOK, funds[fundID])
 }
 
+// CheckUsage handles GET requests to check if a fund is currently in use by any portfolios.
+// Returns usage information including whether the fund is in use and which portfolios use it.
+//
+// Endpoint: GET /api/fund/check-usage/{uuid}
+// Response: 200 OK with FundUsage
+// Error: 400 Bad Request if fund ID is invalid (validated by middleware)
+// Error: 500 Internal Server Error if retrieval fails
 func (h *FundHandler) CheckUsage(w http.ResponseWriter, r *http.Request) {
 	fundID := chi.URLParam(r, "uuid")
 
@@ -172,6 +179,22 @@ func (h *FundHandler) CheckUsage(w http.ResponseWriter, r *http.Request) {
 	response.RespondJSON(w, http.StatusOK, fundUsage)
 }
 
+// CreateFund handles POST requests to create a new fund.
+// Validates the request and creates a fund with the provided details.
+//
+// Endpoint: POST /api/fund
+// Request Body: CreateFundRequest (JSON)
+//   - name: Fund name (required, max 100 chars)
+//   - isin: ISIN code (required, format: 2 letters + 9 alphanumeric + 1 digit)
+//   - currency: Currency code (required, max 3 chars, e.g., USD, EUR)
+//   - exchange: Exchange name (required, max 15 chars, e.g., NYSE, AMS)
+//   - investment_type: Type of investment (required, must be "FUND" or "STOCK")
+//   - dividend_type: Type of dividend (required, must be "CASH", "STOCK", or "NONE")
+//   - symbol: Trading symbol (optional, max 10 chars)
+//
+// Response: 201 Created with Fund
+// Error: 400 Bad Request if validation fails
+// Error: 500 Internal Server Error if creation fails
 func (h *FundHandler) CreateFund(w http.ResponseWriter, r *http.Request) {
 	req, err := parseJSON[request.CreateFundRequest](r)
 	if err != nil {
@@ -196,6 +219,26 @@ func (h *FundHandler) CreateFund(w http.ResponseWriter, r *http.Request) {
 	response.RespondJSON(w, http.StatusCreated, portfolio)
 }
 
+// UpdateFund handles PUT requests to update an existing fund.
+// Validates the request and updates the fund with the provided fields.
+// All fields are optional; only provided fields are updated, omitted fields remain unchanged.
+// However, if a field is provided, it must meet the validation requirements.
+//
+// Endpoint: PUT /api/fund/{uuid}
+// Request Body: UpdateFundRequest (JSON) - all fields optional but validated if provided:
+//   - id: New fund ID
+//   - name: New fund name (max 100 chars)
+//   - isin: New ISIN code (format: 2 letters + 9 alphanumeric + 1 digit)
+//   - currency: New currency code (max 3 chars, e.g., USD, EUR)
+//   - exchange: New exchange name (max 15 chars, e.g., NYSE, AMS)
+//   - investment_type: New investment type (must be "FUND" or "STOCK")
+//   - dividend_type: New dividend type (must be "CASH", "STOCK", or "NONE")
+//   - symbol: New trading symbol (max 10 chars)
+//
+// Response: 200 OK with updated Fund
+// Error: 400 Bad Request if validation fails or fund ID is invalid
+// Error: 404 Not Found if fund does not exist
+// Error: 500 Internal Server Error if update fails
 func (h *FundHandler) UpdateFund(w http.ResponseWriter, r *http.Request) {
 	fundID := chi.URLParam(r, "uuid")
 
@@ -214,19 +257,27 @@ func (h *FundHandler) UpdateFund(w http.ResponseWriter, r *http.Request) {
 
 	portfolio, err := h.fundService.UpdateFund(r.Context(), fundID, req)
 	if err != nil {
-		if errors.Is(err, apperrors.ErrPortfolioNotFound) {
+		if errors.Is(err, apperrors.ErrFundNotFound) {
 
-			response.RespondError(w, http.StatusNotFound, apperrors.ErrPortfolioNotFound.Error(), err.Error())
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrFundNotFound.Error(), err.Error())
 			return
 		}
 
-		response.RespondError(w, http.StatusInternalServerError, "failed to update portfolio", err.Error())
+		response.RespondError(w, http.StatusInternalServerError, "failed to update fund", err.Error())
 		return
 	}
 
 	response.RespondJSON(w, http.StatusOK, portfolio)
 }
 
+// DeleteFund handles DELETE requests to remove a fund.
+// Checks if the fund exists before deletion.
+//
+// Endpoint: DELETE /api/fund/{uuid}
+// Response: 204 No Content on successful deletion
+// Error: 400 Bad Request if fund ID is invalid (validated by middleware)
+// Error: 404 Not Found if fund does not exist
+// Error: 500 Internal Server Error if deletion fails
 func (h *FundHandler) DeleteFund(w http.ResponseWriter, r *http.Request) {
 	fundID := chi.URLParam(r, "uuid")
 

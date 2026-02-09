@@ -8,14 +8,31 @@ import (
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/request"
 )
 
+// ValidDividendType contains the allowed dividend type values for funds.
 var ValidDividendType = map[string]bool{
 	"CASH": true, "STOCK": true, "NONE": true,
 }
 
+// ValidInvestmentType contains the allowed investment type values for funds.
 var ValidInvestmentType = map[string]bool{
 	"FUND": true, "STOCK": true,
 }
 
+// ValidateCreateFund validates a fund creation request.
+// Checks all required fields and validates their formats and constraints.
+//
+// Required fields:
+//   - name: Must be non-empty and max 100 characters
+//   - isin: Must be non-empty and match format: 2 letters + 9 alphanumeric + 1 digit
+//   - currency: Must be non-empty and max 3 characters (e.g., USD, EUR)
+//   - exchange: Must be non-empty and max 15 characters (e.g., NYSE, AMS)
+//   - dividend_type: Must be one of: CASH, STOCK, NONE
+//   - investment_type: Must be one of: FUND, STOCK
+//
+// Optional fields:
+//   - symbol: Max 10 characters if provided
+//
+// Returns a validation Error with field-specific error messages if validation fails.
 func ValidateCreateFund(req request.CreateFundRequest) error {
 	errors := make(map[string]string)
 
@@ -71,6 +88,19 @@ func ValidateCreateFund(req request.CreateFundRequest) error {
 	return nil
 }
 
+// ValidateUpdateFund validates a fund update request.
+// All fields are optional, but if provided, they must meet the same constraints as create.
+//
+// Optional fields (validated if provided):
+//   - name: Max 100 characters if provided
+//   - isin: Must match format: 2 letters + 9 alphanumeric + 1 digit if provided
+//   - currency: Max 3 characters if provided (e.g., USD, EUR)
+//   - exchange: Max 15 characters if provided (e.g., NYSE, AMS)
+//   - dividend_type: Must be one of: CASH, STOCK, NONE if provided
+//   - investment_type: Must be one of: FUND, STOCK if provided
+//   - symbol: Max 10 characters if provided
+//
+// Returns a validation Error with field-specific error messages if validation fails.
 func ValidateUpdateFund(req request.UpdateFundRequest) error {
 	errors := make(map[string]string)
 

@@ -46,7 +46,7 @@ func (r *FundRepository) getQuerier() interface {
 	return r.db
 }
 
-// GetFund retrieves all funds from the database.
+// GetAllFunds retrieves all funds from the database with their latest prices.
 // Returns an empty slice if no funds are found.
 func (r *FundRepository) GetAllFunds() ([]model.Fund, error) {
 	query := `
@@ -106,6 +106,7 @@ func (r *FundRepository) GetAllFunds() ([]model.Fund, error) {
 	return funds, nil
 }
 
+// GetFund retrieves a single fund by ID with its latest price.
 func (r *FundRepository) GetFund(fundID string) (model.Fund, error) {
 	query := `
         SELECT f.id, f.name, f.isin, f.symbol, f.currency, f.exchange, f.investment_type, f.dividend_type, fp.price
@@ -521,6 +522,10 @@ func (r *FundRepository) GetFundBySymbolOrIsin(symbol, isin string) (model.Fund,
 
 }
 
+// GetPortfolioFundsbyFundID retrieves all portfolio-fund relationships for a specific fund.
+// Returns all portfolios that contain the given fund.
+// Returns ErrInvalidFundID if fundID is empty.
+// Returns ErrPortfolioFundNotFound if the fund is not associated with any portfolios.
 func (r *FundRepository) GetPortfolioFundsbyFundID(fundID string) ([]model.PortfolioFund, error) {
 
 	if fundID == "" {
@@ -565,6 +570,10 @@ func (r *FundRepository) GetPortfolioFundsbyFundID(fundID string) ([]model.Portf
 	return pfs, nil
 }
 
+// CheckUsage checks if a fund is in use by any portfolios and returns usage details.
+// Returns a list of portfolios that contain the fund along with transaction counts.
+// Returns an empty slice (nil) if the fund is not in use by any portfolios.
+// Each PortfolioTransaction includes the portfolio ID, name, and transaction count.
 func (r *FundRepository) CheckUsage(fundID string) ([]model.PortfolioTransaction, error) {
 
 	pfs, err := r.GetPortfolioFundsbyFundID(fundID)
@@ -687,6 +696,9 @@ func (r *FundRepository) DeletePortfolioFund(ctx context.Context, portfolioFundI
 	return nil
 }
 
+// InsertFund inserts a new fund into the database.
+// The fund struct should have all required fields populated including a generated ID.
+// Returns an error if the insertion fails (e.g., due to constraint violations).
 func (r *FundRepository) InsertFund(ctx context.Context, f *model.Fund) error {
 	query := `
         INSERT INTO fund (id, name, isin, symbol, exchange, currency, investment_type, dividend_type)
@@ -711,6 +723,10 @@ func (r *FundRepository) InsertFund(ctx context.Context, f *model.Fund) error {
 	return nil
 }
 
+// UpdateFund updates an existing fund in the database.
+// Updates all fund fields based on the provided fund struct.
+// Returns ErrFundNotFound if no fund with the given ID exists.
+// Returns an error if the update fails.
 func (r *FundRepository) UpdateFund(ctx context.Context, f *model.Fund) error {
 	query := `
         UPDATE fund
@@ -745,6 +761,9 @@ func (r *FundRepository) UpdateFund(ctx context.Context, f *model.Fund) error {
 	return nil
 }
 
+// DeleteFund removes a fund from the database.
+// Returns ErrFundNotFound if no fund with the given ID exists.
+// Returns an error if the deletion fails.
 func (r *FundRepository) DeleteFund(ctx context.Context, fundID string) error {
 	query := `DELETE FROM fund WHERE id = ?`
 

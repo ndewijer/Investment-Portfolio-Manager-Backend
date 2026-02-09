@@ -40,13 +40,14 @@ func NewFundService(
 	}
 }
 
-// GetFund retrieves funds from the database. If fundID is empty, returns all funds.
-// If fundID is provided, returns only the fund with that ID.
+// GetFund retrieves fund from the database.
 // Returns fund metadata including latest prices.
 func (s *FundService) GetFund(fundID string) (model.Fund, error) {
 	return s.fundRepo.GetFund(fundID)
 }
 
+// GetAllFunds retrieves all funds from the database.
+// Returns fund metadata including latest prices for all funds in the system.
 func (s *FundService) GetAllFunds() ([]model.Fund, error) {
 	return s.fundRepo.GetAllFunds()
 }
@@ -123,6 +124,10 @@ func (s *FundService) LoadFundPrices(fundIDs []string, startDate, endDate time.T
 	return s.fundRepo.GetFundPrice(fundIDs, startDate, endDate, ascending)
 }
 
+// CheckUsage checks if a fund is currently in use by any portfolios.
+// Returns a FundUsage object indicating whether the fund is in use and which portfolios use it.
+// If the fund is not in use, InUsage will be false and Portfolios will be empty.
+// If the fund is in use, InUsage will be true and Portfolios will contain the portfolio information.
 func (s *FundService) CheckUsage(fundID string) (model.FundUsage, error) {
 	checkUsage, err := s.fundRepo.CheckUsage(fundID)
 	if err != nil {
@@ -139,6 +144,9 @@ func (s *FundService) CheckUsage(fundID string) (model.FundUsage, error) {
 	return fundUsage, nil
 }
 
+// CreatePortfolioFund creates a relationship between a portfolio and a fund.
+// Validates that both the portfolio and fund exist before creating the relationship.
+// This allows a fund to be tracked within a specific portfolio.
 func (s *FundService) CreatePortfolioFund(ctx context.Context, req request.CreatePortfolioFundRequest) error {
 	_, err := s.portfolioService.GetPortfolio(req.PortfolioID)
 	if err != nil {
@@ -157,6 +165,16 @@ func (s *FundService) CreatePortfolioFund(ctx context.Context, req request.Creat
 	return nil
 }
 
+// UpdateFund updates an existing fund with the provided fields.
+// Only provided fields in the request are updated; omitted fields remain unchanged.
+// Validates that the fund exists before updating.
+//
+// Parameters:
+//   - ctx: Context for the operation
+//   - id: The fund ID to update
+//   - req: UpdateFundRequest containing the fields to update
+//
+// Returns the updated fund or an error if the fund doesn't exist or update fails.
 func (s *FundService) UpdateFund(
 	ctx context.Context,
 	id string,
@@ -199,6 +217,9 @@ func (s *FundService) UpdateFund(
 	return &fund, nil
 }
 
+// DeletePortfolioFund removes the relationship between a portfolio and a fund.
+// Validates that the portfolio-fund relationship exists before deletion.
+// This does not delete the fund itself, only removes it from the portfolio.
 func (s *FundService) DeletePortfolioFund(ctx context.Context, pfID string) error {
 
 	_, err := s.fundRepo.GetPortfolioFund(pfID)
@@ -214,6 +235,14 @@ func (s *FundService) DeletePortfolioFund(ctx context.Context, pfID string) erro
 	return nil
 }
 
+// CreateFund creates a new fund with the provided details.
+// Generates a new UUID for the fund and inserts it into the database.
+//
+// Parameters:
+//   - ctx: Context for the operation
+//   - req: CreateFundRequest containing all required fund fields
+//
+// Returns the created fund with its generated ID, or an error if creation fails.
 func (s *FundService) CreateFund(ctx context.Context, req request.CreateFundRequest) (*model.Fund, error) {
 	fund := &model.Fund{
 		ID:             uuid.New().String(),
@@ -233,6 +262,14 @@ func (s *FundService) CreateFund(ctx context.Context, req request.CreateFundRequ
 	return fund, nil
 }
 
+// DeleteFund removes a fund from the database.
+// Validates that the fund exists before deletion.
+//
+// Parameters:
+//   - ctx: Context for the operation
+//   - id: The fund ID to delete
+//
+// Returns an error if the fund doesn't exist or deletion fails.
 func (s *FundService) DeleteFund(ctx context.Context, id string) error {
 
 	_, err := s.fundRepo.GetFund(id)
