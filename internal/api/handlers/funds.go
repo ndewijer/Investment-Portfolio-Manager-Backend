@@ -119,7 +119,6 @@ func (h *FundHandler) GetFundHistory(w http.ResponseWriter, r *http.Request) {
 
 	portfolioID := chi.URLParam(r, "uuid")
 
-	// Parse date parameters
 	startDate, endDate, err := parseDateParams(r)
 	if err != nil {
 		response.RespondError(w, http.StatusBadRequest, "Invalid date parameters", err.Error())

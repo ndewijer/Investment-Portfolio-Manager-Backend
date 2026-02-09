@@ -303,7 +303,6 @@ func (r *FundRepository) GetFundPrice(fundIDs []string, startDate, endDate time.
 // Returns basic fund metadata from the portfolio_fund and fund tables.
 func (r *FundRepository) GetPortfolioFunds(PortfolioID string) ([]model.PortfolioFundResponse, error) {
 
-	// Retrieve all funds based on returned portfolio_fund IDs
 	fundQuery := `
 		SELECT
 		portfolio_fund.id,

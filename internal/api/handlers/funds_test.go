@@ -87,7 +87,6 @@ func TestFundHandler_GetAllFunds(t *testing.T) {
 			}
 		}
 
-		// Verify we found both
 		if fund1 == nil {
 			t.Fatal("Fund One not found in response")
 		}
@@ -95,7 +94,6 @@ func TestFundHandler_GetAllFunds(t *testing.T) {
 			t.Fatal("Fund2 Two not found in response")
 		}
 
-		// Verify data matches what we created
 		if fund1.Name != "AAPL" {
 			t.Errorf("Expected first portfolio name 'AAPL', got '%s'", fund1.Name)
 		}
@@ -1108,7 +1106,6 @@ func TestFundHandler_DeleteFund(t *testing.T) {
 			t.Errorf("Expected status 204, got %d: %s", w.Code, w.Body.String())
 		}
 
-		// Verify fund was deleted
 		_, err := fs.GetFund(fund.ID)
 		if err == nil {
 			t.Error("Expected fund to be deleted")
@@ -1183,7 +1180,6 @@ func TestFundHandler_DeleteFund(t *testing.T) {
 			t.Errorf("Expected 'cannot delete fund: in use by portfolio' error, got '%s'", response["error"])
 		}
 
-		// Verify fund still exists
 		_, err := fs.GetFund(fund.ID)
 		if err != nil {
 			t.Errorf("Fund should still exist after failed deletion, got error: %v", err)
