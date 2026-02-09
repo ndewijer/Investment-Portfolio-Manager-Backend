@@ -290,7 +290,6 @@ func (s *FundService) DeleteFund(ctx context.Context, id string) error {
 		return err
 	}
 
-	// Check if fund is in use by any portfolios
 	usage, err := s.CheckUsage(id)
 	if err != nil {
 		return fmt.Errorf("failed to check fund usage: %w", err)
