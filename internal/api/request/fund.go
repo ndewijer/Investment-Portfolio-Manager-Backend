@@ -11,7 +11,6 @@ type CreateFundRequest struct {
 }
 
 type UpdateFundRequest struct {
-	ID             *string `json:"id"`
 	Name           *string `json:"name,omitempty"`
 	Isin           *string `json:"isin,omitempty"`
 	Symbol         *string `json:"symbol,omitempty"`
