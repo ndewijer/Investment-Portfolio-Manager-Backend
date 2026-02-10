@@ -311,7 +311,7 @@ func (s *FundService) DeleteFund(ctx context.Context, id string) error {
 	return nil
 }
 
-func (s *FundService) UpdateCurrentFundPrice(fundID string) (model.FundPrice, error) {
+func (s *FundService) UpdateCurrentFundPrice(ctx context.Context, fundID string) (model.FundPrice, error) {
 
 	fund, err := s.GetFund(fundID)
 	if err != nil {
@@ -329,11 +329,48 @@ func (s *FundService) UpdateCurrentFundPrice(fundID string) (model.FundPrice, er
 	}
 
 	yesterdayPrice, exists := fundPrices[fundID]
-	if exists && len(yesterdayPrice) == 1 {
+	if exists && len(yesterdayPrice) > 0 {
 		return yesterdayPrice[0], nil
 	}
 
-	// indicator, ok := yahoo.GetIndicatorForDate(yesterdayDate)
+	raw, err := s.yahooClient.QueryYahooFiveDaySymbol(fund.Symbol)
+	if err != nil {
+		return model.FundPrice{}, err
+	}
+	chart, err := s.yahooClient.ParseChart(raw)
+	if err != nil {
+		return model.FundPrice{}, err
+	}
 
-	return model.FundPrice{}, nil
+	indicator, ok := chart.GetIndicatorForDate(yesterdayDate)
+	var fundPrice model.FundPrice
+	if ok {
+		fundPrice = model.FundPrice{
+			ID:     uuid.New().String(),
+			FundID: fund.ID,
+			Date:   yesterdayDate,
+			Price:  indicator.PriceClose,
+		}
+	} else {
+		fallbackDate := chart.Indicators[len(chart.Indicators)-1].Date
+		fallbackPrices, err := s.fundRepo.GetFundPrice([]string{fundID}, fallbackDate, fallbackDate, true)
+		if err != nil {
+			return model.FundPrice{}, err
+		}
+		if prices, exists := fallbackPrices[fundID]; exists && len(prices) > 0 {
+			return prices[0], nil
+		}
+		fundPrice = model.FundPrice{
+			ID:     uuid.New().String(),
+			FundID: fund.ID,
+			Date:   fallbackDate,
+			Price:  chart.Indicators[len(chart.Indicators)-1].PriceClose,
+		}
+	}
+
+	if err = s.fundRepo.InsertFundPrice(ctx, fundPrice); err != nil {
+		return model.FundPrice{}, err
+	}
+
+	return fundPrice, nil
 }

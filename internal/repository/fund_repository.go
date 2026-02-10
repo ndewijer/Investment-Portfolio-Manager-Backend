@@ -782,3 +782,23 @@ func (r *FundRepository) DeleteFund(ctx context.Context, fundID string) error {
 
 	return nil
 }
+
+func (r *FundRepository) InsertFundPrice(ctx context.Context, fp model.FundPrice) error {
+	query := `
+        INSERT INTO fund_price (id, fund_id, date, price)
+        VALUES (?, ?, ?, ?)
+    `
+
+	_, err := r.getQuerier().ExecContext(ctx, query,
+		fp.ID,
+		fp.FundID,
+		fp.Date,
+		fp.Price,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to insert fund price: %w", err)
+	}
+
+	return nil
+}
