@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/request"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/response"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/apperrors"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/service"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/validation"
 )
@@ -329,19 +331,31 @@ func (h *FundHandler) UpdateFundPrice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var resp model.FundPriceUpdateResponse
+
 	if updateType == "today" {
-		_, err := h.fundService.UpdateCurrentFundPrice(r.Context(), fundID)
+		_, newPrices, err := h.fundService.UpdateCurrentFundPrice(r.Context(), fundID)
 		if err != nil {
 			response.RespondError(w, http.StatusInternalServerError, "cannot update current fund price", err.Error())
 			return
 		}
+		resp = model.FundPriceUpdateResponse{
+			Status:    "success",
+			Message:   "Price update completed",
+			NewPrices: newPrices,
+		}
 	} else {
-		err := h.fundService.UpdateHistoricalFundPrice(r.Context(), fundID)
+		count, err := h.fundService.UpdateHistoricalFundPrice(r.Context(), fundID)
 		if err != nil {
 			response.RespondError(w, http.StatusInternalServerError, "cannot update historical fund prices", err.Error())
 			return
 		}
+		resp = model.FundPriceUpdateResponse{
+			Status:    "success",
+			Message:   fmt.Sprintf("Updated %d historical prices", count),
+			NewPrices: count > 0,
+		}
 	}
 
-	response.RespondJSON(w, http.StatusOK, nil)
+	response.RespondJSON(w, http.StatusOK, resp)
 }

@@ -21,7 +21,7 @@ type FundService struct {
 	realizedGainLossService *RealizedGainLossService
 	dataLoaderService       *DataLoaderService
 	portfolioService        *PortfolioService
-	yahooClient             *yahoo.FinanceClient
+	yahooClient             yahoo.Client
 }
 
 // NewFundService creates a new FundService with the provided repository dependencies.
@@ -32,7 +32,7 @@ func NewFundService(
 	realizedGainLossService *RealizedGainLossService,
 	dataLoaderService *DataLoaderService,
 	portfolioService *PortfolioService,
-	yahooClient *yahoo.FinanceClient,
+	yahooClient yahoo.Client,
 ) *FundService {
 	return &FundService{
 		fundRepo:                fundRepo,
@@ -334,19 +334,20 @@ func (s *FundService) DeleteFund(ctx context.Context, id string) error {
 //
 // Returns:
 //   - FundPrice: The inserted or existing price record
+//   - bool: true if a new price was inserted, false if price already existed
 //   - error: If the fund doesn't exist, has no symbol, or Yahoo Finance query fails
 //
 // Note: This method does not invalidate materialized views. See issue #35 for planned
 // materialized view invalidation support.
-func (s *FundService) UpdateCurrentFundPrice(ctx context.Context, fundID string) (model.FundPrice, error) {
+func (s *FundService) UpdateCurrentFundPrice(ctx context.Context, fundID string) (model.FundPrice, bool, error) {
 
 	fund, err := s.GetFund(fundID)
 	if err != nil {
-		return model.FundPrice{}, err
+		return model.FundPrice{}, false, err
 	}
 
 	if fund.Symbol == "" {
-		return model.FundPrice{}, fmt.Errorf("no symbol available for fund %s", fund.Name)
+		return model.FundPrice{}, false, fmt.Errorf("no symbol available for fund %s", fund.Name)
 	}
 
 	now := time.Now().UTC()
@@ -354,24 +355,24 @@ func (s *FundService) UpdateCurrentFundPrice(ctx context.Context, fundID string)
 
 	fundPrices, err := s.fundRepo.GetFundPrice([]string{fundID}, yesterdayDate, yesterdayDate, true)
 	if err != nil {
-		return model.FundPrice{}, err
+		return model.FundPrice{}, false, err
 	}
 
 	yesterdayPrice, exists := fundPrices[fundID]
 	if exists && len(yesterdayPrice) > 0 {
-		return yesterdayPrice[0], nil
+		return yesterdayPrice[0], false, nil
 	}
 
 	raw, err := s.yahooClient.QueryYahooFiveDaySymbol(fund.Symbol)
 	if err != nil {
-		return model.FundPrice{}, err
+		return model.FundPrice{}, false, err
 	}
 	chart, err := s.yahooClient.ParseChart(raw)
 	if err != nil {
-		return model.FundPrice{}, err
+		return model.FundPrice{}, false, err
 	}
 	if len(chart.Indicators) == 0 {
-		return model.FundPrice{}, fmt.Errorf("no price indicators available")
+		return model.FundPrice{}, false, fmt.Errorf("no price indicators available")
 	}
 
 	indicator, ok := chart.GetIndicatorForDate(yesterdayDate)
@@ -387,10 +388,10 @@ func (s *FundService) UpdateCurrentFundPrice(ctx context.Context, fundID string)
 		fallbackDate := chart.Indicators[len(chart.Indicators)-1].Date.Truncate(24 * time.Hour)
 		fallbackPrices, err := s.fundRepo.GetFundPrice([]string{fundID}, fallbackDate, fallbackDate, true)
 		if err != nil {
-			return model.FundPrice{}, err
+			return model.FundPrice{}, false, err
 		}
 		if prices, exists := fallbackPrices[fundID]; exists && len(prices) > 0 {
-			return prices[0], nil
+			return prices[0], false, nil
 		}
 		fundPrice = model.FundPrice{
 			ID:     uuid.New().String(),
@@ -401,10 +402,10 @@ func (s *FundService) UpdateCurrentFundPrice(ctx context.Context, fundID string)
 	}
 
 	if err = s.fundRepo.InsertFundPrice(ctx, fundPrice); err != nil {
-		return model.FundPrice{}, err
+		return model.FundPrice{}, false, err
 	}
 
-	return fundPrice, nil
+	return fundPrice, true, nil
 }
 
 // buildMissingDatesMap creates a map of date strings that are missing from the existing prices.
@@ -471,27 +472,28 @@ func (s *FundService) filterMissingPrices(indicators []yahoo.Indicators, missing
 //   - fundID: The unique identifier of the fund to update
 //
 // Returns:
+//   - int: The number of new prices added to the database
 //   - error: If the fund doesn't exist, has no symbol, has no transactions,
 //     or Yahoo Finance query fails
 //
 // Note: This method does not invalidate materialized views. See issue #35 for planned
 // materialized view invalidation support.
-func (s *FundService) UpdateHistoricalFundPrice(ctx context.Context, fundID string) error {
+func (s *FundService) UpdateHistoricalFundPrice(ctx context.Context, fundID string) (int, error) {
 	fund, err := s.GetFund(fundID)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	if fund.Symbol == "" {
-		return fmt.Errorf("no symbol available for fund %s", fund.Name)
+		return 0, fmt.Errorf("no symbol available for fund %s", fund.Name)
 	}
 
 	portfolioFunds, err := s.fundRepo.GetPortfolioFundsbyFundID(fundID)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if len(portfolioFunds) == 0 {
-		return fmt.Errorf("no portfolio funds found for fund %s", fundID)
+		return 0, fmt.Errorf("no portfolio funds found for fund %s", fundID)
 	}
 
 	pfIDs := make([]string, len(portfolioFunds))
@@ -501,34 +503,39 @@ func (s *FundService) UpdateHistoricalFundPrice(ctx context.Context, fundID stri
 
 	oldestDate := s.transactionService.getOldestTransaction(pfIDs)
 	if oldestDate.IsZero() {
-		return fmt.Errorf("no transactions found for fund %s", fundID)
+		return 0, fmt.Errorf("no transactions found for fund %s", fundID)
 	}
 	now := time.Now()
 	yesterdayDate := time.Date(now.Year(), now.Month(), now.Day()-1, 0, 0, 0, 0, time.UTC)
 
 	existingPrices, err := s.fundRepo.GetFundPrice([]string{fundID}, oldestDate, yesterdayDate, true)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	missingDates := s.buildMissingDatesMap(existingPrices[fundID], oldestDate, yesterdayDate)
 	if len(missingDates) == 0 {
-		return nil // nothing to do
+		return 0, nil // nothing to do
 	}
 
 	raw, err := s.yahooClient.QueryYahooSymbolByDateRange(fund.Symbol, oldestDate, yesterdayDate)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	chart, err := s.yahooClient.ParseChart(raw)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	missingFundPrices := s.filterMissingPrices(chart.Indicators, missingDates, fundID)
 	if len(missingFundPrices) == 0 {
-		return nil
+		return 0, nil
 	}
-	return s.fundRepo.InsertFundPrices(ctx, missingFundPrices)
 
+	err = s.fundRepo.InsertFundPrices(ctx, missingFundPrices)
+	if err != nil {
+		return 0, err
+	}
+
+	return len(missingFundPrices), nil
 }

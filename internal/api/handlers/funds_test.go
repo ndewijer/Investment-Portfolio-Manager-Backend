@@ -3,11 +3,13 @@ package handlers_test
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/handlers"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/apperrors"
@@ -1216,6 +1218,478 @@ func TestFundHandler_DeleteFund(t *testing.T) {
 
 		if _, hasError := response["error"]; !hasError {
 			t.Error("Expected error field in response")
+		}
+	})
+}
+
+//nolint:gocyclo // Comprehensive integration test with multiple subtests
+func TestFundHandler_UpdateFundPrice_Today(t *testing.T) {
+	t.Run("successfully updates today's price when price doesn't exist", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		mockYahoo := testutil.NewMockYahooClient()
+		fs := testutil.NewTestFundServiceWithMockYahoo(t, db, mockYahoo)
+		ms := testutil.NewTestMaterializedService(t, db)
+		handler := handlers.NewFundHandler(fs, ms)
+
+		// Create fund with symbol
+		fund := testutil.NewFund().WithSymbol("AAPL").Build(t, db)
+
+		req := testutil.NewRequestWithQueryAndURLParams(
+			http.MethodPost,
+			"/api/fund/fund-prices/"+fund.ID+"/update",
+			map[string]string{"uuid": fund.ID},
+			map[string]string{"type": "today"},
+		)
+		w := httptest.NewRecorder()
+
+		handler.UpdateFundPrice(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected status 200, got %d. Body: %s", w.Code, w.Body.String())
+		}
+
+		var response model.FundPriceUpdateResponse
+		err := json.NewDecoder(w.Body).Decode(&response)
+		if err != nil {
+			t.Fatalf("Failed to decode response: %v. Body: %s", err, w.Body.String())
+		}
+
+		if response.Status != "success" {
+			t.Errorf("Expected status 'success', got '%s'", response.Status)
+		}
+
+		if !response.NewPrices {
+			t.Error("Expected new_prices to be true since price was inserted")
+		}
+
+		if mockYahoo.QueryCount != 1 {
+			t.Errorf("Expected 1 Yahoo API call, got %d", mockYahoo.QueryCount)
+		}
+	})
+
+	t.Run("returns success with new_prices=false when price already exists", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		mockYahoo := testutil.NewMockYahooClient()
+		fs := testutil.NewTestFundServiceWithMockYahoo(t, db, mockYahoo)
+		ms := testutil.NewTestMaterializedService(t, db)
+		handler := handlers.NewFundHandler(fs, ms)
+
+		// Create fund with symbol
+		fund := testutil.NewFund().WithSymbol("AAPL").Build(t, db)
+
+		// Insert yesterday's price
+		now := time.Now().UTC()
+		yesterday := time.Date(now.Year(), now.Month(), now.Day()-1, 0, 0, 0, 0, time.UTC)
+		testutil.NewFundPrice(fund.ID).
+			WithDate(yesterday).
+			WithPrice(100.0).
+			Build(t, db)
+
+		req := testutil.NewRequestWithQueryAndURLParams(
+			http.MethodPost,
+			"/api/fund/fund-prices/"+fund.ID+"/update",
+			map[string]string{"uuid": fund.ID},
+			map[string]string{"type": "today"},
+		)
+		w := httptest.NewRecorder()
+
+		handler.UpdateFundPrice(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected status 200, got %d", w.Code)
+		}
+
+		var response model.FundPriceUpdateResponse
+		err := json.NewDecoder(w.Body).Decode(&response)
+		if err != nil {
+			t.Fatalf("Failed to decode response: %v", err)
+		}
+
+		if response.Status != "success" {
+			t.Errorf("Expected status 'success', got '%s'", response.Status)
+		}
+
+		if response.NewPrices {
+			t.Error("Expected new_prices to be false since price already existed")
+		}
+
+		if mockYahoo.QueryCount != 0 {
+			t.Errorf("Expected 0 Yahoo API calls since price exists, got %d", mockYahoo.QueryCount)
+		}
+	})
+
+	t.Run("returns error when fund has no symbol", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		mockYahoo := testutil.NewMockYahooClient()
+		fs := testutil.NewTestFundServiceWithMockYahoo(t, db, mockYahoo)
+		ms := testutil.NewTestMaterializedService(t, db)
+		handler := handlers.NewFundHandler(fs, ms)
+
+		// Create fund WITHOUT symbol
+		fund := testutil.NewFund().WithSymbol("").Build(t, db)
+
+		req := testutil.NewRequestWithQueryAndURLParams(
+			http.MethodPost,
+			"/api/fund/fund-prices/"+fund.ID+"/update",
+			map[string]string{"uuid": fund.ID},
+			map[string]string{"type": "today"},
+		)
+		w := httptest.NewRecorder()
+
+		handler.UpdateFundPrice(w, req)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Errorf("Expected status 500, got %d", w.Code)
+		}
+
+		var response map[string]string
+		err := json.NewDecoder(w.Body).Decode(&response)
+		if err != nil {
+			t.Fatalf("Failed to decode error response: %v", err)
+		}
+
+		if response["error"] != "cannot update current fund price" {
+			t.Errorf("Expected 'cannot update current fund price', got '%s'", response["error"])
+		}
+	})
+
+	t.Run("returns error when fund does not exist", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		mockYahoo := testutil.NewMockYahooClient()
+		fs := testutil.NewTestFundServiceWithMockYahoo(t, db, mockYahoo)
+		ms := testutil.NewTestMaterializedService(t, db)
+		handler := handlers.NewFundHandler(fs, ms)
+
+		req := testutil.NewRequestWithQueryAndURLParams(
+			http.MethodPost,
+			"/api/fund/fund-prices/nonexistent/update",
+			map[string]string{"uuid": "nonexistent"},
+			map[string]string{"type": "today"},
+		)
+		w := httptest.NewRecorder()
+
+		handler.UpdateFundPrice(w, req)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Errorf("Expected status 500, got %d", w.Code)
+		}
+	})
+
+	t.Run("returns error when Yahoo API fails", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		mockYahoo := testutil.NewMockYahooClient().WithError(fmt.Errorf("yahoo api error"))
+		fs := testutil.NewTestFundServiceWithMockYahoo(t, db, mockYahoo)
+		ms := testutil.NewTestMaterializedService(t, db)
+		handler := handlers.NewFundHandler(fs, ms)
+
+		fund := testutil.NewFund().WithSymbol("AAPL").Build(t, db)
+
+		req := testutil.NewRequestWithQueryAndURLParams(
+			http.MethodPost,
+			"/api/fund/fund-prices/"+fund.ID+"/update",
+			map[string]string{"uuid": fund.ID},
+			map[string]string{"type": "today"},
+		)
+		w := httptest.NewRecorder()
+
+		handler.UpdateFundPrice(w, req)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Errorf("Expected status 500, got %d", w.Code)
+		}
+	})
+
+	t.Run("returns error when Yahoo returns no data", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		mockYahoo := testutil.NewMockYahooClient().WithEmptyResponse()
+		fs := testutil.NewTestFundServiceWithMockYahoo(t, db, mockYahoo)
+		ms := testutil.NewTestMaterializedService(t, db)
+		handler := handlers.NewFundHandler(fs, ms)
+
+		fund := testutil.NewFund().WithSymbol("AAPL").Build(t, db)
+
+		req := testutil.NewRequestWithQueryAndURLParams(
+			http.MethodPost,
+			"/api/fund/fund-prices/"+fund.ID+"/update",
+			map[string]string{"uuid": fund.ID},
+			map[string]string{"type": "today"},
+		)
+		w := httptest.NewRecorder()
+
+		handler.UpdateFundPrice(w, req)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Errorf("Expected status 500, got %d", w.Code)
+		}
+	})
+
+	t.Run("returns bad request when type parameter is invalid", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		fs := testutil.NewTestFundService(t, db)
+		ms := testutil.NewTestMaterializedService(t, db)
+		handler := handlers.NewFundHandler(fs, ms)
+
+		fund := testutil.NewFund().WithSymbol("AAPL").Build(t, db)
+
+		req := testutil.NewRequestWithQueryAndURLParams(
+			http.MethodPost,
+			"/api/fund/fund-prices/"+fund.ID+"/update",
+			map[string]string{"uuid": fund.ID},
+			map[string]string{"type": "invalid"},
+		)
+		w := httptest.NewRecorder()
+
+		handler.UpdateFundPrice(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected status 400, got %d", w.Code)
+		}
+	})
+
+	t.Run("returns bad request when type parameter is missing", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		fs := testutil.NewTestFundService(t, db)
+		ms := testutil.NewTestMaterializedService(t, db)
+		handler := handlers.NewFundHandler(fs, ms)
+
+		fund := testutil.NewFund().WithSymbol("AAPL").Build(t, db)
+
+		req := testutil.NewRequestWithQueryAndURLParams(
+			http.MethodPost,
+			"/api/fund/fund-prices/"+fund.ID+"/update",
+			map[string]string{"uuid": fund.ID},
+			map[string]string{},
+		)
+		w := httptest.NewRecorder()
+
+		handler.UpdateFundPrice(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected status 400, got %d", w.Code)
+		}
+	})
+}
+
+//nolint:gocyclo // Comprehensive integration test with multiple subtests
+func TestFundHandler_UpdateFundPrice_Historical(t *testing.T) {
+	t.Run("successfully updates historical prices when missing dates exist", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+
+		// Create mock that returns 5 days of data
+		mockYahoo := testutil.NewMockYahooClient()
+		fs := testutil.NewTestFundServiceWithMockYahoo(t, db, mockYahoo)
+		ms := testutil.NewTestMaterializedService(t, db)
+		handler := handlers.NewFundHandler(fs, ms)
+
+		// Create fund and portfolio
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		fund := testutil.NewFund().WithSymbol("AAPL").Build(t, db)
+		pf := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+
+		// Create a transaction 7 days ago
+		now := time.Now().UTC()
+		sevenDaysAgo := time.Date(now.Year(), now.Month(), now.Day()-7, 0, 0, 0, 0, time.UTC)
+		testutil.NewTransaction(pf.ID).
+			WithDate(sevenDaysAgo).
+			Build(t, db)
+
+		req := testutil.NewRequestWithQueryAndURLParams(
+			http.MethodPost,
+			"/api/fund/fund-prices/"+fund.ID+"/update",
+			map[string]string{"uuid": fund.ID},
+			map[string]string{"type": "historical"},
+		)
+		w := httptest.NewRecorder()
+
+		handler.UpdateFundPrice(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected status 200, got %d", w.Code)
+		}
+
+		var response model.FundPriceUpdateResponse
+		err := json.NewDecoder(w.Body).Decode(&response)
+		if err != nil {
+			t.Fatalf("Failed to decode response: %v", err)
+		}
+
+		if response.Status != "success" {
+			t.Errorf("Expected status 'success', got '%s'", response.Status)
+		}
+
+		if !response.NewPrices {
+			t.Error("Expected new_prices to be true since prices were inserted")
+		}
+
+		if mockYahoo.QueryCount != 1 {
+			t.Errorf("Expected 1 Yahoo API call, got %d", mockYahoo.QueryCount)
+		}
+	})
+
+	t.Run("returns success with new_prices=false when no missing dates", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+
+		mockYahoo := testutil.NewMockYahooClient()
+		fs := testutil.NewTestFundServiceWithMockYahoo(t, db, mockYahoo)
+		ms := testutil.NewTestMaterializedService(t, db)
+		handler := handlers.NewFundHandler(fs, ms)
+
+		// Create fund and portfolio
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		fund := testutil.NewFund().WithSymbol("AAPL").Build(t, db)
+		pf := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+
+		// Create a transaction 3 days ago
+		now := time.Now().UTC()
+		threeDaysAgo := time.Date(now.Year(), now.Month(), now.Day()-3, 0, 0, 0, 0, time.UTC)
+		testutil.NewTransaction(pf.ID).
+			WithDate(threeDaysAgo).
+			Build(t, db)
+
+		// Insert all prices from transaction date to yesterday
+		yesterday := time.Date(now.Year(), now.Month(), now.Day()-1, 0, 0, 0, 0, time.UTC)
+		for d := threeDaysAgo; !d.After(yesterday); d = d.AddDate(0, 0, 1) {
+			testutil.NewFundPrice(fund.ID).
+				WithDate(d).
+				WithPrice(100.0).
+				Build(t, db)
+		}
+
+		req := testutil.NewRequestWithQueryAndURLParams(
+			http.MethodPost,
+			"/api/fund/fund-prices/"+fund.ID+"/update",
+			map[string]string{"uuid": fund.ID},
+			map[string]string{"type": "historical"},
+		)
+		w := httptest.NewRecorder()
+
+		handler.UpdateFundPrice(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected status 200, got %d", w.Code)
+		}
+
+		var response model.FundPriceUpdateResponse
+		err := json.NewDecoder(w.Body).Decode(&response)
+		if err != nil {
+			t.Fatalf("Failed to decode response: %v", err)
+		}
+
+		if response.Status != "success" {
+			t.Errorf("Expected status 'success', got '%s'", response.Status)
+		}
+
+		if response.NewPrices {
+			t.Error("Expected new_prices to be false since all prices exist")
+		}
+
+		if mockYahoo.QueryCount != 0 {
+			t.Errorf("Expected 0 Yahoo API calls, got %d", mockYahoo.QueryCount)
+		}
+	})
+
+	t.Run("returns error when fund has no transactions", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+
+		mockYahoo := testutil.NewMockYahooClient()
+		fs := testutil.NewTestFundServiceWithMockYahoo(t, db, mockYahoo)
+		ms := testutil.NewTestMaterializedService(t, db)
+		handler := handlers.NewFundHandler(fs, ms)
+
+		// Create fund and portfolio WITHOUT transactions
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		fund := testutil.NewFund().WithSymbol("AAPL").Build(t, db)
+		testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+
+		req := testutil.NewRequestWithQueryAndURLParams(
+			http.MethodPost,
+			"/api/fund/fund-prices/"+fund.ID+"/update",
+			map[string]string{"uuid": fund.ID},
+			map[string]string{"type": "historical"},
+		)
+		w := httptest.NewRecorder()
+
+		handler.UpdateFundPrice(w, req)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Errorf("Expected status 500, got %d", w.Code)
+		}
+	})
+
+	t.Run("returns error when fund has no portfolio funds", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+
+		mockYahoo := testutil.NewMockYahooClient()
+		fs := testutil.NewTestFundServiceWithMockYahoo(t, db, mockYahoo)
+		ms := testutil.NewTestMaterializedService(t, db)
+		handler := handlers.NewFundHandler(fs, ms)
+
+		// Create fund WITHOUT portfolio_fund relationship
+		fund := testutil.NewFund().WithSymbol("AAPL").Build(t, db)
+
+		req := testutil.NewRequestWithQueryAndURLParams(
+			http.MethodPost,
+			"/api/fund/fund-prices/"+fund.ID+"/update",
+			map[string]string{"uuid": fund.ID},
+			map[string]string{"type": "historical"},
+		)
+		w := httptest.NewRecorder()
+
+		handler.UpdateFundPrice(w, req)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Errorf("Expected status 500, got %d", w.Code)
+		}
+	})
+
+	t.Run("handles partial Yahoo data gracefully", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+
+		// Mock will return 5 days but we need 7 days
+		mockYahoo := testutil.NewMockYahooClient()
+		fs := testutil.NewTestFundServiceWithMockYahoo(t, db, mockYahoo)
+		ms := testutil.NewTestMaterializedService(t, db)
+		handler := handlers.NewFundHandler(fs, ms)
+
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		fund := testutil.NewFund().WithSymbol("AAPL").Build(t, db)
+		pf := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+
+		// Transaction 10 days ago but Yahoo only returns 5 days
+		now := time.Now().UTC()
+		tenDaysAgo := time.Date(now.Year(), now.Month(), now.Day()-10, 0, 0, 0, 0, time.UTC)
+		testutil.NewTransaction(pf.ID).
+			WithDate(tenDaysAgo).
+			Build(t, db)
+
+		req := testutil.NewRequestWithQueryAndURLParams(
+			http.MethodPost,
+			"/api/fund/fund-prices/"+fund.ID+"/update",
+			map[string]string{"uuid": fund.ID},
+			map[string]string{"type": "historical"},
+		)
+		w := httptest.NewRecorder()
+
+		handler.UpdateFundPrice(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected status 200, got %d", w.Code)
+		}
+
+		var response model.FundPriceUpdateResponse
+		err := json.NewDecoder(w.Body).Decode(&response)
+		if err != nil {
+			t.Fatalf("Failed to decode response: %v", err)
+		}
+
+		// Should still succeed with whatever data was available
+		if response.Status != "success" {
+			t.Errorf("Expected status 'success', got '%s'", response.Status)
+		}
+
+		// Should have added the prices that were available (5 days)
+		if !response.NewPrices {
+			t.Error("Expected new_prices to be true since some prices were added")
 		}
 	})
 }

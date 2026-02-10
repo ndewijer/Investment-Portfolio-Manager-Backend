@@ -8,6 +8,19 @@ import (
 	"time"
 )
 
+// Client defines the interface for fetching financial data from Yahoo Finance API.
+// This interface enables dependency injection and testing with mock implementations.
+type Client interface {
+	// QueryYahooFiveDaySymbol fetches the last 5 days of daily price data for a symbol.
+	QueryYahooFiveDaySymbol(symbol string) (Response, error)
+
+	// QueryYahooSymbolByDateRange fetches daily price data for a symbol within a date range.
+	QueryYahooSymbolByDateRange(symbol string, startDate, endDate time.Time) (Response, error)
+
+	// ParseChart converts a raw Yahoo Finance API response into a structured price chart.
+	ParseChart(yahooResult Response) (PriceChart, error)
+}
+
 // FinanceClient provides methods for fetching financial data from Yahoo Finance API.
 // It wraps an HTTP client and provides convenient methods for querying stock prices
 // and related financial data.
@@ -42,6 +55,9 @@ func NewFinanceClient() *FinanceClient {
 //   - PriceChart: Structured chart with indicators and metadata
 //   - error: If data is missing, malformed, or arrays have mismatched lengths
 func (c *FinanceClient) ParseChart(yahooResult Response) (PriceChart, error) {
+	if len(yahooResult.Chart.Result) == 0 {
+		return PriceChart{}, fmt.Errorf("no results returned from Yahoo Finance")
+	}
 
 	result := yahooResult.Chart.Result[0]
 
@@ -59,11 +75,21 @@ func (c *FinanceClient) ParseChart(yahooResult Response) (PriceChart, error) {
 	indicators := make([]Indicators, len(result.Timestamp))
 	for i, v := range result.Timestamp {
 		indicators[i].Date = time.Unix(v, 0).UTC()
-		indicators[i].PriceOpen = result.Indicators.Quote[0].Open[i]
-		indicators[i].PriceClose = result.Indicators.Quote[0].Close[i]
-		indicators[i].Volume = result.Indicators.Quote[0].Volume[i]
-		indicators[i].PriceHigh = result.Indicators.Quote[0].High[i]
-		indicators[i].PriceLow = result.Indicators.Quote[0].Low[i]
+		if result.Indicators.Quote[0].Open[i] != nil {
+			indicators[i].PriceOpen = *result.Indicators.Quote[0].Open[i]
+		}
+		if result.Indicators.Quote[0].Close[i] != nil {
+			indicators[i].PriceClose = *result.Indicators.Quote[0].Close[i]
+		}
+		if result.Indicators.Quote[0].Volume[i] != nil {
+			indicators[i].Volume = *result.Indicators.Quote[0].Volume[i]
+		}
+		if result.Indicators.Quote[0].High[i] != nil {
+			indicators[i].PriceHigh = *result.Indicators.Quote[0].High[i]
+		}
+		if result.Indicators.Quote[0].Low[i] != nil {
+			indicators[i].PriceLow = *result.Indicators.Quote[0].Low[i]
+		}
 	}
 
 	return PriceChart{
