@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/repository"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/service"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/yahoo"
 )
 
 func NewTestPortfolioService(t *testing.T, db *sql.DB) *service.PortfolioService {
@@ -82,6 +83,7 @@ func NewTestFundService(t *testing.T, db *sql.DB) *service.FundService {
 		dividendService,
 		realizedGainLossService)
 	portfolioService := service.NewPortfolioService(repository.NewPortfolioRepository(db))
+	yahooClient := yahoo.NewYahooFinanceClient()
 
 	return service.NewFundService(
 		fundRepo,
@@ -90,6 +92,7 @@ func NewTestFundService(t *testing.T, db *sql.DB) *service.FundService {
 		realizedGainLossService,
 		dataLoaderService,
 		portfolioService,
+		yahooClient,
 	)
 }
 
@@ -110,7 +113,8 @@ func NewTestMaterializedService(t *testing.T, db *sql.DB) *service.MaterializedS
 		dividendService,
 		realizedGainLossService)
 	portfolioService := service.NewPortfolioService(portfolioRepo)
-	fundService := service.NewFundService(fundRepo, transactionService, dividendService, realizedGainLossService, dataLoaderService, portfolioService)
+	yahooClient := yahoo.NewYahooFinanceClient()
+	fundService := service.NewFundService(fundRepo, transactionService, dividendService, realizedGainLossService, dataLoaderService, portfolioService, yahooClient)
 
 	return service.NewMaterializedService(
 		materializedRepo,

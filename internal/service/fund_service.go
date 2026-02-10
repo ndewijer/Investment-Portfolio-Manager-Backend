@@ -10,6 +10,7 @@ import (
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/apperrors"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/repository"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/yahoo"
 )
 
 // FundService handles fund-related business logic operations.
@@ -20,6 +21,7 @@ type FundService struct {
 	realizedGainLossService *RealizedGainLossService
 	dataLoaderService       *DataLoaderService
 	portfolioService        *PortfolioService
+	yahooClient             *yahoo.YahooFinanceClient
 }
 
 // NewFundService creates a new FundService with the provided repository dependencies.
@@ -30,6 +32,7 @@ func NewFundService(
 	realizedGainLossService *RealizedGainLossService,
 	dataLoaderService *DataLoaderService,
 	portfolioService *PortfolioService,
+	yahooClient *yahoo.YahooFinanceClient,
 ) *FundService {
 	return &FundService{
 		fundRepo:                fundRepo,
@@ -38,6 +41,7 @@ func NewFundService(
 		realizedGainLossService: realizedGainLossService,
 		dataLoaderService:       dataLoaderService,
 		portfolioService:        portfolioService,
+		yahooClient:             yahooClient,
 	}
 }
 
@@ -173,54 +177,6 @@ func (s *FundService) CreatePortfolioFund(ctx context.Context, req request.Creat
 	return nil
 }
 
-// UpdateFund updates an existing fund with the provided fields.
-// Only provided fields in the request are updated; omitted fields remain unchanged.
-// Validates that the fund exists before updating.
-//
-// Parameters:
-//   - ctx: Context for the operation
-//   - id: The fund ID to update
-//   - req: UpdateFundRequest containing the fields to update
-//
-// Returns the updated fund or an error if the fund doesn't exist or update fails.
-func (s *FundService) UpdateFund(
-	ctx context.Context,
-	id string,
-	req request.UpdateFundRequest,
-) (*model.Fund, error) {
-	fund, err := s.fundRepo.GetFund(id)
-	if err != nil {
-		return nil, err
-	}
-	if req.Name != nil {
-		fund.Name = *req.Name
-	}
-	if req.Isin != nil {
-		fund.Isin = *req.Isin
-	}
-	if req.Symbol != nil {
-		fund.Symbol = *req.Symbol
-	}
-	if req.Currency != nil {
-		fund.Currency = *req.Currency
-	}
-	if req.Exchange != nil {
-		fund.Exchange = *req.Exchange
-	}
-	if req.InvestmentType != nil {
-		fund.InvestmentType = *req.InvestmentType
-	}
-	if req.DividendType != nil {
-		fund.DividendType = *req.DividendType
-	}
-
-	if err := s.fundRepo.UpdateFund(ctx, &fund); err != nil {
-		return nil, fmt.Errorf("failed to update fund: %w", err)
-	}
-
-	return &fund, nil
-}
-
 // DeletePortfolioFund removes the relationship between a portfolio and a fund.
 // Validates that the portfolio-fund relationship exists before deletion.
 // This does not delete the fund itself, only removes it from the portfolio.
@@ -270,6 +226,54 @@ func (s *FundService) CreateFund(ctx context.Context, req request.CreateFundRequ
 	return fund, nil
 }
 
+// UpdateFund updates an existing fund with the provided fields.
+// Only provided fields in the request are updated; omitted fields remain unchanged.
+// Validates that the fund exists before updating.
+//
+// Parameters:
+//   - ctx: Context for the operation
+//   - id: The fund ID to update
+//   - req: UpdateFundRequest containing the fields to update
+//
+// Returns the updated fund or an error if the fund doesn't exist or update fails.
+func (s *FundService) UpdateFund(
+	ctx context.Context,
+	id string,
+	req request.UpdateFundRequest,
+) (*model.Fund, error) {
+	fund, err := s.fundRepo.GetFund(id)
+	if err != nil {
+		return nil, err
+	}
+	if req.Name != nil {
+		fund.Name = *req.Name
+	}
+	if req.Isin != nil {
+		fund.Isin = *req.Isin
+	}
+	if req.Symbol != nil {
+		fund.Symbol = *req.Symbol
+	}
+	if req.Currency != nil {
+		fund.Currency = *req.Currency
+	}
+	if req.Exchange != nil {
+		fund.Exchange = *req.Exchange
+	}
+	if req.InvestmentType != nil {
+		fund.InvestmentType = *req.InvestmentType
+	}
+	if req.DividendType != nil {
+		fund.DividendType = *req.DividendType
+	}
+
+	if err := s.fundRepo.UpdateFund(ctx, &fund); err != nil {
+		return nil, fmt.Errorf("failed to update fund: %w", err)
+	}
+
+	return &fund, nil
+}
+
 // DeleteFund removes a fund from the database.
 // Validates that the fund exists and is not in use before deletion.
 // A fund is considered "in use" if it has been associated with any portfolios
@@ -305,4 +309,31 @@ func (s *FundService) DeleteFund(ctx context.Context, id string) error {
 	}
 
 	return nil
+}
+
+func (s *FundService) UpdateCurrentFundPrice(fundID string) (model.FundPrice, error) {
+
+	fund, err := s.GetFund(fundID)
+	if err != nil {
+		return model.FundPrice{}, err
+	}
+
+	if fund.Symbol == "" {
+		return model.FundPrice{}, fmt.Errorf("no symbol available for fund %s", fund.Name)
+	}
+
+	yesterdayDate := time.Now().UTC().AddDate(0, 0, -1)
+	fundPrices, err := s.fundRepo.GetFundPrice([]string{fundID}, yesterdayDate, yesterdayDate, true)
+	if err != nil {
+		return model.FundPrice{}, err
+	}
+
+	yesterdayPrice, exists := fundPrices[fundID]
+	if exists && len(yesterdayPrice) == 1 {
+		return yesterdayPrice[0], nil
+	}
+
+	// indicator, ok := yahoo.GetIndicatorForDate(yesterdayDate)
+
+	return model.FundPrice{}, nil
 }
