@@ -802,3 +802,37 @@ func (r *FundRepository) InsertFundPrice(ctx context.Context, fp model.FundPrice
 
 	return nil
 }
+
+func (r *FundRepository) InsertFundPrices(ctx context.Context, fundPrices []model.FundPrice) error {
+	if len(fundPrices) == 0 {
+		return nil
+	}
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin 'insert fund_prices' transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.PrepareContext(ctx, `
+        INSERT INTO fund_price (id, fund_id, date, price)
+        VALUES (?, ?, ?, ?)
+    `)
+	if err != nil {
+		return fmt.Errorf("failed to prepare statement: %w", err)
+	}
+	defer stmt.Close()
+
+	for _, fp := range fundPrices {
+		_, err := stmt.ExecContext(ctx, fp.ID, fp.FundID, fp.Date.Format("2006-01-02"), fp.Price)
+		if err != nil {
+			return fmt.Errorf("failed to insert fund price for %s on %s: %w", fp.FundID, fp.Date.Format("2006-01-02"), err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit 'insert fund_prices' transaction: %w", err)
+	}
+
+	return nil
+}

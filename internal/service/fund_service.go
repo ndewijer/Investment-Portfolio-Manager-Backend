@@ -322,7 +322,9 @@ func (s *FundService) UpdateCurrentFundPrice(ctx context.Context, fundID string)
 		return model.FundPrice{}, fmt.Errorf("no symbol available for fund %s", fund.Name)
 	}
 
-	yesterdayDate := time.Now().UTC().AddDate(0, 0, -1)
+	now := time.Now().UTC()
+	yesterdayDate := time.Date(now.Year(), now.Month(), now.Day()-1, 0, 0, 0, 0, time.UTC)
+
 	fundPrices, err := s.fundRepo.GetFundPrice([]string{fundID}, yesterdayDate, yesterdayDate, true)
 	if err != nil {
 		return model.FundPrice{}, err
@@ -341,6 +343,9 @@ func (s *FundService) UpdateCurrentFundPrice(ctx context.Context, fundID string)
 	if err != nil {
 		return model.FundPrice{}, err
 	}
+	if len(chart.Indicators) == 0 {
+		return model.FundPrice{}, fmt.Errorf("no price indicators available")
+	}
 
 	indicator, ok := chart.GetIndicatorForDate(yesterdayDate)
 	var fundPrice model.FundPrice
@@ -352,7 +357,7 @@ func (s *FundService) UpdateCurrentFundPrice(ctx context.Context, fundID string)
 			Price:  indicator.PriceClose,
 		}
 	} else {
-		fallbackDate := chart.Indicators[len(chart.Indicators)-1].Date
+		fallbackDate := chart.Indicators[len(chart.Indicators)-1].Date.Truncate(24 * time.Hour)
 		fallbackPrices, err := s.fundRepo.GetFundPrice([]string{fundID}, fallbackDate, fallbackDate, true)
 		if err != nil {
 			return model.FundPrice{}, err
@@ -373,4 +378,86 @@ func (s *FundService) UpdateCurrentFundPrice(ctx context.Context, fundID string)
 	}
 
 	return fundPrice, nil
+}
+
+func (s *FundService) UpdateHistoricalFundPrice(ctx context.Context, fundID string) error {
+	fund, err := s.GetFund(fundID)
+	if err != nil {
+		return err
+	}
+
+	if fund.Symbol == "" {
+		return fmt.Errorf("no symbol available for fund %s", fund.Name)
+	}
+
+	portfolioFunds, err := s.fundRepo.GetPortfolioFundsbyFundID(fundID)
+	if err != nil {
+		return err
+	}
+	if len(portfolioFunds) == 0 {
+		return fmt.Errorf("no portfolio funds found for fund %s", fundID)
+	}
+
+	pfIDs := make([]string, len(portfolioFunds))
+	for i, v := range portfolioFunds {
+		pfIDs[i] = v.ID
+	}
+
+	oldestDate := s.transactionService.getOldestTransaction(pfIDs)
+	if oldestDate.IsZero() {
+		return fmt.Errorf("no transactions found for fund %s", fundID)
+	}
+	now := time.Now()
+	yesterdayDate := time.Date(now.Year(), now.Month(), now.Day()-1, 0, 0, 0, 0, time.UTC)
+
+	existingPrices, err := s.fundRepo.GetFundPrice([]string{fundID}, oldestDate, yesterdayDate, true)
+	if err != nil {
+		return err
+	}
+
+	existingDates := make(map[string]bool)
+	for _, fp := range existingPrices[fundID] {
+		existingDates[fp.Date.UTC().Format("2006-01-02")] = true
+	}
+
+	missingDates := make(map[string]bool)
+	for d := oldestDate; !d.After(yesterdayDate); d = d.AddDate(0, 0, 1) {
+		key := d.UTC().Truncate(24 * time.Hour).Format("2006-01-02")
+		if !existingDates[key] {
+			missingDates[key] = true
+		}
+	}
+
+	if len(missingDates) == 0 {
+		return nil // nothing to do
+	}
+
+	raw, err := s.yahooClient.QueryYahooSymbolByDateRange(fund.Symbol, oldestDate, yesterdayDate)
+	if err != nil {
+		return err
+	}
+	chart, err := s.yahooClient.ParseChart(raw)
+	if err != nil {
+		return err
+	}
+
+	missingFundPrices := []model.FundPrice{}
+	for _, v := range chart.Indicators {
+		sanitizedDate := v.Date.Truncate(24 * time.Hour).Format("2006-01-02")
+		_, exist := missingDates[sanitizedDate]
+		if exist {
+			missingFundPrices = append(missingFundPrices, model.FundPrice{
+				ID:     uuid.New().String(),
+				FundID: fundID,
+				Price:  v.PriceClose,
+				Date:   v.Date.Truncate(24 * time.Hour),
+			})
+		}
+	}
+
+	if len(missingFundPrices) == 0 {
+		return nil
+	}
+	return s.fundRepo.InsertFundPrices(ctx, missingFundPrices)
+
 }

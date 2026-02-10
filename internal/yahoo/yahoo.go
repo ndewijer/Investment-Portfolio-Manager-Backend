@@ -66,6 +66,36 @@ func (c YahooPriceChart) GetIndicatorForDate(target time.Time) (YahooIndicators,
 
 func (c *YahooFinanceClient) QueryYahooFiveDaySymbol(symbol string) (YahooResponse, error) {
 	url := fmt.Sprintf("https://query1.finance.yahoo.com/v8/finance/chart/%s?interval=1d&range=5d", symbol)
+	result, err := c.queryYahoo(url)
+	if err != nil {
+		return YahooResponse{}, err
+	}
+	if len(result.Chart.Result) == 0 {
+		return YahooResponse{}, fmt.Errorf("no results returned for symbol %s", symbol)
+	}
+
+	return result, nil
+}
+
+func (c *YahooFinanceClient) QueryYahooSymbolByDateRange(symbol string, startDate, endDate time.Time) (YahooResponse, error) {
+	url := fmt.Sprintf(
+		"https://query1.finance.yahoo.com/v8/finance/chart/%s?interval=1d&period1=%d&period2=%d",
+		symbol,
+		startDate.Unix(),
+		endDate.Unix(),
+	)
+	result, err := c.queryYahoo(url)
+	if err != nil {
+		return YahooResponse{}, err
+	}
+	if len(result.Chart.Result) == 0 {
+		return YahooResponse{}, fmt.Errorf("no results returned for symbol %s", symbol)
+	}
+
+	return result, nil
+}
+
+func (c *YahooFinanceClient) queryYahoo(url string) (YahooResponse, error) {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return YahooResponse{}, err
@@ -92,10 +122,6 @@ func (c *YahooFinanceClient) QueryYahooFiveDaySymbol(symbol string) (YahooRespon
 
 	if yahooResponse.Chart.Error != nil {
 		return yahooResponse, fmt.Errorf("yahoo error: %s", *yahooResponse.Chart.Error)
-	}
-
-	if len(yahooResponse.Chart.Result) == 0 {
-		return YahooResponse{}, fmt.Errorf("no results returned for symbol %s", symbol)
 	}
 
 	return yahooResponse, nil
