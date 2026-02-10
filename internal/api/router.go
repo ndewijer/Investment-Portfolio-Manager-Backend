@@ -82,6 +82,7 @@ func NewRouter(
 			r.Route("/fund-prices/{uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", func(r chi.Router) {
 				r.Use(custommiddleware.ValidateUUIDMiddleware)
 				r.Get("/", fundHandler.GetFundPrices)
+				r.Post("/update", fundHandler.UpdateFundPrice)
 			})
 
 			r.Route("/history/{uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", func(r chi.Router) {

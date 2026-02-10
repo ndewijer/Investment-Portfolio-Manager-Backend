@@ -21,7 +21,7 @@ type FundService struct {
 	realizedGainLossService *RealizedGainLossService
 	dataLoaderService       *DataLoaderService
 	portfolioService        *PortfolioService
-	yahooClient             *yahoo.YahooFinanceClient
+	yahooClient             *yahoo.FinanceClient
 }
 
 // NewFundService creates a new FundService with the provided repository dependencies.
@@ -32,7 +32,7 @@ func NewFundService(
 	realizedGainLossService *RealizedGainLossService,
 	dataLoaderService *DataLoaderService,
 	portfolioService *PortfolioService,
-	yahooClient *yahoo.YahooFinanceClient,
+	yahooClient *yahoo.FinanceClient,
 ) *FundService {
 	return &FundService{
 		fundRepo:                fundRepo,
@@ -311,6 +311,33 @@ func (s *FundService) DeleteFund(ctx context.Context, id string) error {
 	return nil
 }
 
+// UpdateCurrentFundPrice fetches and stores the latest available price for a fund.
+// This method retrieves yesterday's closing price from Yahoo Finance, as stock markets
+// provide the previous day's close as the most recent complete data point.
+//
+// The method follows this workflow:
+//  1. Validates that the fund exists and has a ticker symbol
+//  2. Checks if yesterday's price already exists in the database (early return if found)
+//  3. Fetches the last 5 days of price data from Yahoo Finance
+//  4. Attempts to extract yesterday's price from the data
+//  5. Falls back to the most recent available price if yesterday is not found
+//  6. Inserts the price into the database if it doesn't already exist
+//
+// Duplicate Prevention:
+// The method includes multiple safeguards against duplicate insertions:
+//   - Early return if yesterday's price already exists (line 333-336)
+//   - Fallback path checks if the fallback date already exists (line 365-367)
+//
+// Parameters:
+//   - ctx: Context for cancellation and timeout control
+//   - fundID: The unique identifier of the fund to update
+//
+// Returns:
+//   - FundPrice: The inserted or existing price record
+//   - error: If the fund doesn't exist, has no symbol, or Yahoo Finance query fails
+//
+// Note: This method does not invalidate materialized views. See issue #35 for planned
+// materialized view invalidation support.
 func (s *FundService) UpdateCurrentFundPrice(ctx context.Context, fundID string) (model.FundPrice, error) {
 
 	fund, err := s.GetFund(fundID)
@@ -380,6 +407,75 @@ func (s *FundService) UpdateCurrentFundPrice(ctx context.Context, fundID string)
 	return fundPrice, nil
 }
 
+// buildMissingDatesMap creates a map of date strings that are missing from the existing prices.
+// This helper function reduces cyclomatic complexity in UpdateHistoricalFundPrice.
+func (s *FundService) buildMissingDatesMap(existingPrices []model.FundPrice, startDate, endDate time.Time) map[string]bool {
+	existingDates := make(map[string]bool)
+	for _, fp := range existingPrices {
+		existingDates[fp.Date.UTC().Truncate(24*time.Hour).Format("2006-01-02")] = true
+	}
+
+	missingDates := make(map[string]bool)
+	for d := startDate; !d.After(endDate); d = d.AddDate(0, 0, 1) {
+		key := d.UTC().Truncate(24 * time.Hour).Format("2006-01-02")
+		if !existingDates[key] {
+			missingDates[key] = true
+		}
+	}
+
+	return missingDates
+}
+
+// filterMissingPrices filters Yahoo Finance indicators to only include dates that are missing.
+// This helper function reduces cyclomatic complexity in UpdateHistoricalFundPrice.
+func (s *FundService) filterMissingPrices(indicators []yahoo.Indicators, missingDates map[string]bool, fundID string) []model.FundPrice {
+	missingFundPrices := make([]model.FundPrice, 0, len(missingDates))
+	for _, v := range indicators {
+		sanitizedDate := v.Date.Truncate(24 * time.Hour).Format("2006-01-02")
+		if missingDates[sanitizedDate] {
+			missingFundPrices = append(missingFundPrices, model.FundPrice{
+				ID:     uuid.New().String(),
+				FundID: fundID,
+				Price:  v.PriceClose,
+				Date:   v.Date.Truncate(24 * time.Hour),
+			})
+		}
+	}
+	return missingFundPrices
+}
+
+// UpdateHistoricalFundPrice backfills missing historical prices for a fund.
+// This method identifies all missing price dates from the fund's earliest transaction
+// to yesterday, fetches the data from Yahoo Finance, and performs a batch insert of
+// all missing prices.
+//
+// The method follows this workflow:
+//  1. Validates that the fund exists and has a ticker symbol
+//  2. Retrieves all portfolio_fund relationships for this fund
+//  3. Finds the earliest transaction date across all portfolios using this fund
+//  4. Queries existing prices in the database for the date range
+//  5. Identifies missing dates by comparing all dates in range with existing prices
+//  6. Returns early if no missing dates are found (no-op)
+//  7. Fetches historical data from Yahoo Finance for the entire date range
+//  8. Filters Yahoo data to only include missing dates
+//  9. Performs a single batch insert of all missing prices
+//
+// Efficiency Notes:
+// This implementation is more efficient than the Python equivalent as it:
+//   - Uses map-based lookups for O(1) date existence checks
+//   - Builds all prices in memory before insertion
+//   - Performs a single batch insert instead of individual inserts
+//
+// Parameters:
+//   - ctx: Context for cancellation and timeout control
+//   - fundID: The unique identifier of the fund to update
+//
+// Returns:
+//   - error: If the fund doesn't exist, has no symbol, has no transactions,
+//     or Yahoo Finance query fails
+//
+// Note: This method does not invalidate materialized views. See issue #35 for planned
+// materialized view invalidation support.
 func (s *FundService) UpdateHistoricalFundPrice(ctx context.Context, fundID string) error {
 	fund, err := s.GetFund(fundID)
 	if err != nil {
@@ -415,19 +511,7 @@ func (s *FundService) UpdateHistoricalFundPrice(ctx context.Context, fundID stri
 		return err
 	}
 
-	existingDates := make(map[string]bool)
-	for _, fp := range existingPrices[fundID] {
-		existingDates[fp.Date.UTC().Format("2006-01-02")] = true
-	}
-
-	missingDates := make(map[string]bool)
-	for d := oldestDate; !d.After(yesterdayDate); d = d.AddDate(0, 0, 1) {
-		key := d.UTC().Truncate(24 * time.Hour).Format("2006-01-02")
-		if !existingDates[key] {
-			missingDates[key] = true
-		}
-	}
-
+	missingDates := s.buildMissingDatesMap(existingPrices[fundID], oldestDate, yesterdayDate)
 	if len(missingDates) == 0 {
 		return nil // nothing to do
 	}
@@ -441,20 +525,7 @@ func (s *FundService) UpdateHistoricalFundPrice(ctx context.Context, fundID stri
 		return err
 	}
 
-	missingFundPrices := []model.FundPrice{}
-	for _, v := range chart.Indicators {
-		sanitizedDate := v.Date.Truncate(24 * time.Hour).Format("2006-01-02")
-		_, exist := missingDates[sanitizedDate]
-		if exist {
-			missingFundPrices = append(missingFundPrices, model.FundPrice{
-				ID:     uuid.New().String(),
-				FundID: fundID,
-				Price:  v.PriceClose,
-				Date:   v.Date.Truncate(24 * time.Hour),
-			})
-		}
-	}
-
+	missingFundPrices := s.filterMissingPrices(chart.Indicators, missingDates, fundID)
 	if len(missingFundPrices) == 0 {
 		return nil
 	}

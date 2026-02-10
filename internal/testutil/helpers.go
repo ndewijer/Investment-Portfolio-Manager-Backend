@@ -83,7 +83,7 @@ func NewTestFundService(t *testing.T, db *sql.DB) *service.FundService {
 		dividendService,
 		realizedGainLossService)
 	portfolioService := service.NewPortfolioService(repository.NewPortfolioRepository(db))
-	yahooClient := yahoo.NewYahooFinanceClient()
+	yahooClient := yahoo.NewFinanceClient()
 
 	return service.NewFundService(
 		fundRepo,
@@ -113,7 +113,7 @@ func NewTestMaterializedService(t *testing.T, db *sql.DB) *service.MaterializedS
 		dividendService,
 		realizedGainLossService)
 	portfolioService := service.NewPortfolioService(portfolioRepo)
-	yahooClient := yahoo.NewYahooFinanceClient()
+	yahooClient := yahoo.NewFinanceClient()
 	fundService := service.NewFundService(fundRepo, transactionService, dividendService, realizedGainLossService, dataLoaderService, portfolioService, yahooClient)
 
 	return service.NewMaterializedService(

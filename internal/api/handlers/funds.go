@@ -303,3 +303,45 @@ func (h *FundHandler) DeleteFund(w http.ResponseWriter, r *http.Request) {
 
 	response.RespondJSON(w, http.StatusNoContent, nil)
 }
+
+// UpdateFundPrice updates fund prices based on the requested type.
+// Handles both current price updates (yesterday's closing price) and historical
+// price backfilling from the earliest transaction date.
+//
+// Query Parameters:
+//   - type: Required. Must be "today" or "historical"
+//   - "today": Updates the latest available price (yesterday's close)
+//   - "historical": Backfills all missing prices from earliest transaction to yesterday
+//
+// URL Parameters:
+//   - uuid: The fund ID to update prices for
+//
+// Returns:
+//   - 200 OK: Price update completed successfully
+//   - 400 Bad Request: Invalid or missing type parameter
+//   - 500 Internal Server Error: Price update failed
+func (h *FundHandler) UpdateFundPrice(w http.ResponseWriter, r *http.Request) {
+	fundID := chi.URLParam(r, "uuid")
+	updateType := r.URL.Query().Get("type")
+
+	if updateType != "today" && updateType != "historical" {
+		response.RespondError(w, http.StatusBadRequest, "type requires 'today' or 'historical'", "")
+		return
+	}
+
+	if updateType == "today" {
+		_, err := h.fundService.UpdateCurrentFundPrice(r.Context(), fundID)
+		if err != nil {
+			response.RespondError(w, http.StatusInternalServerError, "cannot update current fund price", err.Error())
+			return
+		}
+	} else {
+		err := h.fundService.UpdateHistoricalFundPrice(r.Context(), fundID)
+		if err != nil {
+			response.RespondError(w, http.StatusInternalServerError, "cannot update historical fund prices", err.Error())
+			return
+		}
+	}
+
+	response.RespondJSON(w, http.StatusOK, nil)
+}

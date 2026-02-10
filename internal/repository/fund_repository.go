@@ -783,6 +783,21 @@ func (r *FundRepository) DeleteFund(ctx context.Context, fundID string) error {
 	return nil
 }
 
+// InsertFundPrice inserts a single fund price record into the database.
+// This method is used for single price updates, such as adding the latest daily price.
+//
+// The insertion respects transaction context through getQuerier(), allowing this method
+// to participate in larger transactions when called via WithTx().
+//
+// Parameters:
+//   - ctx: Context for cancellation and timeout control
+//   - fp: FundPrice record containing ID, FundID, Date, and Price
+//
+// Returns:
+//   - error: If the insertion fails, wrapped with context
+//
+// Note: This method does not check for duplicate dates. Callers should verify
+// that the price doesn't already exist before calling this method.
 func (r *FundRepository) InsertFundPrice(ctx context.Context, fp model.FundPrice) error {
 	query := `
         INSERT INTO fund_price (id, fund_id, date, price)
@@ -803,6 +818,31 @@ func (r *FundRepository) InsertFundPrice(ctx context.Context, fp model.FundPrice
 	return nil
 }
 
+// InsertFundPrices performs a batch insert of multiple fund price records.
+// This method is optimized for inserting large numbers of prices at once, such as
+// during historical data backfilling operations.
+//
+// The method uses a prepared statement within a transaction to efficiently insert
+// multiple records while maintaining atomicity. If any insertion fails, all changes
+// are rolled back.
+//
+// Implementation Details:
+//   - Creates a dedicated transaction for the batch operation
+//   - Prepares a single INSERT statement reused for all records
+//   - Formats dates as "2006-01-02" for database compatibility
+//   - Commits only after all insertions succeed
+//
+// Parameters:
+//   - ctx: Context for cancellation and timeout control
+//   - fundPrices: Slice of FundPrice records to insert
+//
+// Returns:
+//   - error: If transaction creation, statement preparation, any insertion,
+//     or commit fails. All errors are wrapped with context.
+//   - nil: If fundPrices is empty (no-op) or all insertions succeed
+//
+// Note: This method creates its own transaction and does not respect getQuerier().
+// It cannot be nested within another transaction via WithTx().
 func (r *FundRepository) InsertFundPrices(ctx context.Context, fundPrices []model.FundPrice) error {
 	if len(fundPrices) == 0 {
 		return nil
@@ -812,6 +852,10 @@ func (r *FundRepository) InsertFundPrices(ctx context.Context, fundPrices []mode
 	if err != nil {
 		return fmt.Errorf("failed to begin 'insert fund_prices' transaction: %w", err)
 	}
+
+	// Rollback is safe to call even after Commit. If Commit succeeds, this is a no-op.
+	// If Commit fails, this ensures the transaction is rolled back.
+	//nolint:errcheck
 	defer tx.Rollback()
 
 	stmt, err := tx.PrepareContext(ctx, `
