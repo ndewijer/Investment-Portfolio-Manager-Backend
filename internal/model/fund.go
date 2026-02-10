@@ -115,7 +115,7 @@ type PortfolioTransaction struct {
 // FundPriceUpdateResponse represents the response for fund price update operations.
 // It indicates whether the update operation added new prices to the database.
 type FundPriceUpdateResponse struct {
-	Status    string `json:"status"`     // "success" or "error"
-	Message   string `json:"message"`    // Human-readable description of the result
-	NewPrices bool   `json:"new_prices"` // true if new prices were added, false if prices already existed
+	Status    string `json:"status"`    // "success" or "error"
+	Message   string `json:"message"`   // Human-readable description of the result
+	NewPrices bool   `json:"newPrices"` // true if new prices were added, false if prices already existed
 }

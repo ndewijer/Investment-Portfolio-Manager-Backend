@@ -336,6 +336,10 @@ func (h *FundHandler) UpdateFundPrice(w http.ResponseWriter, r *http.Request) {
 	if updateType == "today" {
 		_, newPrices, err := h.fundService.UpdateCurrentFundPrice(r.Context(), fundID)
 		if err != nil {
+			if errors.Is(err, apperrors.ErrFundNotFound) {
+				response.RespondError(w, http.StatusNotFound, apperrors.ErrFundNotFound.Error(), err.Error())
+				return
+			}
 			response.RespondError(w, http.StatusInternalServerError, "cannot update current fund price", err.Error())
 			return
 		}
@@ -347,6 +351,10 @@ func (h *FundHandler) UpdateFundPrice(w http.ResponseWriter, r *http.Request) {
 	} else {
 		count, err := h.fundService.UpdateHistoricalFundPrice(r.Context(), fundID)
 		if err != nil {
+			if errors.Is(err, apperrors.ErrFundNotFound) {
+				response.RespondError(w, http.StatusNotFound, apperrors.ErrFundNotFound.Error(), err.Error())
+				return
+			}
 			response.RespondError(w, http.StatusInternalServerError, "cannot update historical fund prices", err.Error())
 			return
 		}

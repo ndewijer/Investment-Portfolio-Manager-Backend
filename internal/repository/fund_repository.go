@@ -807,7 +807,7 @@ func (r *FundRepository) InsertFundPrice(ctx context.Context, fp model.FundPrice
 	_, err := r.getQuerier().ExecContext(ctx, query,
 		fp.ID,
 		fp.FundID,
-		fp.Date,
+		fp.Date.Format("2006-01-02"),
 		fp.Price,
 	)
 
@@ -848,15 +848,30 @@ func (r *FundRepository) InsertFundPrices(ctx context.Context, fundPrices []mode
 		return nil
 	}
 
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("failed to begin 'insert fund_prices' transaction: %w", err)
+	var tx *sql.Tx
+	var err error
+	var shouldCommit bool
+
+	if r.tx != nil {
+		tx = r.tx
+		shouldCommit = false
+	} else {
+		tx, err = r.db.BeginTx(ctx, nil)
+		if err != nil {
+			return fmt.Errorf("failed to begin 'insert fund_prices' transaction: %w", err)
+		}
+		shouldCommit = true
+		defer func() {
+			if err != nil {
+				tx.Rollback()
+			}
+		}()
 	}
 
 	// Rollback is safe to call even after Commit. If Commit succeeds, this is a no-op.
 	// If Commit fails, this ensures the transaction is rolled back.
 	//nolint:errcheck
-	defer tx.Rollback()
+	// defer tx.Rollback()
 
 	stmt, err := tx.PrepareContext(ctx, `
         INSERT INTO fund_price (id, fund_id, date, price)
@@ -873,9 +888,10 @@ func (r *FundRepository) InsertFundPrices(ctx context.Context, fundPrices []mode
 			return fmt.Errorf("failed to insert fund price for %s on %s: %w", fp.FundID, fp.Date.Format("2006-01-02"), err)
 		}
 	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit 'insert fund_prices' transaction: %w", err)
+	if shouldCommit {
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("failed to commit 'insert fund_prices' transaction: %w", err)
+		}
 	}
 
 	return nil

@@ -325,8 +325,8 @@ func (s *FundService) DeleteFund(ctx context.Context, id string) error {
 //
 // Duplicate Prevention:
 // The method includes multiple safeguards against duplicate insertions:
-//   - Early return if yesterday's price already exists (line 333-336)
-//   - Fallback path checks if the fallback date already exists (line 365-367)
+//   - Early return if yesterday's price already exists
+//   - Fallback path checks if the fallback date already exists
 //
 // Parameters:
 //   - ctx: Context for cancellation and timeout control
@@ -347,7 +347,7 @@ func (s *FundService) UpdateCurrentFundPrice(ctx context.Context, fundID string)
 	}
 
 	if fund.Symbol == "" {
-		return model.FundPrice{}, false, fmt.Errorf("no symbol available for fund %s", fund.Name)
+		return model.FundPrice{}, false, apperrors.ErrInvalidSymbol
 	}
 
 	now := time.Now().UTC()
@@ -371,9 +371,6 @@ func (s *FundService) UpdateCurrentFundPrice(ctx context.Context, fundID string)
 	if err != nil {
 		return model.FundPrice{}, false, err
 	}
-	if len(chart.Indicators) == 0 {
-		return model.FundPrice{}, false, fmt.Errorf("no price indicators available")
-	}
 
 	indicator, ok := chart.GetIndicatorForDate(yesterdayDate)
 	var fundPrice model.FundPrice
@@ -385,6 +382,9 @@ func (s *FundService) UpdateCurrentFundPrice(ctx context.Context, fundID string)
 			Price:  indicator.PriceClose,
 		}
 	} else {
+		if len(chart.Indicators) == 0 {
+			return model.FundPrice{}, false, fmt.Errorf("no price indicators available")
+		}
 		fallbackDate := chart.Indicators[len(chart.Indicators)-1].Date.Truncate(24 * time.Hour)
 		fallbackPrices, err := s.fundRepo.GetFundPrice([]string{fundID}, fallbackDate, fallbackDate, true)
 		if err != nil {
@@ -485,7 +485,7 @@ func (s *FundService) UpdateHistoricalFundPrice(ctx context.Context, fundID stri
 	}
 
 	if fund.Symbol == "" {
-		return 0, fmt.Errorf("no symbol available for fund %s", fund.Name)
+		return 0, apperrors.ErrInvalidSymbol
 	}
 
 	portfolioFunds, err := s.fundRepo.GetPortfolioFundsbyFundID(fundID)

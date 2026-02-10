@@ -367,6 +367,37 @@ func TestFundHandler_GetSymbol(t *testing.T) {
 		}
 	})
 
+	t.Run("returns 404 when symbol not found", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		fs := testutil.NewTestFundService(t, db)
+		ms := testutil.NewTestMaterializedService(t, db)
+		handler := handlers.NewFundHandler(fs, ms)
+
+		// Don't create any symbol - request for non-existent symbol
+		req := testutil.NewRequestWithURLParams(
+			http.MethodGet,
+			"/api/fund/symbol/NONEXISTENT",
+			map[string]string{"symbol": "NONEXISTENT"},
+		)
+		w := httptest.NewRecorder()
+
+		handler.GetSymbol(w, req)
+
+		if w.Code != http.StatusNotFound {
+			t.Errorf("Expected status 404, got %d", w.Code)
+		}
+
+		var response map[string]string
+		err := json.NewDecoder(w.Body).Decode(&response)
+		if err != nil {
+			t.Fatalf("Failed to decode error response: %v", err)
+		}
+
+		if response["error"] != apperrors.ErrSymbolNotFound.Error() {
+			t.Errorf("Expected '%s' error, got '%s'", apperrors.ErrSymbolNotFound.Error(), response["error"])
+		}
+	})
+
 	t.Run("returns 500 on database error", func(t *testing.T) {
 		db := testutil.SetupTestDB(t)
 		fs := testutil.NewTestFundService(t, db)
@@ -1353,7 +1384,7 @@ func TestFundHandler_UpdateFundPrice_Today(t *testing.T) {
 		}
 	})
 
-	t.Run("returns error when fund does not exist", func(t *testing.T) {
+	t.Run("returns 404 when fund does not exist", func(t *testing.T) {
 		db := testutil.SetupTestDB(t)
 		mockYahoo := testutil.NewMockYahooClient()
 		fs := testutil.NewTestFundServiceWithMockYahoo(t, db, mockYahoo)
@@ -1370,8 +1401,18 @@ func TestFundHandler_UpdateFundPrice_Today(t *testing.T) {
 
 		handler.UpdateFundPrice(w, req)
 
-		if w.Code != http.StatusInternalServerError {
-			t.Errorf("Expected status 500, got %d", w.Code)
+		if w.Code != http.StatusNotFound {
+			t.Errorf("Expected status 404, got %d", w.Code)
+		}
+
+		var response map[string]string
+		err := json.NewDecoder(w.Body).Decode(&response)
+		if err != nil {
+			t.Fatalf("Failed to decode error response: %v", err)
+		}
+
+		if response["error"] != apperrors.ErrFundNotFound.Error() {
+			t.Errorf("Expected '%s' error, got '%s'", apperrors.ErrFundNotFound.Error(), response["error"])
 		}
 	})
 
