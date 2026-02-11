@@ -1310,7 +1310,7 @@ func TestFundHandler_UpdateFundPrice_Today(t *testing.T) {
 
 		// Insert yesterday's price
 		now := time.Now().UTC()
-		yesterday := time.Date(now.Year(), now.Month(), now.Day()-1, 0, 0, 0, 0, time.UTC)
+		yesterday := now.AddDate(0, 0, -1).Truncate(24 * time.Hour)
 		testutil.NewFundPrice(fund.ID).
 			WithDate(yesterday).
 			WithPrice(100.0).
@@ -1529,7 +1529,7 @@ func TestFundHandler_UpdateFundPrice_Historical(t *testing.T) {
 
 		// Create a transaction 7 days ago
 		now := time.Now().UTC()
-		sevenDaysAgo := time.Date(now.Year(), now.Month(), now.Day()-7, 0, 0, 0, 0, time.UTC)
+		sevenDaysAgo := now.AddDate(0, 0, -7).Truncate(24 * time.Hour)
 		testutil.NewTransaction(pf.ID).
 			WithDate(sevenDaysAgo).
 			Build(t, db)
@@ -1582,13 +1582,13 @@ func TestFundHandler_UpdateFundPrice_Historical(t *testing.T) {
 
 		// Create a transaction 3 days ago
 		now := time.Now().UTC()
-		threeDaysAgo := time.Date(now.Year(), now.Month(), now.Day()-3, 0, 0, 0, 0, time.UTC)
+		threeDaysAgo := now.AddDate(0, 0, -3).Truncate(24 * time.Hour)
 		testutil.NewTransaction(pf.ID).
 			WithDate(threeDaysAgo).
 			Build(t, db)
 
 		// Insert all prices from transaction date to yesterday
-		yesterday := time.Date(now.Year(), now.Month(), now.Day()-1, 0, 0, 0, 0, time.UTC)
+		yesterday := now.AddDate(0, 0, -1).Truncate(24 * time.Hour)
 		for d := threeDaysAgo; !d.After(yesterday); d = d.AddDate(0, 0, 1) {
 			testutil.NewFundPrice(fund.ID).
 				WithDate(d).
@@ -1698,7 +1698,7 @@ func TestFundHandler_UpdateFundPrice_Historical(t *testing.T) {
 
 		// Transaction 10 days ago but Yahoo only returns 5 days
 		now := time.Now().UTC()
-		tenDaysAgo := time.Date(now.Year(), now.Month(), now.Day()-10, 0, 0, 0, 0, time.UTC)
+		tenDaysAgo := now.AddDate(0, 0, -10).Truncate(24 * time.Hour)
 		testutil.NewTransaction(pf.ID).
 			WithDate(tenDaysAgo).
 			Build(t, db)

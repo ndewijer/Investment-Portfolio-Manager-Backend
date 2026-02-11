@@ -159,7 +159,13 @@ func (h *FundHandler) GetFundPrices(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response.RespondJSON(w, http.StatusOK, funds[fundID])
+	// Return empty array instead of nil to prevent frontend errors
+	prices := funds[fundID]
+	if prices == nil {
+		prices = []model.FundPrice{}
+	}
+
+	response.RespondJSON(w, http.StatusOK, prices)
 }
 
 // CheckUsage handles GET requests to check if a fund is currently in use by any portfolios.

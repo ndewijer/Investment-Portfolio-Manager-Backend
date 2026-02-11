@@ -312,8 +312,9 @@ func (s *FundService) DeleteFund(ctx context.Context, id string) error {
 }
 
 // UpdateCurrentFundPrice fetches and stores the latest available price for a fund.
-// This method retrieves yesterday's closing price from Yahoo Finance, as stock markets
-// provide the previous day's close as the most recent complete data point.
+// This method always targets yesterday's date to ensure we only get final closing prices,
+// never provisional intraday data from today's open market. Stock markets provide the
+// previous day's close as the most recent complete data point.
 //
 // The method follows this workflow:
 //  1. Validates that the fund exists and has a ticker symbol
@@ -340,7 +341,6 @@ func (s *FundService) DeleteFund(ctx context.Context, id string) error {
 // Note: This method does not invalidate materialized views. See issue #35 for planned
 // materialized view invalidation support.
 func (s *FundService) UpdateCurrentFundPrice(ctx context.Context, fundID string) (model.FundPrice, bool, error) {
-
 	fund, err := s.GetFund(fundID)
 	if err != nil {
 		return model.FundPrice{}, false, err
@@ -350,55 +350,40 @@ func (s *FundService) UpdateCurrentFundPrice(ctx context.Context, fundID string)
 		return model.FundPrice{}, false, apperrors.ErrInvalidSymbol
 	}
 
-	now := time.Now().UTC()
-	yesterdayDate := time.Date(now.Year(), now.Month(), now.Day()-1, 0, 0, 0, 0, time.UTC)
+	yesterdayDate := time.Now().UTC().AddDate(0, 0, -1).Truncate(24 * time.Hour)
 
-	fundPrices, err := s.fundRepo.GetFundPrice([]string{fundID}, yesterdayDate, yesterdayDate, true)
+	if existingPrice, exists := s.checkExistingPrice(fundID, yesterdayDate); exists {
+		return existingPrice, false, nil
+	}
+
+	chart, err := s.fetchYahooChart(fund.Symbol)
 	if err != nil {
 		return model.FundPrice{}, false, err
 	}
 
-	yesterdayPrice, exists := fundPrices[fundID]
-	if exists && len(yesterdayPrice) > 0 {
-		return yesterdayPrice[0], false, nil
-	}
-
-	raw, err := s.yahooClient.QueryYahooFiveDaySymbol(fund.Symbol)
-	if err != nil {
-		return model.FundPrice{}, false, err
-	}
-	chart, err := s.yahooClient.ParseChart(raw)
-	if err != nil {
-		return model.FundPrice{}, false, err
+	if len(chart.Indicators) == 0 {
+		return model.FundPrice{}, false, fmt.Errorf("no price data available from Yahoo Finance")
 	}
 
 	indicator, ok := chart.GetIndicatorForDate(yesterdayDate)
-	var fundPrice model.FundPrice
-	if ok {
-		fundPrice = model.FundPrice{
-			ID:     uuid.New().String(),
-			FundID: fund.ID,
-			Date:   yesterdayDate,
-			Price:  indicator.PriceClose,
+	if !ok {
+		indicator = chart.Indicators[len(chart.Indicators)-1]
+		yesterdayDate = indicator.Date.Truncate(24 * time.Hour)
+
+		if existingPrice, exists := s.checkExistingPrice(fundID, yesterdayDate); exists {
+			return existingPrice, false, nil
 		}
-	} else {
-		if len(chart.Indicators) == 0 {
-			return model.FundPrice{}, false, fmt.Errorf("no price indicators available")
-		}
-		fallbackDate := chart.Indicators[len(chart.Indicators)-1].Date.Truncate(24 * time.Hour)
-		fallbackPrices, err := s.fundRepo.GetFundPrice([]string{fundID}, fallbackDate, fallbackDate, true)
-		if err != nil {
-			return model.FundPrice{}, false, err
-		}
-		if prices, exists := fallbackPrices[fundID]; exists && len(prices) > 0 {
-			return prices[0], false, nil
-		}
-		fundPrice = model.FundPrice{
-			ID:     uuid.New().String(),
-			FundID: fund.ID,
-			Date:   fallbackDate,
-			Price:  chart.Indicators[len(chart.Indicators)-1].PriceClose,
-		}
+	}
+
+	if indicator.PriceClose <= 0 {
+		return model.FundPrice{}, false, fmt.Errorf("invalid price for date %s: %.2f", yesterdayDate.Format("2006-01-02"), indicator.PriceClose)
+	}
+
+	fundPrice := model.FundPrice{
+		ID:     uuid.New().String(),
+		FundID: fund.ID,
+		Date:   yesterdayDate,
+		Price:  indicator.PriceClose,
 	}
 
 	if err = s.fundRepo.InsertFundPrice(ctx, fundPrice); err != nil {
@@ -406,6 +391,29 @@ func (s *FundService) UpdateCurrentFundPrice(ctx context.Context, fundID string)
 	}
 
 	return fundPrice, true, nil
+}
+
+// checkExistingPrice checks if a price already exists for the given date.
+func (s *FundService) checkExistingPrice(fundID string, date time.Time) (model.FundPrice, bool) {
+	fundPrices, err := s.fundRepo.GetFundPrice([]string{fundID}, date, date, true)
+	if err != nil {
+		return model.FundPrice{}, false
+	}
+
+	prices, exists := fundPrices[fundID]
+	if exists && len(prices) > 0 {
+		return prices[0], true
+	}
+	return model.FundPrice{}, false
+}
+
+// fetchYahooChart fetches and parses Yahoo Finance data for a symbol.
+func (s *FundService) fetchYahooChart(symbol string) (yahoo.PriceChart, error) {
+	raw, err := s.yahooClient.QueryYahooFiveDaySymbol(symbol)
+	if err != nil {
+		return yahoo.PriceChart{}, err
+	}
+	return s.yahooClient.ParseChart(raw)
 }
 
 // buildMissingDatesMap creates a map of date strings that are missing from the existing prices.
@@ -434,6 +442,9 @@ func (s *FundService) filterMissingPrices(indicators []yahoo.Indicators, missing
 	for _, v := range indicators {
 		sanitizedDate := v.Date.Truncate(24 * time.Hour).Format("2006-01-02")
 		if missingDates[sanitizedDate] {
+			if v.PriceClose <= 0 {
+				continue
+			}
 			missingFundPrices = append(missingFundPrices, model.FundPrice{
 				ID:     uuid.New().String(),
 				FundID: fundID,
@@ -505,10 +516,10 @@ func (s *FundService) UpdateHistoricalFundPrice(ctx context.Context, fundID stri
 	if oldestDate.IsZero() {
 		return 0, fmt.Errorf("no transactions found for fund %s", fundID)
 	}
-	now := time.Now()
-	yesterdayDate := time.Date(now.Year(), now.Month(), now.Day()-1, 0, 0, 0, 0, time.UTC)
+	now := time.Now().UTC().Truncate(24 * time.Hour)
+	yesterdayDate := now.AddDate(0, 0, -1)
 
-	existingPrices, err := s.fundRepo.GetFundPrice([]string{fundID}, oldestDate, yesterdayDate, true)
+	existingPrices, err := s.fundRepo.GetFundPrice([]string{fundID}, oldestDate, now, true)
 	if err != nil {
 		return 0, err
 	}

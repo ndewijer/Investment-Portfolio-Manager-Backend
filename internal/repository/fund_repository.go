@@ -863,15 +863,13 @@ func (r *FundRepository) InsertFundPrices(ctx context.Context, fundPrices []mode
 		shouldCommit = true
 		defer func() {
 			if err != nil {
+				// Rollback is safe to call even after Commit. If Commit succeeds, this is a no-op.
+				// If Commit fails, this ensures the transaction is rolled back.
+				//nolint:errcheck
 				tx.Rollback()
 			}
 		}()
 	}
-
-	// Rollback is safe to call even after Commit. If Commit succeeds, this is a no-op.
-	// If Commit fails, this ensures the transaction is rolled back.
-	//nolint:errcheck
-	// defer tx.Rollback()
 
 	stmt, err := tx.PrepareContext(ctx, `
         INSERT INTO fund_price (id, fund_id, date, price)

@@ -72,24 +72,42 @@ func (c *FinanceClient) ParseChart(yahooResult Response) (PriceChart, error) {
 		return PriceChart{}, fmt.Errorf("mismatched data lengths")
 	}
 
-	indicators := make([]Indicators, len(result.Timestamp))
+	indicators := make([]Indicators, 0, len(result.Timestamp))
+
+	today := time.Now().UTC().Truncate(24 * time.Hour)
+
 	for i, v := range result.Timestamp {
-		indicators[i].Date = time.Unix(v, 0).UTC()
-		if result.Indicators.Quote[0].Open[i] != nil {
-			indicators[i].PriceOpen = *result.Indicators.Quote[0].Open[i]
+		indicatorDate := time.Unix(v, 0).UTC().Truncate(24 * time.Hour)
+
+		// Skip today's data - it's provisional intraday data that changes throughout the day.
+		// Only use completed trading days (yesterday and older) to ensure data quality.
+		if !indicatorDate.Before(today) {
+			continue
 		}
-		if result.Indicators.Quote[0].Close[i] != nil {
-			indicators[i].PriceClose = *result.Indicators.Quote[0].Close[i]
+
+		if result.Indicators.Quote[0].Close[i] == nil {
+			continue
+		}
+
+		indicator := Indicators{
+			Date:       time.Unix(v, 0).UTC(),
+			PriceClose: *result.Indicators.Quote[0].Close[i],
+		}
+
+		if result.Indicators.Quote[0].Open[i] != nil {
+			indicator.PriceOpen = *result.Indicators.Quote[0].Open[i]
 		}
 		if result.Indicators.Quote[0].Volume[i] != nil {
-			indicators[i].Volume = *result.Indicators.Quote[0].Volume[i]
+			indicator.Volume = *result.Indicators.Quote[0].Volume[i]
 		}
 		if result.Indicators.Quote[0].High[i] != nil {
-			indicators[i].PriceHigh = *result.Indicators.Quote[0].High[i]
+			indicator.PriceHigh = *result.Indicators.Quote[0].High[i]
 		}
 		if result.Indicators.Quote[0].Low[i] != nil {
-			indicators[i].PriceLow = *result.Indicators.Quote[0].Low[i]
+			indicator.PriceLow = *result.Indicators.Quote[0].Low[i]
 		}
+
+		indicators = append(indicators, indicator)
 	}
 
 	return PriceChart{
@@ -168,11 +186,15 @@ func (c *FinanceClient) QueryYahooFiveDaySymbol(symbol string) (Response, error)
 //   - Response: Raw API response containing price data for the range
 //   - error: If the HTTP request fails, API returns an error, or no results found
 func (c *FinanceClient) QueryYahooSymbolByDateRange(symbol string, startDate, endDate time.Time) (Response, error) {
+	// Yahoo's period2 parameter is exclusive, so add 1 day to endDate to ensure
+	// we get all data up to and including the endDate
+	adjustedEndDate := endDate.AddDate(0, 0, 1)
+
 	url := fmt.Sprintf(
 		"https://query1.finance.yahoo.com/v8/finance/chart/%s?interval=1d&period1=%d&period2=%d",
 		symbol,
 		startDate.Unix(),
-		endDate.Unix(),
+		adjustedEndDate.Unix(),
 	)
 	result, err := c.queryYahoo(url)
 	if err != nil {
