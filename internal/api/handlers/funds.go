@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/request"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/response"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/apperrors"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/service"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/validation"
 )
@@ -157,7 +159,13 @@ func (h *FundHandler) GetFundPrices(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response.RespondJSON(w, http.StatusOK, funds[fundID])
+	// Return empty array instead of nil to prevent frontend errors
+	prices := funds[fundID]
+	if prices == nil {
+		prices = []model.FundPrice{}
+	}
+
+	response.RespondJSON(w, http.StatusOK, prices)
 }
 
 // CheckUsage handles GET requests to check if a fund is currently in use by any portfolios.
@@ -302,4 +310,66 @@ func (h *FundHandler) DeleteFund(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.RespondJSON(w, http.StatusNoContent, nil)
+}
+
+// UpdateFundPrice updates fund prices based on the requested type.
+// Handles both current price updates (yesterday's closing price) and historical
+// price backfilling from the earliest transaction date.
+//
+// Query Parameters:
+//   - type: Required. Must be "today" or "historical"
+//   - "today": Updates the latest available price (yesterday's close)
+//   - "historical": Backfills all missing prices from earliest transaction to yesterday
+//
+// URL Parameters:
+//   - uuid: The fund ID to update prices for
+//
+// Returns:
+//   - 200 OK: Price update completed successfully
+//   - 400 Bad Request: Invalid or missing type parameter
+//   - 500 Internal Server Error: Price update failed
+func (h *FundHandler) UpdateFundPrice(w http.ResponseWriter, r *http.Request) {
+	fundID := chi.URLParam(r, "uuid")
+	updateType := r.URL.Query().Get("type")
+
+	if updateType != "today" && updateType != "historical" {
+		response.RespondError(w, http.StatusBadRequest, "type requires 'today' or 'historical'", "")
+		return
+	}
+
+	var resp model.FundPriceUpdateResponse
+
+	if updateType == "today" {
+		_, newPrices, err := h.fundService.UpdateCurrentFundPrice(r.Context(), fundID)
+		if err != nil {
+			if errors.Is(err, apperrors.ErrFundNotFound) {
+				response.RespondError(w, http.StatusNotFound, apperrors.ErrFundNotFound.Error(), err.Error())
+				return
+			}
+			response.RespondError(w, http.StatusInternalServerError, "cannot update current fund price", err.Error())
+			return
+		}
+		resp = model.FundPriceUpdateResponse{
+			Status:    "success",
+			Message:   "Price update completed",
+			NewPrices: newPrices,
+		}
+	} else {
+		count, err := h.fundService.UpdateHistoricalFundPrice(r.Context(), fundID)
+		if err != nil {
+			if errors.Is(err, apperrors.ErrFundNotFound) {
+				response.RespondError(w, http.StatusNotFound, apperrors.ErrFundNotFound.Error(), err.Error())
+				return
+			}
+			response.RespondError(w, http.StatusInternalServerError, "cannot update historical fund prices", err.Error())
+			return
+		}
+		resp = model.FundPriceUpdateResponse{
+			Status:    "success",
+			Message:   fmt.Sprintf("Updated %d historical prices", count),
+			NewPrices: count > 0,
+		}
+	}
+
+	response.RespondJSON(w, http.StatusOK, resp)
 }

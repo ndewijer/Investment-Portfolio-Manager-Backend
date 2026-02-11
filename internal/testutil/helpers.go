@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/repository"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/service"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/yahoo"
 )
 
 func NewTestPortfolioService(t *testing.T, db *sql.DB) *service.PortfolioService {
@@ -82,6 +83,7 @@ func NewTestFundService(t *testing.T, db *sql.DB) *service.FundService {
 		dividendService,
 		realizedGainLossService)
 	portfolioService := service.NewPortfolioService(repository.NewPortfolioRepository(db))
+	yahooClient := yahoo.NewFinanceClient()
 
 	return service.NewFundService(
 		fundRepo,
@@ -90,6 +92,35 @@ func NewTestFundService(t *testing.T, db *sql.DB) *service.FundService {
 		realizedGainLossService,
 		dataLoaderService,
 		portfolioService,
+		yahooClient,
+	)
+}
+
+// NewTestFundServiceWithMockYahoo creates a FundService with a mock Yahoo client for testing.
+// This is useful for testing fund price update operations without making real API calls.
+func NewTestFundServiceWithMockYahoo(t *testing.T, db *sql.DB, mockYahoo yahoo.Client) *service.FundService {
+	t.Helper()
+
+	fundRepo := repository.NewFundRepository(db)
+	transactionService := service.NewTransactionService(repository.NewTransactionRepository(db))
+	dividendService := service.NewDividendService(repository.NewDividendRepository(db))
+	realizedGainLossService := service.NewRealizedGainLossService(repository.NewRealizedGainLossRepository(db))
+	dataLoaderService := service.NewDataLoaderService(
+		repository.NewPortfolioRepository(db),
+		fundRepo,
+		transactionService,
+		dividendService,
+		realizedGainLossService)
+	portfolioService := service.NewPortfolioService(repository.NewPortfolioRepository(db))
+
+	return service.NewFundService(
+		fundRepo,
+		transactionService,
+		dividendService,
+		realizedGainLossService,
+		dataLoaderService,
+		portfolioService,
+		mockYahoo,
 	)
 }
 
@@ -110,7 +141,8 @@ func NewTestMaterializedService(t *testing.T, db *sql.DB) *service.MaterializedS
 		dividendService,
 		realizedGainLossService)
 	portfolioService := service.NewPortfolioService(portfolioRepo)
-	fundService := service.NewFundService(fundRepo, transactionService, dividendService, realizedGainLossService, dataLoaderService, portfolioService)
+	yahooClient := yahoo.NewFinanceClient()
+	fundService := service.NewFundService(fundRepo, transactionService, dividendService, realizedGainLossService, dataLoaderService, portfolioService, yahooClient)
 
 	return service.NewMaterializedService(
 		materializedRepo,
