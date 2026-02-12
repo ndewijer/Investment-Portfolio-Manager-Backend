@@ -97,6 +97,11 @@ func NewRouter(
 				r.Get("/check-usage", fundHandler.CheckUsage)
 				r.Delete("/", fundHandler.DeleteFund)
 			})
+
+			r.Route("/update-all-prices", func(r chi.Router) {
+				r.Use(custommiddleware.APIKeyMiddleware)
+				r.Post("/", fundHandler.UpdateAllFundHistory)
+			})
 		})
 
 		r.Route("/dividend", func(r chi.Router) {

@@ -550,3 +550,70 @@ func (s *FundService) UpdateHistoricalFundPrice(ctx context.Context, fundID stri
 
 	return len(missingFundPrices), nil
 }
+
+// UpdateAllFundHistory updates historical price data for all funds in the database.
+// It iterates through all funds and attempts to fetch and store missing historical prices.
+//
+// The function collects both successes and failures for each fund, continuing to process
+// remaining funds even if individual updates fail. This ensures maximum data collection
+// in a single operation.
+//
+// Returns:
+//   - AllFundUpdateResponse containing detailed results for each fund (successes and errors)
+//   - error is nil if at least one fund was successfully updated (partial success)
+//   - error is non-nil only if:
+//   - No funds exist in the database (returns apperrors.ErrFundNotFound)
+//   - GetAllFunds fails
+//   - All fund updates failed (zero successes)
+//
+// The response always includes detailed information about which funds succeeded or failed,
+// regardless of whether an error is returned.
+func (s *FundService) UpdateAllFundHistory(ctx context.Context) (model.AllFundUpdateResponse, error) {
+	funds, err := s.GetAllFunds()
+	if err != nil {
+		return model.AllFundUpdateResponse{}, err
+	}
+
+	if len(funds) == 0 {
+		return model.AllFundUpdateResponse{}, apperrors.ErrFundNotFound
+	}
+	var fundUpdate model.AllFundUpdateResponse
+	var errors []model.UpdatedFundError
+	var fundResults []model.UpdatedFund
+
+	for _, f := range funds {
+		result, err := s.UpdateHistoricalFundPrice(ctx, f.ID)
+		if err != nil {
+			fundPriceError := model.UpdatedFundError{
+				FundID: f.ID,
+				Name:   f.Name,
+				Symbol: f.Symbol,
+				Error:  err.Error(),
+			}
+			errors = append(errors, fundPriceError)
+			continue
+		}
+
+		updateResult := model.UpdatedFund{
+			FundID:      f.ID,
+			Name:        f.Name,
+			Symbol:      f.Symbol,
+			PricesAdded: result,
+		}
+
+		fundResults = append(fundResults, updateResult)
+	}
+
+	fundUpdate.Errors = errors
+	fundUpdate.UpdatedFunds = fundResults
+	fundUpdate.TotalErrors = len(errors)
+	fundUpdate.TotalUpdated = len(fundResults)
+
+	if len(fundResults) == 0 && len(errors) > 0 {
+		fundUpdate.Success = false
+		return fundUpdate, fmt.Errorf("failed to update any funds: %d errors occurred", len(errors))
+	}
+
+	fundUpdate.Success = true
+	return fundUpdate, nil
+}
