@@ -373,3 +373,20 @@ func (h *FundHandler) UpdateFundPrice(w http.ResponseWriter, r *http.Request) {
 
 	response.RespondJSON(w, http.StatusOK, resp)
 }
+
+// UpdateAllFundHistory updates historical prices for all funds in the database.
+// Returns 200 on full or partial success, 500 on total failure, 404 if no funds exist.
+// The response includes detailed success/error information for each fund.
+func (h *FundHandler) UpdateAllFundHistory(w http.ResponseWriter, r *http.Request) {
+	resp, err := h.fundService.UpdateAllFundHistory(r.Context())
+	if err != nil {
+		if errors.Is(err, apperrors.ErrFundNotFound) {
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrFundNotFound.Error(), err.Error())
+			return
+		}
+		// Total failure - return structured response with all error details
+		response.RespondJSON(w, http.StatusInternalServerError, resp)
+		return
+	}
+	response.RespondJSON(w, http.StatusOK, resp)
+}

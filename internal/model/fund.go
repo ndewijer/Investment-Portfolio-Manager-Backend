@@ -22,14 +22,6 @@ type PortfolioFund struct {
 	FundID      string
 }
 
-// FundPrice represents a historical price point for a fund.
-type FundPrice struct {
-	ID     string    `json:"id"`
-	FundID string    `json:"fundId"`
-	Date   time.Time `json:"date"`
-	Price  float64   `json:"price"`
-}
-
 // PortfolioFund represents a fund held within a portfolio with calculated metrics.
 // Used for detailed portfolio fund breakdowns with shares, values, and gains/losses.
 type PortfolioFundResponse struct {
@@ -110,12 +102,4 @@ type PortfolioTransaction struct {
 	ID               string `json:"id"`
 	Name             string `json:"name"`
 	TransactionCount int    `json:"transactionCount"`
-}
-
-// FundPriceUpdateResponse represents the response for fund price update operations.
-// It indicates whether the update operation added new prices to the database.
-type FundPriceUpdateResponse struct {
-	Status    string `json:"status"`    // "success" or "error"
-	Message   string `json:"message"`   // Human-readable description of the result
-	NewPrices bool   `json:"newPrices"` // true if new prices were added, false if prices already existed
 }

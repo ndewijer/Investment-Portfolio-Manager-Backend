@@ -46,7 +46,7 @@ This backend aims to replicate all 73 endpoints from the Python backend. Below i
 │   ├── POST   /fund                            ✅ Add fund to portfolio
 │   └── DELETE /fund/{id}                       ✅ Remove fund from portfolio
 │
-├── /fund (5/13 endpoints) 🚧
+├── /fund (11/13 endpoints) 🚧
 │   ├── GET         /                           ✅ Get all funds
 │   ├── POST        /                           ✅ Create a new fund
 │   ├── GET         /{id}                       ✅ Get fund details
@@ -56,7 +56,7 @@ This backend aims to replicate all 73 endpoints from the Python backend. Below i
 │   ├── POST        /fund-prices/{id}/update    ✅ Update fund prices from external source
 │   ├── GET         /history/{portfolioID}      ✅ Get historical fund values for a portfolio
 │   ├── GET         /symbol/{symbol}            ✅ Get information about a trading symbol
-│   ├── POST        /update-all-prices          ⬜ Update prices for all funds
+│   ├── POST        /update-all-prices          ✅ Update prices for all funds
 │   ├── GET         /{id}/check-usage           ✅ Check if fund is being used
 │   ├── POST        /{id}/price/historical      ⬜ Update historical prices for a fund
 │   └── POST        /{id}/price/today           ⬜ Update today's price for a fund
