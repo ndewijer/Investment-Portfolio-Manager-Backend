@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -76,6 +77,45 @@ func NewRequestWithQueryAndURLParams(method, path string, URLparams map[string]s
 			q.Add(key, value)
 		}
 		req.URL.RawQuery = q.Encode()
+	}
+
+	return req
+}
+
+// NewRequestWithBody creates an HTTP request with a JSON body.
+// This helper simplifies testing handlers that parse JSON request bodies.
+//
+// Example:
+//
+//	req := testutil.NewRequestWithBody(
+//	    http.MethodPost,
+//	    "/api/transaction",
+//	    `{"portfolioFundId": "123", "shares": 100}`,
+//	)
+func NewRequestWithBody(method, path, body string) *http.Request {
+	return httptest.NewRequest(method, path, strings.NewReader(body))
+}
+
+// NewRequestWithURLParamsAndBody creates an HTTP request with both chi URL parameters and a JSON body.
+// This helper simplifies testing chi handlers that use chi.URLParam() and parse JSON request bodies.
+//
+// Example:
+//
+//	req := testutil.NewRequestWithURLParamsAndBody(
+//	    http.MethodPut,
+//	    "/api/transaction/123-456",
+//	    map[string]string{"uuid": "123-456"},
+//	    `{"shares": 150}`,
+//	)
+func NewRequestWithURLParamsAndBody(method, path string, params map[string]string, body string) *http.Request {
+	req := httptest.NewRequest(method, path, strings.NewReader(body))
+
+	if len(params) > 0 {
+		rctx := chi.NewRouteContext()
+		for key, value := range params {
+			rctx.URLParams.Add(key, value)
+		}
+		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 	}
 
 	return req

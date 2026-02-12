@@ -54,7 +54,7 @@ func (r *TransactionRepository) getQuerier() interface {
 //
 // Returns a map of portfolioFundID -> []Transaction. If pfIDs is empty, returns an empty map.
 // This grouping allows callers to decide how to aggregate (by portfolio, by fund, etc.) after retrieval.
-func (s *TransactionRepository) GetTransactions(pfIDs []string, startDate, endDate time.Time) (map[string][]model.Transaction, error) {
+func (r *TransactionRepository) GetTransactions(pfIDs []string, startDate, endDate time.Time) (map[string][]model.Transaction, error) {
 	if len(pfIDs) == 0 {
 		return make(map[string][]model.Transaction), nil
 	}
@@ -81,7 +81,7 @@ func (s *TransactionRepository) GetTransactions(pfIDs []string, startDate, endDa
 	transactionArgs = append(transactionArgs, startDate.Format("2006-01-02"))
 	transactionArgs = append(transactionArgs, endDate.Format("2006-01-02"))
 
-	rows, err := s.db.Query(transactionQuery, transactionArgs...)
+	rows, err := r.db.Query(transactionQuery, transactionArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query transaction table: %w", err)
 	}
@@ -129,7 +129,7 @@ func (s *TransactionRepository) GetTransactions(pfIDs []string, startDate, endDa
 	return transactionsByPortfolioFund, nil
 }
 
-// GetOldestTransaction finds and returns the date of the earliest transaction across the given portfolio_fund IDs.
+// GetOldestTransaction finds and returns the date of the earliest transaction across the given portfolio_fund IDr.
 // This is used to determine the starting point for historical portfolio calculations.
 //
 // Returns time.Time{} (zero value) if:
@@ -137,7 +137,7 @@ func (s *TransactionRepository) GetTransactions(pfIDs []string, startDate, endDa
 //   - no transactions are found
 //   - database query fails
 //   - date parsing fails
-func (s *TransactionRepository) GetOldestTransaction(pfIDs []string) time.Time {
+func (r *TransactionRepository) GetOldestTransaction(pfIDs []string) time.Time {
 	if len(pfIDs) == 0 {
 		return time.Time{}
 	}
@@ -159,7 +159,7 @@ func (s *TransactionRepository) GetOldestTransaction(pfIDs []string) time.Time {
 		oldestTransactionArgs[i] = id
 	}
 
-	err := s.db.QueryRow(oldestTransactionQuery, oldestTransactionArgs...).Scan(&oldestDateStr)
+	err := r.db.QueryRow(oldestTransactionQuery, oldestTransactionArgs...).Scan(&oldestDateStr)
 	if err != nil || !oldestDateStr.Valid {
 		return time.Time{}
 	}
@@ -174,7 +174,7 @@ func (s *TransactionRepository) GetOldestTransaction(pfIDs []string) time.Time {
 // GetTransactionsPerPortfolio retrieves all transactions for a specific portfolio or all transactions if portfolioId is empty.
 // Returns enriched transaction data including fund names and IBKR linkage status.
 // Transactions are sorted by date in ascending order.
-func (s *TransactionRepository) GetTransactionsPerPortfolio(portfolioID string) ([]model.TransactionResponse, error) {
+func (r *TransactionRepository) GetTransactionsPerPortfolio(portfolioID string) ([]model.TransactionResponse, error) {
 
 	transactionQuery := `
 		SELECT
@@ -211,7 +211,7 @@ func (s *TransactionRepository) GetTransactionsPerPortfolio(portfolioID string) 
 		args = append(args, portfolioID)
 	}
 
-	rows, err := s.db.Query(transactionQuery, args...)
+	rows, err := r.db.Query(transactionQuery, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query transaction table: %w", err)
 	}
@@ -262,7 +262,7 @@ func (s *TransactionRepository) GetTransactionsPerPortfolio(portfolioID string) 
 // GetTransaction retrieves a single transaction by its ID.
 // Returns enriched transaction data including fund name and IBKR linkage status.
 // Returns an empty TransactionResponse if transactionID is empty or not found.
-func (s *TransactionRepository) GetTransaction(transactionID string) (model.TransactionResponse, error) {
+func (r *TransactionRepository) GetTransaction(transactionID string) (model.TransactionResponse, error) {
 	if transactionID == "" {
 		return model.TransactionResponse{}, nil
 	}
@@ -291,7 +291,7 @@ func (s *TransactionRepository) GetTransaction(transactionID string) (model.Tran
 	var t model.TransactionResponse
 	var dateStr string
 	var ibkrTransactionIDStr sql.NullString
-	err := s.db.QueryRow(transactionQuery, transactionID).Scan(
+	err := r.db.QueryRow(transactionQuery, transactionID).Scan(
 		&t.ID,
 		&t.PortfolioFundID,
 		&t.FundName,
@@ -321,6 +321,10 @@ func (s *TransactionRepository) GetTransaction(transactionID string) (model.Tran
 	return t, nil
 }
 
+// InsertTransaction creates a new transaction record in the database.
+// All transaction fields including ID must be set before calling this method.
+//
+// Returns an error if the insert operation failr.
 func (r *TransactionRepository) InsertTransaction(ctx context.Context, t *model.Transaction) error {
 	query := `
         INSERT INTO "transaction" (id, portfolio_fund_id, date, type, shares, cost_per_share, created_at)
@@ -344,6 +348,11 @@ func (r *TransactionRepository) InsertTransaction(ctx context.Context, t *model.
 	return nil
 }
 
+// UpdateTransaction updates an existing transaction record in the database.
+// All fields in the provided transaction will be written to the database.
+//
+// Returns ErrTransactionNotFound if no transaction exists with the given ID.
+// Returns an error if the update operation failr.
 func (r *TransactionRepository) UpdateTransaction(ctx context.Context, t *model.Transaction) error {
 	query := `
         UPDATE "transaction"
@@ -377,6 +386,10 @@ func (r *TransactionRepository) UpdateTransaction(ctx context.Context, t *model.
 	return nil
 }
 
+// DeleteTransaction removes a transaction record from the database.
+//
+// Returns ErrTransactionNotFound if no transaction exists with the given ID.
+// Returns an error if the delete operation failr.
 func (r *TransactionRepository) DeleteTransaction(ctx context.Context, transactionID string) error {
 	query := `DELETE FROM "transaction" WHERE id = ?`
 
@@ -391,7 +404,7 @@ func (r *TransactionRepository) DeleteTransaction(ctx context.Context, transacti
 	}
 
 	if rowsAffected == 0 {
-		return apperrors.ErrFundNotFound
+		return apperrors.ErrTransactionNotFound
 	}
 
 	return nil

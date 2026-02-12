@@ -49,11 +49,16 @@ func (s *TransactionService) GetTransaction(transactionID string) (model.Transac
 	return s.transactionRepo.GetTransaction(transactionID)
 }
 
+// CreateTransaction creates a new transaction from the provided request.
+// Generates a new UUID for the transaction and sets the creation timestamp.
+//
+// Returns the created transaction on success.
+// Returns an error if date parsing fails or database insertion fails.
 func (s *TransactionService) CreateTransaction(ctx context.Context, req request.CreateTransactionRequest) (*model.Transaction, error) {
 
 	transactionDate, err := time.Parse("2006-01-02", req.Date)
 	if err != nil {
-		return &model.Transaction{}, err
+		return nil, err
 	}
 
 	transaction := &model.Transaction{
@@ -73,6 +78,13 @@ func (s *TransactionService) CreateTransaction(ctx context.Context, req request.
 	return transaction, nil
 }
 
+// UpdateTransaction updates an existing transaction with the provided changes.
+// Only fields present in the request (non-nil) are updated.
+// Updates the createdAt timestamp to reflect the modification time.
+//
+// Returns the updated transaction on success.
+// Returns ErrTransactionNotFound if the transaction does not exist.
+// Returns an error if date parsing fails or database update fails.
 func (s *TransactionService) UpdateTransaction(
 	ctx context.Context,
 	id string,
@@ -97,7 +109,7 @@ func (s *TransactionService) UpdateTransaction(
 	if req.Date != nil {
 		transactionDate, err := time.Parse("2006-01-02", *req.Date)
 		if err != nil {
-			return &model.Transaction{}, err
+			return nil, err
 		}
 		transaction.Date = transactionDate
 	}
@@ -118,6 +130,11 @@ func (s *TransactionService) UpdateTransaction(
 	return &transaction, nil
 }
 
+// DeleteTransaction removes a transaction from the system.
+// Verifies the transaction exists before attempting deletion.
+//
+// Returns ErrTransactionNotFound if the transaction does not exist.
+// Returns an error if the database deletion fails.
 func (s *TransactionService) DeleteTransaction(ctx context.Context, id string) error {
 
 	_, err := s.transactionRepo.GetTransaction(id)

@@ -13,23 +13,19 @@ var ValidTransactionType = map[string]bool{
 	"buy": true, "sell": true, "dividend": true, "fee": true,
 }
 
-// ValidateCreateFund validates a fund creation request.
+// ValidateCreateTransaction validates a transaction creation request.
 // Checks all required fields and validates their formats and constraints.
 //
 // Required fields:
-//   - name: Must be non-empty and max 100 characters
-//   - isin: Must be non-empty and match format: 2 letters + 9 alphanumeric + 1 digit
-//   - currency: Must be non-empty and max 3 characters (e.g., USD, EUR)
-//   - exchange: Must be non-empty and max 15 characters (e.g., NYSE, AMS)
-//   - dividend_type: Must be one of: CASH, STOCK, NONE
-//   - investment_type: Must be one of: FUND, STOCK
-//
-// Optional fields:
-//   - symbol: Max 10 characters if provided
+//   - portfolioFundId: Must be a valid UUID
+//   - date: Must be in YYYY-MM-DD format
+//   - type: Must be one of: buy, sell, dividend, fee
+//   - shares: Must be non-zero
+//   - costPerShare: Must be non-zero
 //
 // Returns a validation Error with field-specific error messages if validation fails.
 //
-//nolint:gocyclo // Comprehensive validation of fund creation, cannot be split well.
+//nolint:gocyclo // Comprehensive validation of transaction creation, cannot be split well.
 func ValidateCreateTransaction(req request.CreateTransactionRequest) error {
 	errors := make(map[string]string)
 
@@ -60,24 +56,26 @@ func ValidateCreateTransaction(req request.CreateTransactionRequest) error {
 		errors["costPerShare"] = "costPerShare is required"
 	}
 
+	if len(errors) > 0 {
+		return &Error{Fields: errors}
+	}
+
 	return nil
 }
 
-// ValidateUpdateFund validates a fund update request.
+// ValidateUpdateTransaction validates a transaction update request.
 // All fields are optional, but if provided, they must meet the same constraints as create.
 //
 // Optional fields (validated if provided):
-//   - name: Max 100 characters if provided
-//   - isin: Must match format: 2 letters + 9 alphanumeric + 1 digit if provided
-//   - currency: Max 3 characters if provided (e.g., USD, EUR)
-//   - exchange: Max 15 characters if provided (e.g., NYSE, AMS)
-//   - dividend_type: Must be one of: CASH, STOCK, NONE if provided
-//   - investment_type: Must be one of: FUND, STOCK if provided
-//   - symbol: Max 10 characters if provided
+//   - portfolioFundId: Must be a valid UUID if provided
+//   - date: Must be in YYYY-MM-DD format if provided
+//   - type: Must be one of: buy, sell, dividend, fee if provided
+//   - shares: Must be non-zero if provided
+//   - costPerShare: Must be non-zero if provided
 //
 // Returns a validation Error with field-specific error messages if validation fails.
-
-//nolint:gocyclo // Comprehensive validation of fund updates, cannot be split well.
+//
+//nolint:gocyclo // Comprehensive validation of transaction updates, cannot be split well.
 func ValidateUpdateTransaction(req request.UpdateTransactionRequest) error {
 	errors := make(map[string]string)
 
@@ -112,6 +110,10 @@ func ValidateUpdateTransaction(req request.UpdateTransactionRequest) error {
 		if *req.CostPerShare == 0.0 {
 			errors["costPerShare"] = "costPerShare is required"
 		}
+	}
+
+	if len(errors) > 0 {
+		return &Error{Fields: errors}
 	}
 
 	return nil
