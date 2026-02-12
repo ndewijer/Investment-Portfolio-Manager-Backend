@@ -321,6 +321,51 @@ func (r *TransactionRepository) GetTransaction(transactionID string) (model.Tran
 	return t, nil
 }
 
+// GetTransactionByID retrieves a single transaction by its ID without enrichment.
+// Returns the basic transaction model for internal service operations (CUD operations).
+// For enriched data with fund names and IBKR linkage, use GetTransaction instead.
+//
+// Returns ErrTransactionNotFound if the transaction does not exist.
+// Returns an error if the query fails or date parsing fails.
+func (s *TransactionRepository) GetTransactionByID(transactionID string) (model.Transaction, error) {
+	query := `
+          SELECT id, portfolio_fund_id, date, type, shares, cost_per_share, created_at
+          FROM "transaction"
+          WHERE id = ?
+      `
+	var t model.Transaction
+	var dateStr, createdAtStr string
+
+	err := s.db.QueryRow(query, transactionID).Scan(
+		&t.ID,
+		&t.PortfolioFundID,
+		&dateStr,
+		&t.Type,
+		&t.Shares,
+		&t.CostPerShare,
+		&createdAtStr,
+	)
+
+	if err == sql.ErrNoRows {
+		return model.Transaction{}, apperrors.ErrTransactionNotFound
+	}
+	if err != nil {
+		return t, fmt.Errorf("failed to get transaction: %w", err)
+	}
+
+	t.Date, err = ParseTime(dateStr)
+	if err != nil || t.Date.IsZero() {
+		return t, fmt.Errorf("failed to parse date: %w", err)
+	}
+
+	t.CreatedAt, err = ParseTime(createdAtStr)
+	if err != nil || t.CreatedAt.IsZero() {
+		return t, fmt.Errorf("failed to parse created_at: %w", err)
+	}
+
+	return t, nil
+}
+
 // InsertTransaction creates a new transaction record in the database.
 // All transaction fields including ID must be set before calling this method.
 //

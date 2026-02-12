@@ -90,19 +90,11 @@ func (s *TransactionService) UpdateTransaction(
 	id string,
 	req request.UpdateTransactionRequest,
 ) (*model.Transaction, error) {
-	enrichedTransaction, err := s.transactionRepo.GetTransaction(id)
+	transaction, err := s.transactionRepo.GetTransactionByID(id)
 	if err != nil {
 		return nil, err
 	}
-	transaction := model.Transaction{
-		ID:              enrichedTransaction.ID,
-		PortfolioFundID: enrichedTransaction.PortfolioFundID,
-		Date:            enrichedTransaction.Date,
-		Type:            enrichedTransaction.Type,
-		Shares:          enrichedTransaction.Shares,
-		CostPerShare:    enrichedTransaction.CostPerShare,
-		CreatedAt:       time.Now(),
-	}
+
 	if req.PortfolioFundID != nil {
 		transaction.PortfolioFundID = *req.PortfolioFundID
 	}
@@ -137,7 +129,7 @@ func (s *TransactionService) UpdateTransaction(
 // Returns an error if the database deletion fails.
 func (s *TransactionService) DeleteTransaction(ctx context.Context, id string) error {
 
-	_, err := s.transactionRepo.GetTransaction(id)
+	_, err := s.transactionRepo.GetTransactionByID(id)
 	if err != nil {
 		return err
 	}
