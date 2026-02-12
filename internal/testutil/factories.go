@@ -324,7 +324,7 @@ func NewTransaction(portfolioFundID string) *TransactionBuilder {
 	return &TransactionBuilder{
 		ID:              MakeID(),
 		PortfolioFundID: portfolioFundID,
-		Date:            time.Now(),
+		Date:            time.Now().UTC(),
 		Type:            "buy",
 		Shares:          100.0,
 		CostPerShare:    10.0,
@@ -382,7 +382,7 @@ func (b *TransactionBuilder) Build(t *testing.T, db *sql.DB) model.Transaction {
 		Type:            b.Type,
 		Shares:          b.Shares,
 		CostPerShare:    b.CostPerShare,
-		CreatedAt:       time.Now(),
+		CreatedAt:       time.Now().UTC(),
 	}
 }
 
@@ -399,7 +399,7 @@ func NewFundPrice(fundID string) *FundPriceBuilder {
 	return &FundPriceBuilder{
 		ID:     MakeID(),
 		FundID: fundID,
-		Date:   time.Now(),
+		Date:   time.Now().UTC(),
 		Price:  12.0,
 	}
 }
@@ -459,8 +459,8 @@ func NewDividend(fundID, portfolioFundID string) *DividendBuilder {
 		ID:                 MakeID(),
 		FundID:             fundID,
 		PortfolioFundID:    portfolioFundID,
-		RecordDate:         time.Now().AddDate(0, 0, -10),
-		ExDividendDate:     time.Now().AddDate(0, 0, -5),
+		RecordDate:         time.Now().UTC().AddDate(0, 0, -10),
+		ExDividendDate:     time.Now().UTC().AddDate(0, 0, -5),
 		SharesOwned:        100.0,
 		DividendPerShare:   0.50,
 		TotalAmount:        50.0,
@@ -531,7 +531,7 @@ func (b *DividendBuilder) Build(t *testing.T, db *sql.DB) model.Dividend {
 		TotalAmount:               b.TotalAmount,
 		ReinvestmentStatus:        b.ReinvestmentStatus,
 		ReinvestmentTransactionID: b.ReinvestmentTransactionID,
-		CreatedAt:                 time.Now(),
+		CreatedAt:                 time.Now().UTC(),
 	}
 }
 
@@ -555,7 +555,7 @@ func NewRealizedGainLoss(portfolioID, fundID, transactionID string) *RealizedGai
 		PortfolioID:      portfolioID,
 		FundID:           fundID,
 		TransactionID:    transactionID,
-		TransactionDate:  time.Now(),
+		TransactionDate:  time.Now().UTC(),
 		SharesSold:       30.0,
 		CostBasis:        300.0,
 		SaleProceeds:     450.0,
@@ -617,7 +617,7 @@ func (b *RealizedGainLossBuilder) Build(t *testing.T, db *sql.DB) model.Realized
 		CostBasis:        b.CostBasis,
 		SaleProceeds:     b.SaleProceeds,
 		RealizedGainLoss: b.RealizedGainLoss,
-		CreatedAt:        time.Now(),
+		CreatedAt:        time.Now().UTC(),
 	}
 }
 
@@ -720,7 +720,7 @@ type SystemSettingBuilder struct {
 
 // NewSystemSetting creates a SystemSettingBuilder with sensible defaults.
 func NewSystemSetting(key, value string) *SystemSettingBuilder {
-	now := time.Now()
+	now := time.Now().UTC()
 	return &SystemSettingBuilder{
 		ID:        MakeID(),
 		Key:       key,

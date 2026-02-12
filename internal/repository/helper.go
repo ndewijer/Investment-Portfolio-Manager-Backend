@@ -13,5 +13,5 @@ func ParseTime(str string) (time.Time, error) {
 			return time.Time{}, fmt.Errorf("failed to parse date: %w", err)
 		}
 	}
-	return returnTime, nil
+	return returnTime.UTC(), nil
 }

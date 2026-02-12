@@ -25,7 +25,7 @@ func (s *FundService) enrichPortfolioFundsWithMetrics(
 	realizedGainsByPF map[string][]model.RealizedGainLoss,
 ) ([]model.PortfolioFundResponse, error) {
 
-	today := time.Now()
+	today := time.Now().UTC()
 	portfolioFunds := data.PortfolioFunds
 
 	for i := range portfolioFunds {

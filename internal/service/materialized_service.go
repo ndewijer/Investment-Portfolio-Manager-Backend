@@ -249,7 +249,7 @@ func (s *MaterializedService) GetPortfolioHistoryWithFallback(
 	if err == nil && len(materialized) > 0 {
 		// Verify the data covers the full requested range
 		lastDate, parseErr := time.Parse("2006-01-02", materialized[len(materialized)-1].Date)
-		if parseErr == nil && !lastDate.Before(endDate) {
+		if parseErr == nil && !lastDate.UTC().Before(endDate) {
 			// Materialized view covers the requested range
 			return materialized, nil
 		}

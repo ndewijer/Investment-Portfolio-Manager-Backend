@@ -5,13 +5,13 @@ import "time"
 // Transaction represents a buy or sell transaction for a portfolio fund.
 // Used internally for calculations and data processing.
 type Transaction struct {
-	ID              string
-	PortfolioFundID string
-	Date            time.Time
-	Type            string
-	Shares          float64
-	CostPerShare    float64
-	CreatedAt       time.Time
+	ID              string    `json:"id"`
+	PortfolioFundID string    `json:"portfolioFundId"`
+	Date            time.Time `json:"date"`
+	Type            string    `json:"type"`
+	Shares          float64   `json:"shares"`
+	CostPerShare    float64   `json:"costPerShare"`
+	CreatedAt       time.Time `json:"createdAt,omitempty"`
 }
 
 // TransactionResponse represents a transaction with enriched data for API responses.

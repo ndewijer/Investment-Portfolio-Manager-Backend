@@ -98,7 +98,7 @@ func (s *FundService) GetPortfolioFunds(portfolioID string) ([]model.PortfolioFu
 		return nil, err
 	}
 
-	data, err := s.dataLoaderService.LoadForPortfolios(portfolio, time.Time{}, time.Now())
+	data, err := s.dataLoaderService.LoadForPortfolios(portfolio, time.Time{}, time.Now().UTC())
 	if err != nil {
 		return nil, err
 	}
