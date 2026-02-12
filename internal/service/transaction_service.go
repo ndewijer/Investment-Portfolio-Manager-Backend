@@ -72,3 +72,48 @@ func (s *TransactionService) CreateTransaction(ctx context.Context, req request.
 
 	return transaction, nil
 }
+
+func (s *TransactionService) UpdateTransaction(
+	ctx context.Context,
+	id string,
+	req request.UpdateTransactionRequest,
+) (*model.Transaction, error) {
+	enrichedTransaction, err := s.transactionRepo.GetTransaction(id)
+	if err != nil {
+		return nil, err
+	}
+	transaction := model.Transaction{
+		ID:              enrichedTransaction.ID,
+		PortfolioFundID: enrichedTransaction.PortfolioFundID,
+		Date:            enrichedTransaction.Date,
+		Type:            enrichedTransaction.Type,
+		Shares:          enrichedTransaction.Shares,
+		CostPerShare:    enrichedTransaction.CostPerShare,
+		CreatedAt:       time.Now(),
+	}
+	if req.PortfolioFundID != nil {
+		transaction.PortfolioFundID = *req.PortfolioFundID
+	}
+	if req.Date != nil {
+		transactionDate, err := time.Parse("2006-01-02", *req.Date)
+		if err != nil {
+			return &model.Transaction{}, err
+		}
+		transaction.Date = transactionDate
+	}
+	if req.Type != nil {
+		transaction.Type = *req.Type
+	}
+	if req.Shares != nil {
+		transaction.Shares = *req.Shares
+	}
+	if req.CostPerShare != nil {
+		transaction.CostPerShare = *req.CostPerShare
+	}
+
+	if err := s.transactionRepo.UpdateTransaction(ctx, &transaction); err != nil {
+		return nil, fmt.Errorf("failed to update transaction: %w", err)
+	}
+
+	return &transaction, nil
+}

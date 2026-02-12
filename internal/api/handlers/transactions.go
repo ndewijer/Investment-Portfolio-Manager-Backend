@@ -108,3 +108,34 @@ func (h *TransactionHandler) CreateTransaction(w http.ResponseWriter, r *http.Re
 
 	response.RespondJSON(w, http.StatusCreated, portfolio)
 }
+
+func (h *TransactionHandler) UpdateTransaction(w http.ResponseWriter, r *http.Request) {
+	fundID := chi.URLParam(r, "uuid")
+
+	req, err := parseJSON[request.UpdateTransactionRequest](r)
+	if err != nil {
+
+		response.RespondError(w, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
+
+	if err := validation.ValidateUpdateTransaction(req); err != nil {
+
+		response.RespondError(w, http.StatusBadRequest, "validation failed", err.Error())
+		return
+	}
+
+	portfolio, err := h.transactionService.UpdateTransaction(r.Context(), fundID, req)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrTransactionNotFound) {
+
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrTransactionNotFound.Error(), err.Error())
+			return
+		}
+
+		response.RespondError(w, http.StatusInternalServerError, "failed to update transaction", err.Error())
+		return
+	}
+
+	response.RespondJSON(w, http.StatusOK, portfolio)
+}

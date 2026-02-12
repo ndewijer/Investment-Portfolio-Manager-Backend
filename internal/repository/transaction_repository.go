@@ -343,3 +343,36 @@ func (r *TransactionRepository) InsertTransaction(ctx context.Context, t *model.
 
 	return nil
 }
+
+func (r *TransactionRepository) UpdateTransaction(ctx context.Context, t *model.Transaction) error {
+	query := `
+        UPDATE "transaction"
+        SET portfolio_fund_id = ?, date = ?, type = ?, shares = ?, cost_per_share = ?, created_at = ?
+        WHERE id = ?
+    `
+
+	result, err := r.getQuerier().ExecContext(ctx, query,
+		t.PortfolioFundID,
+		t.Date,
+		t.Type,
+		t.Shares,
+		t.CostPerShare,
+		t.CreatedAt,
+		t.ID,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to update transaction: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return apperrors.ErrTransactionNotFound
+	}
+
+	return nil
+}
