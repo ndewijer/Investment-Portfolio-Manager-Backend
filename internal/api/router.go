@@ -117,6 +117,7 @@ func NewRouter(
 		r.Route("/transaction", func(r chi.Router) {
 			transactionHandler := handlers.NewTransactionHandler(transactionService)
 			r.Get("/", transactionHandler.AllTransactions)
+			r.Post("/", transactionHandler.CreateTransaction)
 
 			r.Route("/portfolio/{uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", func(r chi.Router) {
 				r.Use(custommiddleware.ValidateUUIDMiddleware)

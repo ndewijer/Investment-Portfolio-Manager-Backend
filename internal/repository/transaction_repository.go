@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"strings"
@@ -14,11 +15,33 @@ import (
 // It handles retrieving and querying portfolio transactions within specified date ranges.
 type TransactionRepository struct {
 	db *sql.DB
+	tx *sql.Tx
 }
 
 // NewTransactionRepository creates a new TransactionRepository with the provided database connection.
 func NewTransactionRepository(db *sql.DB) *TransactionRepository {
 	return &TransactionRepository{db: db}
+}
+
+func (r *TransactionRepository) WithTx(tx *sql.Tx) *TransactionRepository {
+	return &TransactionRepository{
+		db: r.db,
+		tx: tx,
+	}
+}
+
+func (r *TransactionRepository) getQuerier() interface {
+	Query(query string, args ...any) (*sql.Rows, error)
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	QueryRow(query string, args ...any) *sql.Row
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+	Exec(query string, args ...any) (sql.Result, error)
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+} {
+	if r.tx != nil {
+		return r.tx
+	}
+	return r.db
 }
 
 // GetTransactions retrieves all transactions for the given portfolio_fund IDs within the specified date range.
@@ -296,4 +319,27 @@ func (s *TransactionRepository) GetTransaction(transactionID string) (model.Tran
 	}
 
 	return t, nil
+}
+
+func (r *TransactionRepository) InsertTransaction(ctx context.Context, t *model.Transaction) error {
+	query := `
+        INSERT INTO "transaction" (id, portfolio_fund_id, date, type, shares, cost_per_share, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    `
+
+	_, err := r.getQuerier().ExecContext(ctx, query,
+		t.ID,
+		t.PortfolioFundID,
+		t.Date,
+		t.Type,
+		t.Shares,
+		t.CostPerShare,
+		t.CreatedAt,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to insert transaction: %w", err)
+	}
+
+	return nil
 }

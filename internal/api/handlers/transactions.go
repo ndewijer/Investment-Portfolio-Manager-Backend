@@ -5,9 +5,11 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/request"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/response"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/apperrors"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/service"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/validation"
 )
 
 // TransactionHandler handles HTTP requests for transaction endpoints.
@@ -83,4 +85,26 @@ func (h *TransactionHandler) GetTransaction(w http.ResponseWriter, r *http.Reque
 	}
 
 	response.RespondJSON(w, http.StatusOK, transaction)
+}
+
+func (h *TransactionHandler) CreateTransaction(w http.ResponseWriter, r *http.Request) {
+	req, err := parseJSON[request.CreateTransactionRequest](r)
+	if err != nil {
+		response.RespondError(w, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
+
+	if err := validation.ValidateCreateTransaction(req); err != nil {
+		response.RespondError(w, http.StatusBadRequest, "validation failed", err.Error())
+		return
+	}
+
+	portfolio, err := h.transactionService.CreateTransaction(r.Context(), req)
+	if err != nil {
+
+		response.RespondError(w, http.StatusInternalServerError, "failed to create transaction", err.Error())
+		return
+	}
+
+	response.RespondJSON(w, http.StatusCreated, portfolio)
 }

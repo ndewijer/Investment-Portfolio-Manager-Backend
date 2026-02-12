@@ -1,8 +1,12 @@
 package service
 
 import (
+	"context"
+	"fmt"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/request"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/repository"
 )
@@ -43,4 +47,28 @@ func (s *TransactionService) GetTransactionsperPortfolio(portfolioID string) ([]
 // Returns enriched transaction data including fund name and IBKR linkage status.
 func (s *TransactionService) GetTransaction(transactionID string) (model.TransactionResponse, error) {
 	return s.transactionRepo.GetTransaction(transactionID)
+}
+
+func (s *TransactionService) CreateTransaction(ctx context.Context, req request.CreateTransactionRequest) (*model.Transaction, error) {
+
+	transactionDate, err := time.Parse("2006-01-02", req.Date)
+	if err != nil {
+		return &model.Transaction{}, err
+	}
+
+	transaction := &model.Transaction{
+		ID:              uuid.New().String(),
+		PortfolioFundID: req.PortfolioFundID,
+		Date:            transactionDate,
+		Type:            req.Type,
+		Shares:          req.Shares,
+		CostPerShare:    req.CostPerShare,
+		CreatedAt:       time.Now(),
+	}
+
+	if err := s.transactionRepo.InsertTransaction(ctx, transaction); err != nil {
+		return nil, fmt.Errorf("failed to create transaction: %w", err)
+	}
+
+	return transaction, nil
 }
