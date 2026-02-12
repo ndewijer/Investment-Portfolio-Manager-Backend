@@ -99,33 +99,31 @@ func (h *TransactionHandler) CreateTransaction(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	portfolio, err := h.transactionService.CreateTransaction(r.Context(), req)
+	transaction, err := h.transactionService.CreateTransaction(r.Context(), req)
 	if err != nil {
 
 		response.RespondError(w, http.StatusInternalServerError, "failed to create transaction", err.Error())
 		return
 	}
 
-	response.RespondJSON(w, http.StatusCreated, portfolio)
+	response.RespondJSON(w, http.StatusCreated, transaction)
 }
 
 func (h *TransactionHandler) UpdateTransaction(w http.ResponseWriter, r *http.Request) {
-	fundID := chi.URLParam(r, "uuid")
+	transactionID := chi.URLParam(r, "uuid")
 
 	req, err := parseJSON[request.UpdateTransactionRequest](r)
 	if err != nil {
-
 		response.RespondError(w, http.StatusBadRequest, "invalid request body", err.Error())
 		return
 	}
 
 	if err := validation.ValidateUpdateTransaction(req); err != nil {
-
 		response.RespondError(w, http.StatusBadRequest, "validation failed", err.Error())
 		return
 	}
 
-	portfolio, err := h.transactionService.UpdateTransaction(r.Context(), fundID, req)
+	transaction, err := h.transactionService.UpdateTransaction(r.Context(), transactionID, req)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrTransactionNotFound) {
 
@@ -137,5 +135,23 @@ func (h *TransactionHandler) UpdateTransaction(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	response.RespondJSON(w, http.StatusOK, portfolio)
+	response.RespondJSON(w, http.StatusOK, transaction)
+}
+
+func (h *TransactionHandler) DeleteTransaction(w http.ResponseWriter, r *http.Request) {
+	transactionID := chi.URLParam(r, "uuid")
+
+	err := h.transactionService.DeleteTransaction(r.Context(), transactionID)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrTransactionNotFound) {
+
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrTransactionNotFound.Error(), err.Error())
+			return
+		}
+
+		response.RespondError(w, http.StatusInternalServerError, "failed to delete transaction", err.Error())
+		return
+	}
+
+	response.RespondJSON(w, http.StatusNoContent, nil)
 }

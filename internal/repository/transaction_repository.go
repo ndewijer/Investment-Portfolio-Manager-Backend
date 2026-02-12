@@ -376,3 +376,23 @@ func (r *TransactionRepository) UpdateTransaction(ctx context.Context, t *model.
 
 	return nil
 }
+
+func (r *TransactionRepository) DeleteTransaction(ctx context.Context, transactionID string) error {
+	query := `DELETE FROM "transaction" WHERE id = ?`
+
+	result, err := r.getQuerier().ExecContext(ctx, query, transactionID)
+	if err != nil {
+		return fmt.Errorf("failed to delete transaction: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return apperrors.ErrFundNotFound
+	}
+
+	return nil
+}

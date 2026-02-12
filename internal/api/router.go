@@ -127,6 +127,8 @@ func NewRouter(
 			r.Route("/{uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", func(r chi.Router) {
 				r.Use(custommiddleware.ValidateUUIDMiddleware)
 				r.Get("/", transactionHandler.GetTransaction)
+				r.Put("/", transactionHandler.UpdateTransaction)
+				r.Delete("/", transactionHandler.DeleteTransaction)
 			})
 		})
 

@@ -117,3 +117,18 @@ func (s *TransactionService) UpdateTransaction(
 
 	return &transaction, nil
 }
+
+func (s *TransactionService) DeleteTransaction(ctx context.Context, id string) error {
+
+	_, err := s.transactionRepo.GetTransaction(id)
+	if err != nil {
+		return err
+	}
+
+	err = s.transactionRepo.DeleteTransaction(ctx, id)
+	if err != nil {
+		return fmt.Errorf("failed to delete transaction: %w", err)
+	}
+
+	return nil
+}

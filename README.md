@@ -66,7 +66,7 @@ This backend aims to replicate all 73 endpoints from the Python backend. Below i
 │   ├── POST   /                                ✅ Create transaction
 │   ├── GET    /{id}                            ✅ Get transaction by ID
 │   ├── PUT    /{id}                            ✅ Update transaction
-│   ├── DELETE /{id}                            ⬜ Delete transaction
+│   ├── DELETE /{id}                            ✅ Delete transaction
 │   └── GET    /portfolio/{portfolioID}         ✅ Get transaction by ID
 │
 ├── /dividend (2/7 endpoints) ⬜
