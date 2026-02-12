@@ -61,7 +61,7 @@ This backend aims to replicate all 73 endpoints from the Python backend. Below i
 │   ├── POST        /{id}/price/historical      ⬜ SKIPPING - Covered by /fund-prices/{id}/update for now - Update historical prices for a fund
 │   └── POST        /{id}/price/today           ⬜ SKIPPING - Covered by /fund-prices/{id}/update for now - Update today's price for a fund
 |
-├── /transaction (3/6 endpoints) ⬜
+├── /transaction (6/6 endpoints) ⬜
 │   ├── GET    /                                ✅ List all transactions
 │   ├── POST   /                                ✅ Create transaction
 │   ├── GET    /{id}                            ✅ Get transaction by ID
@@ -114,7 +114,7 @@ This backend aims to replicate all 73 endpoints from the Python backend. Below i
     └── PUT /system-settings/logging      ⬜ Update logging configuration settings
 
 Legend: ✅ Implemented | 🚧 In Progress | ⬜ Planned
-Overall Progress: 37/72 endpoints (51%)
+Overall Progress: 49/72 endpoints (68%)
 ```
 
 ## Quick Start
