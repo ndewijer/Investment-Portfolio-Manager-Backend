@@ -151,7 +151,7 @@ func (h *FundHandler) GetFundPrices(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		panic("impossible: hardcoded date failed to parse: " + err.Error())
 	}
-	endDate := time.Now()
+	endDate := time.Now().UTC()
 
 	funds, err := h.fundService.LoadFundPrices([]string{fundID}, startDate, endDate, false)
 	if err != nil {

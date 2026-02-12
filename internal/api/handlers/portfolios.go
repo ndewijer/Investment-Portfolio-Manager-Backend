@@ -69,7 +69,7 @@ func (h *PortfolioHandler) GetPortfolio(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		panic("impossible: hardcoded date failed to parse: " + err.Error())
 	}
-	endDate := time.Now()
+	endDate := time.Now().UTC()
 	history, err := h.materializedService.GetPortfolioHistoryWithFallback(startDate, endDate, portfolioID)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrPortfolioNotFound) {
@@ -112,7 +112,7 @@ func (h *PortfolioHandler) PortfolioSummary(w http.ResponseWriter, _ *http.Reque
 	if err != nil {
 		panic("impossible: hardcoded date failed to parse: " + err.Error())
 	}
-	endDate := time.Now()
+	endDate := time.Now().UTC()
 	portfolioSummary, err := h.materializedService.GetPortfolioHistoryWithFallback(startDate, endDate, "")
 	if err != nil {
 
@@ -178,7 +178,7 @@ func parseDateParams(r *http.Request) (time.Time, time.Time, error) {
 	}
 
 	if r.URL.Query().Get("end_date") == "" {
-		endDate = time.Now()
+		endDate = time.Now().UTC()
 	} else {
 		endDate, err = time.Parse("2006-01-02", r.URL.Query().Get("end_date"))
 		if err != nil {

@@ -29,7 +29,7 @@ func (s *MaterializedService) calculateDisplayDateRange(
 	displayEnd := requestedEnd
 
 	dataStart := oldestTx
-	dataEnd := time.Now()
+	dataEnd := time.Now().UTC()
 
 	if displayStart.Before(dataStart) {
 		displayStart = dataStart
@@ -146,7 +146,7 @@ func (s *MaterializedService) calculateDailyPortfolioHistory(
 ) ([]model.PortfolioHistory, error) {
 
 	var history []model.PortfolioHistory
-	dataEnd := time.Now()
+	dataEnd := time.Now().UTC()
 
 	for date := data.OldestTransactionDate; !date.After(dataEnd); date = date.AddDate(0, 0, 1) {
 		portfolioSummary, err := s.calculatePortfolioSummaryForDate(

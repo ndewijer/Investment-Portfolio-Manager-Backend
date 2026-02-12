@@ -117,6 +117,7 @@ func createRepoAndServices(db *sql.DB) (
 	)
 	transactionService := service.NewTransactionService(
 		transactionRepo,
+		fundRepo,
 	)
 	dividendService := service.NewDividendService(
 		dividendRepo,

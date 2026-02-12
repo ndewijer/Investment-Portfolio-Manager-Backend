@@ -129,7 +129,7 @@ func (r *TransactionRepository) GetTransactions(pfIDs []string, startDate, endDa
 	return transactionsByPortfolioFund, nil
 }
 
-// GetOldestTransaction finds and returns the date of the earliest transaction across the given portfolio_fund IDr.
+// GetOldestTransaction finds and returns the date of the earliest transaction across the given portfolio_fund IDs.
 // This is used to determine the starting point for historical portfolio calculations.
 //
 // Returns time.Time{} (zero value) if:
@@ -168,7 +168,7 @@ func (r *TransactionRepository) GetOldestTransaction(pfIDs []string) time.Time {
 		return time.Time{}
 	}
 
-	return oldestDate
+	return oldestDate.UTC()
 }
 
 // GetTransactionsPerPortfolio retrieves all transactions for a specific portfolio or all transactions if portfolioId is empty.
@@ -327,7 +327,7 @@ func (r *TransactionRepository) GetTransaction(transactionID string) (model.Tran
 //
 // Returns ErrTransactionNotFound if the transaction does not exist.
 // Returns an error if the query fails or date parsing fails.
-func (s *TransactionRepository) GetTransactionByID(transactionID string) (model.Transaction, error) {
+func (r *TransactionRepository) GetTransactionByID(transactionID string) (model.Transaction, error) {
 	query := `
           SELECT id, portfolio_fund_id, date, type, shares, cost_per_share, created_at
           FROM "transaction"
@@ -336,7 +336,7 @@ func (s *TransactionRepository) GetTransactionByID(transactionID string) (model.
 	var t model.Transaction
 	var dateStr, createdAtStr string
 
-	err := s.db.QueryRow(query, transactionID).Scan(
+	err := r.db.QueryRow(query, transactionID).Scan(
 		&t.ID,
 		&t.PortfolioFundID,
 		&dateStr,
@@ -369,7 +369,7 @@ func (s *TransactionRepository) GetTransactionByID(transactionID string) (model.
 // InsertTransaction creates a new transaction record in the database.
 // All transaction fields including ID must be set before calling this method.
 //
-// Returns an error if the insert operation failr.
+// Returns an error if the insert operation fails.
 func (r *TransactionRepository) InsertTransaction(ctx context.Context, t *model.Transaction) error {
 	query := `
         INSERT INTO "transaction" (id, portfolio_fund_id, date, type, shares, cost_per_share, created_at)
@@ -379,11 +379,11 @@ func (r *TransactionRepository) InsertTransaction(ctx context.Context, t *model.
 	_, err := r.getQuerier().ExecContext(ctx, query,
 		t.ID,
 		t.PortfolioFundID,
-		t.Date,
+		t.Date.Format("2006-01-02"),
 		t.Type,
 		t.Shares,
 		t.CostPerShare,
-		t.CreatedAt,
+		t.CreatedAt.Format("2006-01-02 01:02:01"),
 	)
 
 	if err != nil {
@@ -397,7 +397,7 @@ func (r *TransactionRepository) InsertTransaction(ctx context.Context, t *model.
 // All fields in the provided transaction will be written to the database.
 //
 // Returns ErrTransactionNotFound if no transaction exists with the given ID.
-// Returns an error if the update operation failr.
+// Returns an error if the update operation fails.
 func (r *TransactionRepository) UpdateTransaction(ctx context.Context, t *model.Transaction) error {
 	query := `
         UPDATE "transaction"
@@ -407,11 +407,11 @@ func (r *TransactionRepository) UpdateTransaction(ctx context.Context, t *model.
 
 	result, err := r.getQuerier().ExecContext(ctx, query,
 		t.PortfolioFundID,
-		t.Date,
+		t.Date.Format("2006-01-02"),
 		t.Type,
 		t.Shares,
 		t.CostPerShare,
-		t.CreatedAt,
+		t.CreatedAt.Format("2006-01-02 01:02:01"),
 		t.ID,
 	)
 
@@ -434,7 +434,7 @@ func (r *TransactionRepository) UpdateTransaction(ctx context.Context, t *model.
 // DeleteTransaction removes a transaction record from the database.
 //
 // Returns ErrTransactionNotFound if no transaction exists with the given ID.
-// Returns an error if the delete operation failr.
+// Returns an error if the delete operation fails.
 func (r *TransactionRepository) DeleteTransaction(ctx context.Context, transactionID string) error {
 	query := `DELETE FROM "transaction" WHERE id = ?`
 

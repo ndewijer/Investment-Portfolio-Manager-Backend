@@ -24,8 +24,6 @@ var ValidTransactionType = map[string]bool{
 //   - costPerShare: Must be non-zero
 //
 // Returns a validation Error with field-specific error messages if validation fails.
-//
-//nolint:gocyclo // Comprehensive validation of transaction creation, cannot be split well.
 func ValidateCreateTransaction(req request.CreateTransactionRequest) error {
 	errors := make(map[string]string)
 
@@ -48,12 +46,12 @@ func ValidateCreateTransaction(req request.CreateTransactionRequest) error {
 		errors["transactionType"] = fmt.Sprintf("invalid type: %s", req.Type)
 	}
 
-	if req.Shares == 0.0 {
-		errors["shares"] = "shares is required"
+	if req.Shares <= 0.0 {
+		errors["shares"] = "shares must be positive"
 	}
 
-	if req.CostPerShare == 0.0 {
-		errors["costPerShare"] = "costPerShare is required"
+	if req.CostPerShare <= 0.0 {
+		errors["costPerShare"] = "costPerShare must be positive"
 	}
 
 	if len(errors) > 0 {
@@ -74,8 +72,6 @@ func ValidateCreateTransaction(req request.CreateTransactionRequest) error {
 //   - costPerShare: Must be non-zero if provided
 //
 // Returns a validation Error with field-specific error messages if validation fails.
-//
-//nolint:gocyclo // Comprehensive validation of transaction updates, cannot be split well.
 func ValidateUpdateTransaction(req request.UpdateTransactionRequest) error {
 	errors := make(map[string]string)
 
@@ -102,13 +98,13 @@ func ValidateUpdateTransaction(req request.UpdateTransactionRequest) error {
 		}
 	}
 	if req.Shares != nil {
-		if *req.Shares == 0.0 {
-			errors["shares"] = "shares is required"
+		if *req.Shares <= 0.0 {
+			errors["shares"] = "shares must be positive"
 		}
 	}
 	if req.CostPerShare != nil {
-		if *req.CostPerShare == 0.0 {
-			errors["costPerShare"] = "costPerShare is required"
+		if *req.CostPerShare <= 0.0 {
+			errors["costPerShare"] = "costPerShare must be positive"
 		}
 	}
 

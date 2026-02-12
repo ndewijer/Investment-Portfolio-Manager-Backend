@@ -14,14 +14,16 @@ import (
 // TransactionService handles fund-related business logic operations.
 type TransactionService struct {
 	transactionRepo *repository.TransactionRepository
+	fundRepo        *repository.FundRepository
 }
 
 // NewTransactionService creates a new TransactionService with the provided repository dependencies.
 func NewTransactionService(
-	transactionRepo *repository.TransactionRepository,
+	transactionRepo *repository.TransactionRepository, fundRepo *repository.FundRepository,
 ) *TransactionService {
 	return &TransactionService{
 		transactionRepo: transactionRepo,
+		fundRepo:        fundRepo,
 	}
 }
 
@@ -56,6 +58,11 @@ func (s *TransactionService) GetTransaction(transactionID string) (model.Transac
 // Returns an error if date parsing fails or database insertion fails.
 func (s *TransactionService) CreateTransaction(ctx context.Context, req request.CreateTransactionRequest) (*model.Transaction, error) {
 
+	_, err := s.fundRepo.GetPortfolioFund(req.PortfolioFundID)
+	if err != nil {
+		return nil, err
+	}
+
 	transactionDate, err := time.Parse("2006-01-02", req.Date)
 	if err != nil {
 		return nil, err
@@ -64,11 +71,11 @@ func (s *TransactionService) CreateTransaction(ctx context.Context, req request.
 	transaction := &model.Transaction{
 		ID:              uuid.New().String(),
 		PortfolioFundID: req.PortfolioFundID,
-		Date:            transactionDate,
+		Date:            transactionDate.UTC(),
 		Type:            req.Type,
 		Shares:          req.Shares,
 		CostPerShare:    req.CostPerShare,
-		CreatedAt:       time.Now(),
+		CreatedAt:       time.Now().UTC(),
 	}
 
 	if err := s.transactionRepo.InsertTransaction(ctx, transaction); err != nil {
@@ -96,6 +103,10 @@ func (s *TransactionService) UpdateTransaction(
 	}
 
 	if req.PortfolioFundID != nil {
+		_, err = s.fundRepo.GetPortfolioFund(*req.PortfolioFundID)
+		if err != nil {
+			return nil, err
+		}
 		transaction.PortfolioFundID = *req.PortfolioFundID
 	}
 	if req.Date != nil {
@@ -103,7 +114,7 @@ func (s *TransactionService) UpdateTransaction(
 		if err != nil {
 			return nil, err
 		}
-		transaction.Date = transactionDate
+		transaction.Date = transactionDate.UTC()
 	}
 	if req.Type != nil {
 		transaction.Type = *req.Type

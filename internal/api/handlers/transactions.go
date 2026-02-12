@@ -109,7 +109,6 @@ func (h *TransactionHandler) CreateTransaction(w http.ResponseWriter, r *http.Re
 
 	transaction, err := h.transactionService.CreateTransaction(r.Context(), req)
 	if err != nil {
-
 		response.RespondError(w, http.StatusInternalServerError, "failed to create transaction", err.Error())
 		return
 	}
@@ -143,7 +142,6 @@ func (h *TransactionHandler) UpdateTransaction(w http.ResponseWriter, r *http.Re
 	transaction, err := h.transactionService.UpdateTransaction(r.Context(), transactionID, req)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrTransactionNotFound) {
-
 			response.RespondError(w, http.StatusNotFound, apperrors.ErrTransactionNotFound.Error(), err.Error())
 			return
 		}
@@ -169,7 +167,6 @@ func (h *TransactionHandler) DeleteTransaction(w http.ResponseWriter, r *http.Re
 	err := h.transactionService.DeleteTransaction(r.Context(), transactionID)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrTransactionNotFound) {
-
 			response.RespondError(w, http.StatusNotFound, apperrors.ErrTransactionNotFound.Error(), err.Error())
 			return
 		}
