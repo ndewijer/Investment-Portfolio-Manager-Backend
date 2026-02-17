@@ -145,7 +145,7 @@ func TestDividendHandler_CreateDividend(t *testing.T) {
 			t.Errorf("Expected 201, got %d: %s", w.Code, w.Body.String())
 		}
 
-		var response model.Dividend
+		var response model.DividendFund
 		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
 		json.NewDecoder(w.Body).Decode(&response)
 
@@ -160,6 +160,9 @@ func TestDividendHandler_CreateDividend(t *testing.T) {
 		}
 		if response.ReinvestmentStatus != "PENDING" {
 			t.Errorf("Expected PENDING status, got %s", response.ReinvestmentStatus)
+		}
+		if response.DividendType != "STOCK" {
+			t.Errorf("Expected DividendType STOCK, got %s", response.DividendType)
 		}
 	})
 
@@ -186,12 +189,15 @@ func TestDividendHandler_CreateDividend(t *testing.T) {
 			t.Errorf("Expected 201, got %d: %s", w.Code, w.Body.String())
 		}
 
-		var response model.Dividend
+		var response model.DividendFund
 		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
 		json.NewDecoder(w.Body).Decode(&response)
 
 		if response.ReinvestmentStatus != "COMPLETED" {
 			t.Errorf("Expected COMPLETED status, got %s", response.ReinvestmentStatus)
+		}
+		if response.DividendType != "CASH" {
+			t.Errorf("Expected DividendType CASH, got %s", response.DividendType)
 		}
 	})
 
@@ -219,7 +225,7 @@ func TestDividendHandler_CreateDividend(t *testing.T) {
 			t.Errorf("Expected 201, got %d: %s", w.Code, w.Body.String())
 		}
 
-		var response model.Dividend
+		var response model.DividendFund
 		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
 		json.NewDecoder(w.Body).Decode(&response)
 
@@ -258,7 +264,7 @@ func TestDividendHandler_CreateDividend(t *testing.T) {
 			t.Errorf("Expected 201, got %d: %s", w.Code, w.Body.String())
 		}
 
-		var response model.Dividend
+		var response model.DividendFund
 		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
 		json.NewDecoder(w.Body).Decode(&response)
 
@@ -297,7 +303,7 @@ func TestDividendHandler_CreateDividend(t *testing.T) {
 			t.Errorf("Expected 201, got %d: %s", w.Code, w.Body.String())
 		}
 
-		var response model.Dividend
+		var response model.DividendFund
 		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
 		json.NewDecoder(w.Body).Decode(&response)
 

@@ -145,14 +145,14 @@ func (s *DividendService) processDividendAmountForDate(dividend []model.Dividend
 //   - req: CreateDividendRequest containing all required dividend fields
 //
 // Returns the created dividend with its generated ID, or an error if creation fails.
-func (s *DividendService) CreateDividend(ctx context.Context, req request.CreateDividendRequest) (*model.Dividend, error) {
+func (s *DividendService) CreateDividend(ctx context.Context, req request.CreateDividendRequest) (*model.DividendFund, error) {
 	portfolioFund, err := s.findPortfolioFund(req.PortfolioFundID)
 	if err != nil {
-		return &model.Dividend{}, err
+		return nil, err
 	}
 
 	if portfolioFund.DividendType == "None" {
-		return &model.Dividend{}, fmt.Errorf("this fund does not pay out dividends")
+		return nil, fmt.Errorf("this fund does not pay out dividends")
 	}
 
 	recordDate, err := time.Parse("2006-01-02", req.RecordDate)
@@ -206,7 +206,27 @@ func (s *DividendService) CreateDividend(ctx context.Context, req request.Create
 		return nil, fmt.Errorf("commit transaction: %w", err)
 	}
 
-	return dividend, nil
+	var buyOrderDate *time.Time
+	if !dividend.BuyOrderDate.IsZero() {
+		t := dividend.BuyOrderDate
+		buyOrderDate = &t
+	}
+
+	return &model.DividendFund{
+		ID:                        dividend.ID,
+		FundID:                    dividend.FundID,
+		FundName:                  portfolioFund.FundName,
+		PortfolioFundID:           dividend.PortfolioFundID,
+		RecordDate:                dividend.RecordDate,
+		ExDividendDate:            dividend.ExDividendDate,
+		SharesOwned:               dividend.SharesOwned,
+		DividendPerShare:          dividend.DividendPerShare,
+		TotalAmount:               dividend.TotalAmount,
+		ReinvestmentStatus:        dividend.ReinvestmentStatus,
+		BuyOrderDate:              buyOrderDate,
+		ReinvestmentTransactionID: dividend.ReinvestmentTransactionID,
+		DividendType:              portfolioFund.DividendType,
+	}, nil
 }
 
 // findPortfolioFund looks up a PortfolioFundListing by ID from the full listing.

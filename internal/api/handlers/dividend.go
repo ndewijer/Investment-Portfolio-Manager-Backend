@@ -85,7 +85,7 @@ func (h *DividendHandler) GetDividend(w http.ResponseWriter, r *http.Request) {
 //
 // Endpoint: POST /api/dividend
 // Request Body: CreateDividendRequest (portfolioFundId, recordDate, exDividendDate, dividendPerShare, and optionally, buyOrderDate, reinvestmentShares and reinvestmentPrice)
-// Response: 201 Created with Dividend
+// Response: 201 Created with DividendFund
 // Error: 400 Bad Request if validation fails or request body is invalid
 // Error: 500 Internal Server Error if creation fails
 func (h *DividendHandler) CreateDividend(w http.ResponseWriter, r *http.Request) {
