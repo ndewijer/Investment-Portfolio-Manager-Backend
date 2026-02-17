@@ -65,6 +65,11 @@ func ValidateCreateDividend(req request.CreateDividendRequest) error {
 			errors["reinvestmentPrice"] = "reinvestmentPrice must be positive"
 		}
 	}
+
+	if len(errors) > 0 {
+		return &Error{Fields: errors}
+	}
+
 	return nil
 }
 

@@ -463,7 +463,7 @@ func (r *TransactionRepository) GetSharesOnDate(portfolioFundID string, date tim
 
 	query := `
 		SELECT COALESCE(SUM(CASE
-			WHEN type IN ('buy') THEN shares
+			WHEN type IN ('buy', 'dividend') THEN shares
 			WHEN type = 'sell'  THEN -shares
 			ELSE 0
 		END), 0)

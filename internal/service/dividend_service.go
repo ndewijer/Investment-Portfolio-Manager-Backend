@@ -23,11 +23,13 @@ type DividendService struct {
 
 // NewDividendService creates a new DividendService with the provided repository dependencies.
 func NewDividendService(
+	db *sql.DB,
 	dividendRepo *repository.DividendRepository,
 	fundRepo *repository.FundRepository,
 	transactionRepo *repository.TransactionRepository,
 ) *DividendService {
 	return &DividendService{
+		db:              db,
 		dividendRepo:    dividendRepo,
 		fundRepo:        fundRepo,
 		transactionRepo: transactionRepo,
@@ -211,7 +213,7 @@ func (s *DividendService) CreateDividend(ctx context.Context, req request.Create
 				return nil, fmt.Errorf("failed to create transaction: %w", err)
 			}
 			dividend.ReinvestmentTransactionID = transactionID
-			if req.ReinvestmentShares*req.ReinvestmentPrice == dividend.TotalAmount {
+			if round(req.ReinvestmentShares*req.ReinvestmentPrice) == round(dividend.TotalAmount) {
 				dividend.ReinvestmentStatus = "COMPLETED"
 			} else {
 				dividend.ReinvestmentStatus = "PARTIAL"
@@ -232,6 +234,10 @@ func (s *DividendService) CreateDividend(ctx context.Context, req request.Create
 
 	if err := divRepo.InsertDividend(ctx, dividend); err != nil {
 		return nil, fmt.Errorf("failed to create dividend: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit transaction: %w", err)
 	}
 
 	return dividend, nil
