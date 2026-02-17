@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 
 // DividendService handles dividend-related business logic operations.
 type DividendService struct {
+	db              *sql.DB
 	dividendRepo    *repository.DividendRepository
 	fundRepo        *repository.FundRepository
 	transactionRepo *repository.TransactionRepository
@@ -157,15 +159,34 @@ func (s *DividendService) CreateDividend(ctx context.Context, req request.Create
 		return nil, err
 	}
 
+	shares, err := s.transactionRepo.GetSharesOnDate(req.PortfolioFundID, exDividendDate)
+	if err != nil {
+		return nil, err
+	}
+
+	totalAmount := shares * req.DividendPerShare
+
+	dividend := &model.Dividend{
+		ID:               uuid.New().String(),
+		FundID:           portfolioFund.FundID,
+		PortfolioFundID:  req.PortfolioFundID,
+		RecordDate:       recordDate,
+		ExDividendDate:   exDividendDate,
+		DividendPerShare: req.DividendPerShare,
+		SharesOwned:      shares,
+		TotalAmount:      totalAmount,
+		CreatedAt:        time.Now().UTC(),
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin transaction: %w", err)
+	}
+	defer tx.Rollback()
 	// so, transactions and dividends are closely linked. if we have buyorder info, we need to make a trnsaction next to the dividend.
 	// if not, just the dividend.
-
-	var buyOrderDate time.Time
-	var reinvestmentStatus, reinvestmentTransactionID string
-	// need to figure out the logic.
-	// var reinvestmentTransactionID float64
 	if req.BuyOrderDate != "" {
-		buyOrderDate, err = time.Parse("2006-01-02", req.BuyOrderDate)
+		dividend.BuyOrderDate, err = time.Parse("2006-01-02", req.BuyOrderDate)
 		if err != nil {
 			return nil, err
 		}
@@ -173,43 +194,43 @@ func (s *DividendService) CreateDividend(ctx context.Context, req request.Create
 		if portfolioFund.DividendType == "STOCK" && req.ReinvestmentPrice > 0.0 && req.ReinvestmentShares > 0.0 {
 			// lets make a transaction.
 
-			// depending on full price or not, we set
-			// reinvestmentStatus = "COMPLETED" or "PARTIAL"
-			// reinvestmentTransactionID = whateverIDItIs.
+			txnRepo := s.transactionRepo.WithTx(tx)
+			transactionID := uuid.New().String()
+
+			transaction := &model.Transaction{
+				ID:              transactionID,
+				PortfolioFundID: req.PortfolioFundID,
+				Date:            dividend.BuyOrderDate,
+				Type:            "dividend",
+				Shares:          req.ReinvestmentShares,
+				CostPerShare:    req.ReinvestmentPrice,
+				CreatedAt:       time.Now().UTC(),
+			}
+
+			if err := txnRepo.InsertTransaction(ctx, transaction); err != nil {
+				return nil, fmt.Errorf("failed to create transaction: %w", err)
+			}
+			dividend.ReinvestmentTransactionID = transactionID
+			if req.ReinvestmentShares*req.ReinvestmentPrice == dividend.TotalAmount {
+				dividend.ReinvestmentStatus = "COMPLETED"
+			} else {
+				dividend.ReinvestmentStatus = "PARTIAL"
+			}
+
 		} else if portfolioFund.DividendType != "STOCK" && req.ReinvestmentPrice > 0.0 && req.ReinvestmentShares > 0.0 {
 			// Info set, but the stock is cash, so no transaction required.
-			//  reinvestmentStatus = "COMPLETED"
-			//  reinvestmentTransactionID = ""
+			dividend.ReinvestmentStatus = "COMPLETED"
+			dividend.ReinvestmentTransactionID = ""
 		} else {
 			// not enough info to make a transaction. We don't hve to bomb, but we'll have to set status to pending.
-			// enum will be ["PENDING", "COMPLETED", "PARTIAL"]. So PENDING.
-			// reinvestmentStatus = "PENDING"
-			// reinvestmentTransactionID = "" -- null
+			dividend.ReinvestmentStatus = "PENDING"
+			dividend.ReinvestmentTransactionID = ""
 		}
 	}
 
-	shares, err := s.transactionRepo.GetSharesOnDate(req.PortfolioFundID, exDividendDate)
-	totalAmount := shares * req.DividendPerShare
+	divRepo := s.dividendRepo.WithTx(tx)
 
-	// we also need to calculate SharesOwned and TotalAmount. What's smart, here? just query the PortfolioHistory/MaterializedView here?
-	// those are based on portfolio so something will need to be modified.
-
-	dividend := &model.Dividend{
-		ID:                        uuid.New().String(),
-		FundID:                    portfolioFund.FundID,
-		PortfolioFundID:           req.PortfolioFundID,
-		RecordDate:                recordDate,
-		ExDividendDate:            exDividendDate,
-		DividendPerShare:          req.DividendPerShare,
-		SharesOwned:               shares,
-		TotalAmount:               totalAmount,
-		ReinvestmentStatus:        reinvestmentStatus,
-		BuyOrderDate:              buyOrderDate,
-		ReinvestmentTransactionID: reinvestmentTransactionID,
-		CreatedAt:                 time.Now().UTC(),
-	}
-
-	if err := s.dividendRepo.InsertDividend(ctx, dividend); err != nil {
+	if err := divRepo.InsertDividend(ctx, dividend); err != nil {
 		return nil, fmt.Errorf("failed to create dividend: %w", err)
 	}
 
