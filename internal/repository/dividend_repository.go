@@ -380,7 +380,7 @@ func (r *DividendRepository) GetDividend(dividendID string) (model.Dividend, err
       `
 	var d model.Dividend
 	var RecordDateStr, ExDividendDateStr string
-	var buyOrderDateStr, reinvestmentTransactionIdString sql.NullString
+	var buyOrderDateStr, reinvestmentTransactionIDString sql.NullString
 
 	err := r.db.QueryRow(query, dividendID).Scan(
 		&d.ID,
@@ -393,7 +393,7 @@ func (r *DividendRepository) GetDividend(dividendID string) (model.Dividend, err
 		&d.TotalAmount,
 		&d.ReinvestmentStatus,
 		&buyOrderDateStr,
-		&reinvestmentTransactionIdString,
+		&reinvestmentTransactionIDString,
 	)
 
 	if err == sql.ErrNoRows {
@@ -420,8 +420,8 @@ func (r *DividendRepository) GetDividend(dividendID string) (model.Dividend, err
 		}
 	}
 
-	if reinvestmentTransactionIdString.Valid {
-		d.ReinvestmentTransactionID = reinvestmentTransactionIdString.String
+	if reinvestmentTransactionIDString.Valid {
+		d.ReinvestmentTransactionID = reinvestmentTransactionIDString.String
 	}
 
 	return d, nil
@@ -435,6 +435,16 @@ func (r *DividendRepository) InsertDividend(ctx context.Context, d *model.Divide
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `
 
+	var buyOrderDate any
+	if !d.BuyOrderDate.IsZero() {
+		buyOrderDate = d.BuyOrderDate.Format("2006-01-02")
+	}
+
+	var reinvestmentTransactionID any
+	if d.ReinvestmentTransactionID != "" {
+		reinvestmentTransactionID = d.ReinvestmentTransactionID
+	}
+
 	_, err := r.getQuerier().ExecContext(ctx, query,
 		d.ID,
 		d.FundID,
@@ -445,8 +455,8 @@ func (r *DividendRepository) InsertDividend(ctx context.Context, d *model.Divide
 		d.SharesOwned,
 		d.TotalAmount,
 		d.ReinvestmentStatus,
-		d.BuyOrderDate.Format("2006-01-02"),
-		d.ReinvestmentTransactionID,
+		buyOrderDate,
+		reinvestmentTransactionID,
 		d.CreatedAt.Format("2006-01-02 01:02:01"),
 	)
 

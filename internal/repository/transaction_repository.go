@@ -455,6 +455,13 @@ func (r *TransactionRepository) DeleteTransaction(ctx context.Context, transacti
 	return nil
 }
 
+// GetSharesOnDate calculates the total shares held for a portfolio fund as of the given date.
+// Aggregates all transactions up to and including the date using a SQL SUM:
+//   - "buy" and "dividend" transactions add shares
+//   - "sell" transactions subtract shares
+//
+// Returns 0.0 if no transactions exist for the given portfolio fund up to the date.
+// Returns ErrInvalidPortfolioID if portfolioFundID is empty.
 func (r *TransactionRepository) GetSharesOnDate(portfolioFundID string, date time.Time) (float64, error) {
 
 	if portfolioFundID == "" {

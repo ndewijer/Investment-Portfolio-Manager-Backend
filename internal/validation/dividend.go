@@ -7,15 +7,19 @@ import (
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/request"
 )
 
-// ValidateCreateDividend validates a transaction creation request.
+// ValidateCreateDividend validates a dividend creation request.
 // Checks all required fields and validates their formats and constraints.
 //
 // Required fields:
 //   - portfolioFundId: Must be a valid UUID
-//   - date: Must be in YYYY-MM-DD format
-//   - type: Must be one of: buy, sell, dividend, fee
-//   - shares: Must be non-zero
-//   - costPerShare: Must be non-zero
+//   - recordDate: Must be in YYYY-MM-DD format
+//   - exDividendDate: Must be in YYYY-MM-DD format
+//   - dividendPerShare: Must be positive
+//
+// Optional fields (validated if provided):
+//   - buyOrderDate: Must be in YYYY-MM-DD format
+//   - reinvestmentShares: Must be positive
+//   - reinvestmentPrice: Must be positive
 //
 // Returns a validation Error with field-specific error messages if validation fails.
 func ValidateCreateDividend(req request.CreateDividendRequest) error {
@@ -84,6 +88,8 @@ func ValidateCreateDividend(req request.CreateDividendRequest) error {
 //   - costPerShare: Must be non-zero if provided
 //
 // Returns a validation Error with field-specific error messages if validation fails.
+//
+//nolint:gocyclo // Comprehensive validation of dividend updates, cannot be split well.
 func ValidateUpdateDividend(req request.UpdateDividendRequest) error {
 	errors := make(map[string]string)
 

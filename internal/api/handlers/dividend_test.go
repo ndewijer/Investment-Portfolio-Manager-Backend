@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/testutil"
@@ -99,6 +100,273 @@ func TestDividendHandler_GetAllDividends(t *testing.T) {
 		w := httptest.NewRecorder()
 
 		handler.GetAllDividend(w, req)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Errorf("Expected 500, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+}
+
+//nolint:gocyclo // Comprehensive handler test with multiple subtests and assertions, cannot be split well.
+func TestDividendHandler_CreateDividend(t *testing.T) {
+	setupHandler := func(t *testing.T) (*DividendHandler, *sql.DB) {
+		t.Helper()
+		db := testutil.SetupTestDB(t)
+		ds := testutil.NewTestDividendService(t, db)
+		return NewDividendHandler(ds), db
+	}
+
+	// Fixed dates: transaction in Jan, ex-dividend in Feb, buy order after ex-dividend.
+	txDate := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	recDate := "2026-02-01"
+	exDate := "2026-02-10"
+	buyDate := "2026-02-15"
+
+	t.Run("creates dividend for STOCK fund with no buy order sets PENDING", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		fund := testutil.NewFund().WithDividendType("STOCK").Build(t, db)
+		pf := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+		testutil.NewTransaction(pf.ID).WithDate(txDate).WithShares(100).Build(t, db)
+
+		body := `{
+			"portfolioFundId": "` + pf.ID + `",
+			"recordDate": "` + recDate + `",
+			"exDividendDate": "` + exDate + `",
+			"dividendPerShare": 0.50
+		}`
+
+		req := testutil.NewRequestWithBody(http.MethodPost, "/api/dividend", body)
+		w := httptest.NewRecorder()
+		handler.CreateDividend(w, req)
+
+		if w.Code != http.StatusCreated {
+			t.Errorf("Expected 201, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var response model.Dividend
+		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if response.ID == "" {
+			t.Error("Expected non-empty ID")
+		}
+		if response.SharesOwned != 100 {
+			t.Errorf("Expected 100 shares owned, got %f", response.SharesOwned)
+		}
+		if response.TotalAmount != 50.0 {
+			t.Errorf("Expected total amount 50.0, got %f", response.TotalAmount)
+		}
+		if response.ReinvestmentStatus != "PENDING" {
+			t.Errorf("Expected PENDING status, got %s", response.ReinvestmentStatus)
+		}
+	})
+
+	t.Run("creates dividend for non-STOCK fund with no buy order sets COMPLETED", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		fund := testutil.NewFund().WithDividendType("CASH").Build(t, db)
+		pf := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+		testutil.NewTransaction(pf.ID).WithDate(txDate).WithShares(50).Build(t, db)
+
+		body := `{
+			"portfolioFundId": "` + pf.ID + `",
+			"recordDate": "` + recDate + `",
+			"exDividendDate": "` + exDate + `",
+			"dividendPerShare": 1.00
+		}`
+
+		req := testutil.NewRequestWithBody(http.MethodPost, "/api/dividend", body)
+		w := httptest.NewRecorder()
+		handler.CreateDividend(w, req)
+
+		if w.Code != http.StatusCreated {
+			t.Errorf("Expected 201, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var response model.Dividend
+		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if response.ReinvestmentStatus != "COMPLETED" {
+			t.Errorf("Expected COMPLETED status, got %s", response.ReinvestmentStatus)
+		}
+	})
+
+	t.Run("creates dividend with buy order but missing reinvestment info sets PENDING", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		fund := testutil.NewFund().WithDividendType("STOCK").Build(t, db)
+		pf := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+		testutil.NewTransaction(pf.ID).WithDate(txDate).WithShares(100).Build(t, db)
+
+		body := `{
+			"portfolioFundId": "` + pf.ID + `",
+			"recordDate": "` + recDate + `",
+			"exDividendDate": "` + exDate + `",
+			"dividendPerShare": 0.50,
+			"buyOrderDate": "` + buyDate + `"
+		}`
+
+		req := testutil.NewRequestWithBody(http.MethodPost, "/api/dividend", body)
+		w := httptest.NewRecorder()
+		handler.CreateDividend(w, req)
+
+		if w.Code != http.StatusCreated {
+			t.Errorf("Expected 201, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var response model.Dividend
+		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if response.ReinvestmentStatus != "PENDING" {
+			t.Errorf("Expected PENDING, got %s", response.ReinvestmentStatus)
+		}
+		if response.ReinvestmentTransactionID != "" {
+			t.Errorf("Expected no reinvestment transaction, got %s", response.ReinvestmentTransactionID)
+		}
+	})
+
+	t.Run("creates STOCK dividend with full reinvestment sets COMPLETED", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		fund := testutil.NewFund().WithDividendType("STOCK").Build(t, db)
+		pf := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+		// 100 shares × 0.50 = 50.0 total dividend; 10 shares × 5.0 = 50.0 reinvested → COMPLETED
+		testutil.NewTransaction(pf.ID).WithDate(txDate).WithShares(100).Build(t, db)
+
+		body := `{
+			"portfolioFundId": "` + pf.ID + `",
+			"recordDate": "` + recDate + `",
+			"exDividendDate": "` + exDate + `",
+			"dividendPerShare": 0.50,
+			"buyOrderDate": "` + buyDate + `",
+			"reinvestmentShares": 10.0,
+			"reinvestmentPrice": 5.0
+		}`
+
+		req := testutil.NewRequestWithBody(http.MethodPost, "/api/dividend", body)
+		w := httptest.NewRecorder()
+		handler.CreateDividend(w, req)
+
+		if w.Code != http.StatusCreated {
+			t.Errorf("Expected 201, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var response model.Dividend
+		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if response.ReinvestmentStatus != "COMPLETED" {
+			t.Errorf("Expected COMPLETED, got %s", response.ReinvestmentStatus)
+		}
+		if response.ReinvestmentTransactionID == "" {
+			t.Error("Expected reinvestment transaction ID to be set")
+		}
+	})
+
+	t.Run("creates STOCK dividend with partial reinvestment sets PARTIAL", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		fund := testutil.NewFund().WithDividendType("STOCK").Build(t, db)
+		pf := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+		// 100 shares × 0.50 = 50.0 total dividend; 5 shares × 5.0 = 25.0 reinvested → PARTIAL
+		testutil.NewTransaction(pf.ID).WithDate(txDate).WithShares(100).Build(t, db)
+
+		body := `{
+			"portfolioFundId": "` + pf.ID + `",
+			"recordDate": "` + recDate + `",
+			"exDividendDate": "` + exDate + `",
+			"dividendPerShare": 0.50,
+			"buyOrderDate": "` + buyDate + `",
+			"reinvestmentShares": 5.0,
+			"reinvestmentPrice": 5.0
+		}`
+
+		req := testutil.NewRequestWithBody(http.MethodPost, "/api/dividend", body)
+		w := httptest.NewRecorder()
+		handler.CreateDividend(w, req)
+
+		if w.Code != http.StatusCreated {
+			t.Errorf("Expected 201, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var response model.Dividend
+		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if response.ReinvestmentStatus != "PARTIAL" {
+			t.Errorf("Expected PARTIAL, got %s", response.ReinvestmentStatus)
+		}
+	})
+
+	t.Run("returns 400 for invalid JSON body", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		req := testutil.NewRequestWithBody(http.MethodPost, "/api/dividend", `{invalid json}`)
+		w := httptest.NewRecorder()
+		handler.CreateDividend(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("returns 400 for validation failure", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		req := testutil.NewRequestWithBody(http.MethodPost, "/api/dividend", `{"portfolioFundId": "not-a-uuid"}`)
+		w := httptest.NewRecorder()
+		handler.CreateDividend(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("returns 500 for fund with DividendType None", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		fund := testutil.NewFund().WithDividendType("None").Build(t, db)
+		pf := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+
+		body := `{
+			"portfolioFundId": "` + pf.ID + `",
+			"recordDate": "` + recDate + `",
+			"exDividendDate": "` + exDate + `",
+			"dividendPerShare": 0.50
+		}`
+
+		req := testutil.NewRequestWithBody(http.MethodPost, "/api/dividend", body)
+		w := httptest.NewRecorder()
+		handler.CreateDividend(w, req)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Errorf("Expected 500, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("returns 500 on database error", func(t *testing.T) {
+		handler, db := setupHandler(t)
+		db.Close()
+
+		body := `{
+			"portfolioFundId": "` + testutil.MakeID() + `",
+			"recordDate": "` + recDate + `",
+			"exDividendDate": "` + exDate + `",
+			"dividendPerShare": 0.50
+		}`
+
+		req := testutil.NewRequestWithBody(http.MethodPost, "/api/dividend", body)
+		w := httptest.NewRecorder()
+		handler.CreateDividend(w, req)
 
 		if w.Code != http.StatusInternalServerError {
 			t.Errorf("Expected 500, got %d: %s", w.Code, w.Body.String())

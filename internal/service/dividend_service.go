@@ -21,7 +21,13 @@ type DividendService struct {
 	transactionRepo *repository.TransactionRepository
 }
 
-// NewDividendService creates a new DividendService with the provided repository dependencies.
+// NewDividendService creates a new DividendService with the provided dependencies.
+//
+// Parameters:
+//   - db: Raw database connection, used to manage database transactions in CreateDividend.
+//   - dividendRepo: Repository for dividend table operations.
+//   - fundRepo: Repository for fund and portfolio-fund lookups.
+//   - transactionRepo: Repository for transaction table operations, including share calculations.
 func NewDividendService(
 	db *sql.DB,
 	dividendRepo *repository.DividendRepository,
@@ -118,12 +124,21 @@ func (s *DividendService) processDividendAmountForDate(dividend []model.Dividend
 	return totalDividend, nil
 }
 
-// CreateDividend creates a new dividend with the provided details.
-// Generates a new UUID for the dividend and inserts it into the database.
+// CreateDividend creates a new dividend record, calculating SharesOwned and TotalAmount
+// from transactions as of the ex-dividend date.
+//
+// If BuyOrderDate is provided, a reinvestment transaction is also created atomically
+// within the same database transaction. ReinvestmentStatus is determined as follows:
+//
+//   - STOCK fund, no BuyOrderDate:                              "PENDING"
+//   - STOCK fund, BuyOrderDate set, price/shares missing:       "PENDING"
+//   - STOCK fund, BuyOrderDate set, reinvested == total amount: "COMPLETED"
+//   - STOCK fund, BuyOrderDate set, reinvested < total amount:  "PARTIAL"
+//   - Non-STOCK fund, no BuyOrderDate:                          "COMPLETED"
+//   - Non-STOCK fund, BuyOrderDate and price/shares provided:   "COMPLETED"
 //
 // Note: Once a dividend is used in a portfolio (has transactions), it becomes permanent
 // and cannot be deleted. This preserves portfolio history and dividend price data.
-// Only delete unused dividends (e.g., created by mistake).
 //
 // Parameters:
 //   - ctx: Context for the operation
@@ -131,20 +146,9 @@ func (s *DividendService) processDividendAmountForDate(dividend []model.Dividend
 //
 // Returns the created dividend with its generated ID, or an error if creation fails.
 func (s *DividendService) CreateDividend(ctx context.Context, req request.CreateDividendRequest) (*model.Dividend, error) {
-
-	pfs, err := s.fundRepo.GetAllPortfolioFundListings()
+	portfolioFund, err := s.findPortfolioFund(req.PortfolioFundID)
 	if err != nil {
 		return &model.Dividend{}, err
-	}
-
-	var portfolioFund model.PortfolioFundListing
-	for _, v := range pfs {
-		if v.ID == req.PortfolioFundID {
-			portfolioFund = v
-		}
-	}
-	if portfolioFund.ID == "" {
-		return &model.Dividend{}, apperrors.ErrFailedToRetrievePortfolioFunds
 	}
 
 	if portfolioFund.DividendType == "None" {
@@ -166,8 +170,6 @@ func (s *DividendService) CreateDividend(ctx context.Context, req request.Create
 		return nil, err
 	}
 
-	totalAmount := shares * req.DividendPerShare
-
 	dividend := &model.Dividend{
 		ID:               uuid.New().String(),
 		FundID:           portfolioFund.FundID,
@@ -176,7 +178,7 @@ func (s *DividendService) CreateDividend(ctx context.Context, req request.Create
 		ExDividendDate:   exDividendDate,
 		DividendPerShare: req.DividendPerShare,
 		SharesOwned:      shares,
-		TotalAmount:      totalAmount,
+		TotalAmount:      shares * req.DividendPerShare,
 		CreatedAt:        time.Now().UTC(),
 	}
 
@@ -184,55 +186,19 @@ func (s *DividendService) CreateDividend(ctx context.Context, req request.Create
 	if err != nil {
 		return nil, fmt.Errorf("begin transaction: %w", err)
 	}
-	defer tx.Rollback()
-	// so, transactions and dividends are closely linked. if we have buyorder info, we need to make a trnsaction next to the dividend.
-	// if not, just the dividend.
+	defer func() { _ = tx.Rollback() }() //nolint:errcheck // Rollback is a no-op after Commit; error is intentionally ignored.
+
 	if req.BuyOrderDate != "" {
-		dividend.BuyOrderDate, err = time.Parse("2006-01-02", req.BuyOrderDate)
-		if err != nil {
+		if err := s.applyReinvestment(ctx, tx, portfolioFund, dividend, req); err != nil {
 			return nil, err
 		}
-		// so we have a buyorder date. Do we trust the validation for the rest to be filled on frontend? validation will let this pass so, no.
-		if portfolioFund.DividendType == "STOCK" && req.ReinvestmentPrice > 0.0 && req.ReinvestmentShares > 0.0 {
-			// lets make a transaction.
-
-			txnRepo := s.transactionRepo.WithTx(tx)
-			transactionID := uuid.New().String()
-
-			transaction := &model.Transaction{
-				ID:              transactionID,
-				PortfolioFundID: req.PortfolioFundID,
-				Date:            dividend.BuyOrderDate,
-				Type:            "dividend",
-				Shares:          req.ReinvestmentShares,
-				CostPerShare:    req.ReinvestmentPrice,
-				CreatedAt:       time.Now().UTC(),
-			}
-
-			if err := txnRepo.InsertTransaction(ctx, transaction); err != nil {
-				return nil, fmt.Errorf("failed to create transaction: %w", err)
-			}
-			dividend.ReinvestmentTransactionID = transactionID
-			if round(req.ReinvestmentShares*req.ReinvestmentPrice) == round(dividend.TotalAmount) {
-				dividend.ReinvestmentStatus = "COMPLETED"
-			} else {
-				dividend.ReinvestmentStatus = "PARTIAL"
-			}
-
-		} else if portfolioFund.DividendType != "STOCK" && req.ReinvestmentPrice > 0.0 && req.ReinvestmentShares > 0.0 {
-			// Info set, but the stock is cash, so no transaction required.
-			dividend.ReinvestmentStatus = "COMPLETED"
-			dividend.ReinvestmentTransactionID = ""
-		} else {
-			// not enough info to make a transaction. We don't hve to bomb, but we'll have to set status to pending.
-			dividend.ReinvestmentStatus = "PENDING"
-			dividend.ReinvestmentTransactionID = ""
-		}
+	} else if portfolioFund.DividendType == "STOCK" {
+		dividend.ReinvestmentStatus = "PENDING"
+	} else {
+		dividend.ReinvestmentStatus = "COMPLETED"
 	}
 
-	divRepo := s.dividendRepo.WithTx(tx)
-
-	if err := divRepo.InsertDividend(ctx, dividend); err != nil {
+	if err := s.dividendRepo.WithTx(tx).InsertDividend(ctx, dividend); err != nil {
 		return nil, fmt.Errorf("failed to create dividend: %w", err)
 	}
 
@@ -241,4 +207,77 @@ func (s *DividendService) CreateDividend(ctx context.Context, req request.Create
 	}
 
 	return dividend, nil
+}
+
+// findPortfolioFund looks up a PortfolioFundListing by ID from the full listing.
+// Returns ErrFailedToRetrievePortfolioFunds if the ID is not found.
+func (s *DividendService) findPortfolioFund(portfolioFundID string) (model.PortfolioFundListing, error) {
+	pfs, err := s.fundRepo.GetAllPortfolioFundListings()
+	if err != nil {
+		return model.PortfolioFundListing{}, err
+	}
+
+	for _, v := range pfs {
+		if v.ID == portfolioFundID {
+			return v, nil
+		}
+	}
+
+	return model.PortfolioFundListing{}, apperrors.ErrFailedToRetrievePortfolioFunds
+}
+
+// applyReinvestment parses the BuyOrderDate and sets ReinvestmentStatus on the dividend.
+// For STOCK funds with reinvestment price and shares, it also creates a "dividend" transaction
+// within the provided database transaction.
+func (s *DividendService) applyReinvestment(ctx context.Context, tx *sql.Tx, portfolioFund model.PortfolioFundListing, dividend *model.Dividend, req request.CreateDividendRequest) error {
+	var err error
+	dividend.BuyOrderDate, err = time.Parse("2006-01-02", req.BuyOrderDate)
+	if err != nil {
+		return err
+	}
+
+	hasReinvestmentInfo := req.ReinvestmentPrice > 0.0 && req.ReinvestmentShares > 0.0
+
+	if portfolioFund.DividendType == "STOCK" && hasReinvestmentInfo {
+		return s.createReinvestmentTransaction(ctx, tx, dividend, req)
+	}
+
+	if hasReinvestmentInfo {
+		// Non-STOCK fund with reinvestment info: mark complete, no transaction needed.
+		dividend.ReinvestmentStatus = "COMPLETED"
+		return nil
+	}
+
+	dividend.ReinvestmentStatus = "PENDING"
+	return nil
+}
+
+// createReinvestmentTransaction inserts a "dividend" transaction for a STOCK fund reinvestment
+// and sets ReinvestmentStatus to "COMPLETED" or "PARTIAL" based on whether the reinvested
+// amount matches the total dividend amount.
+func (s *DividendService) createReinvestmentTransaction(ctx context.Context, tx *sql.Tx, dividend *model.Dividend, req request.CreateDividendRequest) error {
+	transactionID := uuid.New().String()
+
+	transaction := &model.Transaction{
+		ID:              transactionID,
+		PortfolioFundID: req.PortfolioFundID,
+		Date:            dividend.BuyOrderDate,
+		Type:            "dividend",
+		Shares:          req.ReinvestmentShares,
+		CostPerShare:    req.ReinvestmentPrice,
+		CreatedAt:       time.Now().UTC(),
+	}
+
+	if err := s.transactionRepo.WithTx(tx).InsertTransaction(ctx, transaction); err != nil {
+		return fmt.Errorf("failed to create reinvestment transaction: %w", err)
+	}
+
+	dividend.ReinvestmentTransactionID = transactionID
+	if round(req.ReinvestmentShares*req.ReinvestmentPrice) == round(dividend.TotalAmount) {
+		dividend.ReinvestmentStatus = "COMPLETED"
+	} else {
+		dividend.ReinvestmentStatus = "PARTIAL"
+	}
+
+	return nil
 }
