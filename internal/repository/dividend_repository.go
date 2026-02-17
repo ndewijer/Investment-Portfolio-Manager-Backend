@@ -1,11 +1,13 @@
 package repository
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"strings"
 	"time"
 
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/apperrors"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 )
 
@@ -13,6 +15,28 @@ import (
 // It handles retrieving dividend records and reinvestment information.
 type DividendRepository struct {
 	db *sql.DB
+	tx *sql.Tx
+}
+
+func (r *DividendRepository) WithTx(tx *sql.Tx) *DividendRepository {
+	return &DividendRepository{
+		db: r.db,
+		tx: tx,
+	}
+}
+
+func (r *DividendRepository) getQuerier() interface {
+	Query(query string, args ...any) (*sql.Rows, error)
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	QueryRow(query string, args ...any) *sql.Row
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+	Exec(query string, args ...any) (sql.Result, error)
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+} {
+	if r.tx != nil {
+		return r.tx
+	}
+	return r.db
 }
 
 // NewDividendRepository creates a new DividendRepository with the provided database connection.
@@ -26,7 +50,7 @@ func NewDividendRepository(db *sql.DB) *DividendRepository {
 // Returns []Dividend.
 // Handles nullable fields like buy_order_date and reinvestment_transaction_id appropriately.
 // This grouping allows callers to decide how to aggregate (by portfolio, by fund, etc.) after retrieval.
-func (r *DividendRepository) GetDividend() ([]model.Dividend, error) {
+func (r *DividendRepository) GetAllDividend() ([]model.Dividend, error) {
 
 	// Retrieve all dividend based on returned portfolio_fund IDs
 	dividendQuery := `
@@ -343,4 +367,92 @@ func (r *DividendRepository) GetDividendPerPortfolioFund(portfolioID string) ([]
 	}
 
 	return dividendFund, nil
+}
+
+func (r *DividendRepository) GetDividend(dividendID string) (model.Dividend, error) {
+	query := `
+		SELECT
+			id, fund_id, portfolio_fund_id, record_date, ex_dividend_date,
+			shares_owned, dividend_per_share, total_amount, reinvestment_status,
+			buy_order_date, reinvestment_transaction_id
+		FROM dividend
+		WHERE id = ?
+      `
+	var d model.Dividend
+	var RecordDateStr, ExDividendDateStr string
+	var buyOrderDateStr, reinvestmentTransactionIdString sql.NullString
+
+	err := r.db.QueryRow(query, dividendID).Scan(
+		&d.ID,
+		&d.FundID,
+		&d.PortfolioFundID,
+		&RecordDateStr,
+		&ExDividendDateStr,
+		&d.SharesOwned,
+		&d.DividendPerShare,
+		&d.TotalAmount,
+		&d.ReinvestmentStatus,
+		&buyOrderDateStr,
+		&reinvestmentTransactionIdString,
+	)
+
+	if err == sql.ErrNoRows {
+		return model.Dividend{}, apperrors.ErrDividendNotFound
+	}
+	if err != nil {
+		return d, fmt.Errorf("failed to get dividend: %w", err)
+	}
+
+	d.RecordDate, err = ParseTime(RecordDateStr)
+	if err != nil || d.RecordDate.IsZero() {
+		return d, fmt.Errorf("failed to parse recordDate: %w", err)
+	}
+
+	d.ExDividendDate, err = ParseTime(ExDividendDateStr)
+	if err != nil || d.ExDividendDate.IsZero() {
+		return d, fmt.Errorf("failed to parse exDividendDate: %w", err)
+	}
+
+	if buyOrderDateStr.Valid {
+		d.BuyOrderDate, err = ParseTime(buyOrderDateStr.String)
+		if err != nil || d.BuyOrderDate.IsZero() {
+			return d, fmt.Errorf("failed to parse buyOrderDate: %w", err)
+		}
+	}
+
+	if reinvestmentTransactionIdString.Valid {
+		d.ReinvestmentTransactionID = reinvestmentTransactionIdString.String
+	}
+
+	return d, nil
+}
+
+func (r *DividendRepository) InsertDividend(ctx context.Context, d *model.Dividend) error {
+	query := `
+        INSERT INTO dividend (
+		id, fund_id, portfolio_fund_id, record_date, ex_dividend_date, shares_owned, dividend_per_share,
+		total_amount, reinvestment_status, buy_order_date, reinvestment_transaction_id, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `
+
+	_, err := r.getQuerier().ExecContext(ctx, query,
+		d.ID,
+		d.FundID,
+		d.PortfolioFundID,
+		d.RecordDate.Format("2006-01-02 01:02:01"),
+		d.ExDividendDate.Format("2006-01-02 01:02:01"),
+		d.DividendPerShare,
+		d.SharesOwned,
+		d.TotalAmount,
+		d.ReinvestmentStatus,
+		d.BuyOrderDate.Format("2006-01-02"),
+		d.ReinvestmentTransactionID,
+		d.CreatedAt.Format("2006-01-02 01:02:01"),
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to insert dividend: %w", err)
+	}
+
+	return nil
 }

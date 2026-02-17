@@ -118,7 +118,7 @@ func (r *TransactionRepository) GetTransactions(pfIDs []string, startDate, endDa
 
 		transactionsByPortfolioFund[t.PortfolioFundID] = append(transactionsByPortfolioFund[t.PortfolioFundID], t)
 	}
-	if err == sql.ErrNoRows {
+	if len(transactionsByPortfolioFund) == 0 {
 		return transactionsByPortfolioFund, nil
 	}
 
@@ -453,4 +453,40 @@ func (r *TransactionRepository) DeleteTransaction(ctx context.Context, transacti
 	}
 
 	return nil
+}
+
+func (r *TransactionRepository) GetSharesOnDate(portfolioFundID string, date time.Time) (float64, error) {
+
+	if portfolioFundID == "" {
+		return 0.0, apperrors.ErrInvalidPortfolioID
+	}
+
+	query := `
+		SELECT COALESCE(SUM(CASE
+			WHEN type IN ('buy') THEN shares
+			WHEN type = 'sell'  THEN -shares
+			ELSE 0
+		END), 0)
+		FROM "transaction"
+		WHERE portfolio_fund_id = ?
+		AND date <= ?
+	`
+
+	args := make([]any, 2)
+	args[0] = portfolioFundID
+	args[1] = date.Format("2006-01-02")
+
+	var f float64
+
+	err := r.db.QueryRow(query, args...).Scan(
+		&f,
+	)
+	if err == sql.ErrNoRows {
+		return 0.0, apperrors.ErrTransactionNotFound
+	}
+	if err != nil {
+		return 0.0, fmt.Errorf("failed to query transaction table: %w", err)
+	}
+
+	return f, nil
 }

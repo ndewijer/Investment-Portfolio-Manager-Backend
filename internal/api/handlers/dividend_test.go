@@ -25,7 +25,7 @@ func TestDividendHandler_GetAllDividends(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/dividend", nil)
 		w := httptest.NewRecorder()
 
-		handler.GetAllDividends(w, req)
+		handler.GetAllDividend(w, req)
 
 		if w.Code != http.StatusOK {
 			t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
@@ -63,7 +63,7 @@ func TestDividendHandler_GetAllDividends(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/dividend", nil)
 		w := httptest.NewRecorder()
 
-		handler.GetAllDividends(w, req)
+		handler.GetAllDividend(w, req)
 
 		if w.Code != http.StatusOK {
 			t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
@@ -98,7 +98,7 @@ func TestDividendHandler_GetAllDividends(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/dividend", nil)
 		w := httptest.NewRecorder()
 
-		handler.GetAllDividends(w, req)
+		handler.GetAllDividend(w, req)
 
 		if w.Code != http.StatusInternalServerError {
 			t.Errorf("Expected 500, got %d: %s", w.Code, w.Body.String())
