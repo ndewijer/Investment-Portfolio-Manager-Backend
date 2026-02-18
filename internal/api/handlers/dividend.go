@@ -114,7 +114,7 @@ func (h *DividendHandler) CreateDividend(w http.ResponseWriter, r *http.Request)
 //
 // Endpoint: PUT /api/dividend/{uuid}
 // Request Body: UpdateDividendRequest (all fields optional)
-// Response: 200 OK with updated Dividend
+// Response: 200 OK with updated DividendFund
 // Error: 400 Bad Request if dividend ID is invalid (validated by middleware) or validation fails
 // Error: 404 Not Found if dividend not found
 // Error: 500 Internal Server Error if update fails

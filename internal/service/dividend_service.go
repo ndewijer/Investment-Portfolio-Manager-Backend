@@ -48,6 +48,8 @@ func (s *DividendService) GetAllDividend() ([]model.Dividend, error) {
 	return s.dividendRepo.GetAllDividend()
 }
 
+// GetDividend retrieves a single dividend record by its ID.
+// Returns ErrDividendNotFound if no record with the given ID exists.
 func (s *DividendService) GetDividend(DividendID string) (model.Dividend, error) {
 	return s.dividendRepo.GetDividend(DividendID)
 }
@@ -210,12 +212,25 @@ func (s *DividendService) CreateDividend(ctx context.Context, req request.Create
 }
 
 // UpdateDividend updates an existing dividend with the provided changes.
-// Only fields present in the request (non-nil) are updated.
-// Updates the createdAt timestamp to reflect the modification time.
+// Only fields present in the request (non-nil) are updated; all others retain their current values.
+// SharesOwned and TotalAmount are always recalculated from transactions as of the (possibly updated)
+// ex-dividend date.
 //
-// Returns the updated dividend on success.
+// ReinvestmentStatus is re-evaluated after the update using the same rules as CreateDividend:
+//
+//   - STOCK fund, no BuyOrderDate:                                       "PENDING"
+//   - STOCK fund, BuyOrderDate set, price/shares missing:                "PENDING"
+//   - STOCK fund, BuyOrderDate set, reinvested == total amount:          "COMPLETED"
+//   - STOCK fund, BuyOrderDate set, reinvested < total amount:           "PARTIAL"
+//   - Non-STOCK fund, no BuyOrderDate:                                   "COMPLETED"
+//   - Non-STOCK fund, BuyOrderDate and price/shares provided:            "COMPLETED"
+//   - Any fund, existing COMPLETED status, no new reinvestment info:     "COMPLETED" (preserved)
+//
+// If reinvestment info is provided and no reinvestment transaction exists yet, a new one is created.
+// If a reinvestment transaction already exists, it is updated in the same database transaction.
+//
 // Returns ErrDividendNotFound if the dividend does not exist.
-// Returns an error if date parsing fails or database update fails.
+// Returns an error if date parsing fails or any database operation fails.
 func (s *DividendService) UpdateDividend(
 	ctx context.Context,
 	id string,
@@ -318,6 +333,16 @@ func (s *DividendService) applyReinvestment(ctx context.Context, tx *sql.Tx, por
 	return nil
 }
 
+// applyUpdateReinvestment updates or creates a reinvestment transaction and recalculates
+// ReinvestmentStatus for an existing dividend.
+//
+// If BuyOrderDate is in the request it replaces the existing value on the dividend.
+// When reinvestment price and shares are both provided:
+//   - STOCK funds: updates the existing reinvestment transaction (if any), or creates a new one.
+//   - Non-STOCK funds: marks the dividend COMPLETED without creating a transaction.
+//
+// When no reinvestment info is provided, COMPLETED status is preserved; all other statuses
+// are set to PENDING.
 func (s *DividendService) applyUpdateReinvestment(ctx context.Context, tx *sql.Tx, portfolioFund model.PortfolioFundListing, dividend *model.Dividend, req request.UpdateDividendRequest) error {
 	if req.BuyOrderDate != nil {
 		buyOrderDate, err := time.Parse("2006-01-02", *req.BuyOrderDate)
@@ -387,6 +412,9 @@ func (s *DividendService) createReinvestmentTransaction(ctx context.Context, tx 
 	return nil
 }
 
+// updateReinvestmentTransaction updates the fields of the existing reinvestment transaction
+// linked to the dividend, and recalculates ReinvestmentStatus (COMPLETED or PARTIAL) based
+// on whether the new reinvested amount equals the dividend's TotalAmount.
 func (s *DividendService) updateReinvestmentTransaction(ctx context.Context, tx *sql.Tx, dividend *model.Dividend, req request.UpdateDividendRequest) error {
 	transaction, err := s.transactionRepo.GetTransactionByID(dividend.ReinvestmentTransactionID)
 	if err != nil {
