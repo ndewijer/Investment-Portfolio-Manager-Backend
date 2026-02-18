@@ -206,27 +206,73 @@ func (s *DividendService) CreateDividend(ctx context.Context, req request.Create
 		return nil, fmt.Errorf("commit transaction: %w", err)
 	}
 
-	var buyOrderDate *time.Time
-	if !dividend.BuyOrderDate.IsZero() {
-		t := dividend.BuyOrderDate
-		buyOrderDate = &t
+	return dividendToFund(*dividend, portfolioFund), nil
+}
+
+// UpdateDividend updates an existing dividend with the provided changes.
+// Only fields present in the request (non-nil) are updated.
+// Updates the createdAt timestamp to reflect the modification time.
+//
+// Returns the updated dividend on success.
+// Returns ErrDividendNotFound if the dividend does not exist.
+// Returns an error if date parsing fails or database update fails.
+func (s *DividendService) UpdateDividend(
+	ctx context.Context,
+	id string,
+	req request.UpdateDividendRequest,
+) (*model.DividendFund, error) {
+	dividend, err := s.dividendRepo.GetDividend(id)
+	if err != nil {
+		return nil, err
 	}
 
-	return &model.DividendFund{
-		ID:                        dividend.ID,
-		FundID:                    dividend.FundID,
-		FundName:                  portfolioFund.FundName,
-		PortfolioFundID:           dividend.PortfolioFundID,
-		RecordDate:                dividend.RecordDate,
-		ExDividendDate:            dividend.ExDividendDate,
-		SharesOwned:               dividend.SharesOwned,
-		DividendPerShare:          dividend.DividendPerShare,
-		TotalAmount:               dividend.TotalAmount,
-		ReinvestmentStatus:        dividend.ReinvestmentStatus,
-		BuyOrderDate:              buyOrderDate,
-		ReinvestmentTransactionID: dividend.ReinvestmentTransactionID,
-		DividendType:              portfolioFund.DividendType,
-	}, nil
+	if req.PortfolioFundID != nil {
+		dividend.PortfolioFundID = *req.PortfolioFundID
+	}
+
+	portfolioFund, err := s.findPortfolioFund(dividend.PortfolioFundID)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := applyUpdateFields(&dividend, req); err != nil {
+		return nil, err
+	}
+
+	shares, err := s.transactionRepo.GetSharesOnDate(dividend.PortfolioFundID, dividend.ExDividendDate)
+	if err != nil {
+		return nil, err
+	}
+
+	dividend.SharesOwned = shares
+	dividend.TotalAmount = shares * dividend.DividendPerShare
+	dividend.CreatedAt = time.Now().UTC()
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }() //nolint:errcheck // Rollback is a no-op after Commit; error is intentionally ignored.
+
+	if req.BuyOrderDate != nil || !dividend.BuyOrderDate.IsZero() {
+		if err := s.applyUpdateReinvestment(ctx, tx, portfolioFund, &dividend, req); err != nil {
+			return nil, err
+		}
+	} else if portfolioFund.DividendType == "STOCK" {
+		dividend.ReinvestmentStatus = "PENDING"
+	} else {
+		dividend.ReinvestmentStatus = "COMPLETED"
+	}
+
+	if err := s.dividendRepo.WithTx(tx).UpdateDividend(ctx, &dividend); err != nil {
+		return nil, fmt.Errorf("failed to update dividend: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit transaction: %w", err)
+	}
+
+	return dividendToFund(dividend, portfolioFund), nil
 }
 
 // findPortfolioFund looks up a PortfolioFundListing by ID from the full listing.
@@ -272,6 +318,45 @@ func (s *DividendService) applyReinvestment(ctx context.Context, tx *sql.Tx, por
 	return nil
 }
 
+func (s *DividendService) applyUpdateReinvestment(ctx context.Context, tx *sql.Tx, portfolioFund model.PortfolioFundListing, dividend *model.Dividend, req request.UpdateDividendRequest) error {
+	if req.BuyOrderDate != nil {
+		buyOrderDate, err := time.Parse("2006-01-02", *req.BuyOrderDate)
+		if err != nil {
+			return err
+		}
+		dividend.BuyOrderDate = buyOrderDate.UTC()
+	}
+
+	var hasReinvestmentInfo bool
+	if req.ReinvestmentShares != nil && req.ReinvestmentPrice != nil {
+		hasReinvestmentInfo = *req.ReinvestmentPrice > 0.0 && *req.ReinvestmentShares > 0.0
+	}
+
+	if portfolioFund.DividendType == "STOCK" && hasReinvestmentInfo {
+		if dividend.ReinvestmentTransactionID != "" {
+			return s.updateReinvestmentTransaction(ctx, tx, dividend, req)
+		}
+		reqCreate := request.CreateDividendRequest{
+			PortfolioFundID:    dividend.PortfolioFundID,
+			ReinvestmentShares: *req.ReinvestmentShares,
+			ReinvestmentPrice:  *req.ReinvestmentPrice,
+		}
+		return s.createReinvestmentTransaction(ctx, tx, dividend, reqCreate)
+	}
+
+	if hasReinvestmentInfo {
+		// Non-STOCK fund with reinvestment info: mark complete, no transaction needed.
+		dividend.ReinvestmentStatus = "COMPLETED"
+		return nil
+	}
+
+	if dividend.ReinvestmentStatus != "COMPLETED" {
+		dividend.ReinvestmentStatus = "PENDING"
+	}
+
+	return nil
+}
+
 // createReinvestmentTransaction inserts a "dividend" transaction for a STOCK fund reinvestment
 // and sets ReinvestmentStatus to "COMPLETED" or "PARTIAL" based on whether the reinvested
 // amount matches the total dividend amount.
@@ -297,6 +382,81 @@ func (s *DividendService) createReinvestmentTransaction(ctx context.Context, tx 
 		dividend.ReinvestmentStatus = "COMPLETED"
 	} else {
 		dividend.ReinvestmentStatus = "PARTIAL"
+	}
+
+	return nil
+}
+
+func (s *DividendService) updateReinvestmentTransaction(ctx context.Context, tx *sql.Tx, dividend *model.Dividend, req request.UpdateDividendRequest) error {
+	transaction, err := s.transactionRepo.GetTransactionByID(dividend.ReinvestmentTransactionID)
+	if err != nil {
+		return err
+	}
+	transaction.PortfolioFundID = dividend.PortfolioFundID
+	transaction.Date = dividend.BuyOrderDate
+	transaction.Shares = *req.ReinvestmentShares
+	transaction.CostPerShare = *req.ReinvestmentPrice
+	transaction.CreatedAt = time.Now().UTC()
+
+	if err := s.transactionRepo.WithTx(tx).UpdateTransaction(ctx, &transaction); err != nil {
+		return fmt.Errorf("failed to update reinvestment transaction: %w", err)
+	}
+
+	if round(*req.ReinvestmentShares**req.ReinvestmentPrice) == round(dividend.TotalAmount) {
+		dividend.ReinvestmentStatus = "COMPLETED"
+	} else {
+		dividend.ReinvestmentStatus = "PARTIAL"
+	}
+
+	return nil
+}
+
+// dividendToFund maps a Dividend and its associated PortfolioFundListing into a DividendFund response.
+func dividendToFund(d model.Dividend, pf model.PortfolioFundListing) *model.DividendFund {
+	var buyOrderDate *time.Time
+	if !d.BuyOrderDate.IsZero() {
+		t := d.BuyOrderDate
+		buyOrderDate = &t
+	}
+
+	return &model.DividendFund{
+		ID:                        d.ID,
+		FundID:                    d.FundID,
+		FundName:                  pf.FundName,
+		PortfolioFundID:           d.PortfolioFundID,
+		RecordDate:                d.RecordDate,
+		ExDividendDate:            d.ExDividendDate,
+		SharesOwned:               d.SharesOwned,
+		DividendPerShare:          d.DividendPerShare,
+		TotalAmount:               d.TotalAmount,
+		ReinvestmentStatus:        d.ReinvestmentStatus,
+		BuyOrderDate:              buyOrderDate,
+		ReinvestmentTransactionID: d.ReinvestmentTransactionID,
+		DividendType:              pf.DividendType,
+	}
+}
+
+// applyUpdateFields applies optional field updates from an UpdateDividendRequest onto a Dividend.
+// Parses and assigns RecordDate, ExDividendDate, and DividendPerShare when provided.
+func applyUpdateFields(dividend *model.Dividend, req request.UpdateDividendRequest) error {
+	if req.RecordDate != nil {
+		recordDate, err := time.Parse("2006-01-02", *req.RecordDate)
+		if err != nil {
+			return err
+		}
+		dividend.RecordDate = recordDate.UTC()
+	}
+
+	if req.ExDividendDate != nil {
+		exDividendDate, err := time.Parse("2006-01-02", *req.ExDividendDate)
+		if err != nil {
+			return err
+		}
+		dividend.ExDividendDate = exDividendDate.UTC()
+	}
+
+	if req.DividendPerShare != nil {
+		dividend.DividendPerShare = *req.DividendPerShare
 	}
 
 	return nil

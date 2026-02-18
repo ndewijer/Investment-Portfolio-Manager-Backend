@@ -112,7 +112,7 @@ func NewRouter(
 			r.Route("/{uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", func(r chi.Router) {
 				r.Use(custommiddleware.ValidateUUIDMiddleware)
 				r.Get("/", dividendHandler.GetDividend)
-				//r.Put("/", dividendHandler.UpdateDividend)
+				r.Put("/", dividendHandler.UpdateDividend)
 				//r.Delete("/", dividendHandler.DeleteDividend)
 			})
 

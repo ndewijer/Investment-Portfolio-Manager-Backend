@@ -118,35 +118,33 @@ func (h *DividendHandler) CreateDividend(w http.ResponseWriter, r *http.Request)
 // Error: 400 Bad Request if dividend ID is invalid (validated by middleware) or validation fails
 // Error: 404 Not Found if dividend not found
 // Error: 500 Internal Server Error if update fails
+func (h *DividendHandler) UpdateDividend(w http.ResponseWriter, r *http.Request) {
+	dividendID := chi.URLParam(r, "uuid")
 
-// to-do
-// func (h *DividendHandler) UpdateDividend(w http.ResponseWriter, r *http.Request) {
-// 	dividendID := chi.URLParam(r, "uuid")
+	req, err := parseJSON[request.UpdateDividendRequest](r)
+	if err != nil {
+		response.RespondError(w, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
 
-// 	req, err := parseJSON[request.UpdateDividendRequest](r)
-// 	if err != nil {
-// 		response.RespondError(w, http.StatusBadRequest, "invalid request body", err.Error())
-// 		return
-// 	}
+	if err := validation.ValidateUpdateDividend(req); err != nil {
+		response.RespondError(w, http.StatusBadRequest, "validation failed", err.Error())
+		return
+	}
 
-// 	if err := validation.ValidateUpdateDividend(req); err != nil {
-// 		response.RespondError(w, http.StatusBadRequest, "validation failed", err.Error())
-// 		return
-// 	}
+	dividend, err := h.dividendService.UpdateDividend(r.Context(), dividendID, req)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrDividendNotFound) {
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrDividendNotFound.Error(), err.Error())
+			return
+		}
 
-// 	dividend, err := h.dividendService.UpdateDividend(r.Context(), dividendID, req)
-// 	if err != nil {
-// 		if errors.Is(err, apperrors.ErrDividendNotFound) {
-// 			response.RespondError(w, http.StatusNotFound, apperrors.ErrDividendNotFound.Error(), err.Error())
-// 			return
-// 		}
+		response.RespondError(w, http.StatusInternalServerError, "failed to update dividend", err.Error())
+		return
+	}
 
-// 		response.RespondError(w, http.StatusInternalServerError, "failed to update dividend", err.Error())
-// 		return
-// 	}
-
-// 	response.RespondJSON(w, http.StatusOK, dividend)
-// }
+	response.RespondJSON(w, http.StatusOK, dividend)
+}
 
 // DeleteDividend handles DELETE requests to remove a dividend.
 // Validates that the dividend exists before deleting.

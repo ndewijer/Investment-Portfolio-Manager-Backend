@@ -451,8 +451,8 @@ func (r *DividendRepository) InsertDividend(ctx context.Context, d *model.Divide
 		d.PortfolioFundID,
 		d.RecordDate.Format("2006-01-02 01:02:01"),
 		d.ExDividendDate.Format("2006-01-02 01:02:01"),
-		d.DividendPerShare,
 		d.SharesOwned,
+		d.DividendPerShare,
 		d.TotalAmount,
 		d.ReinvestmentStatus,
 		buyOrderDate,
@@ -462,6 +462,55 @@ func (r *DividendRepository) InsertDividend(ctx context.Context, d *model.Divide
 
 	if err != nil {
 		return fmt.Errorf("failed to insert dividend: %w", err)
+	}
+
+	return nil
+}
+
+func (r *DividendRepository) UpdateDividend(ctx context.Context, d *model.Dividend) error {
+	query := `
+        UPDATE dividend
+        SET fund_id = ?, portfolio_fund_id = ?, record_date = ?, ex_dividend_date = ?, shares_owned = ?, dividend_per_share = ?,
+		total_amount = ?, reinvestment_status = ?, buy_order_date = ?, reinvestment_transaction_id = ?, created_at = ?
+        WHERE id = ?
+    `
+
+	var buyOrderDate any
+	if !d.BuyOrderDate.IsZero() {
+		buyOrderDate = d.BuyOrderDate.Format("2006-01-02")
+	}
+
+	var reinvestmentTransactionID any
+	if d.ReinvestmentTransactionID != "" {
+		reinvestmentTransactionID = d.ReinvestmentTransactionID
+	}
+
+	result, err := r.getQuerier().ExecContext(ctx, query,
+		d.FundID,
+		d.PortfolioFundID,
+		d.RecordDate.Format("2006-01-02 01:02:01"),
+		d.ExDividendDate.Format("2006-01-02 01:02:01"),
+		d.SharesOwned,
+		d.DividendPerShare,
+		d.TotalAmount,
+		d.ReinvestmentStatus,
+		buyOrderDate,
+		reinvestmentTransactionID,
+		d.CreatedAt.Format("2006-01-02 01:02:01"),
+		d.ID,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to update dividend: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return apperrors.ErrDividendNotFound
 	}
 
 	return nil
