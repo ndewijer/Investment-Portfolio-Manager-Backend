@@ -54,16 +54,16 @@ func (s *DividendService) GetDividend(DividendID string) (model.Dividend, error)
 	return s.dividendRepo.GetDividend(DividendID)
 }
 
-// GetDividendFund retrieves all dividend records for a specific portfolio with enriched fund information.
-// This is the public service method that returns complete dividend details including fund names,
-// dividend types, and reinvestment status for all funds held in the portfolio.
+// GetDividendFund retrieves enriched dividend records filtered by either portfolio or fund.
+// Exactly one of portfolioID or fundID should be non-empty; if both are empty an empty slice is returned.
 //
 // Parameters:
-//   - portfolioID: The portfolio ID to retrieve dividends for
+//   - portfolioID: Filter by portfolio ID (mutually exclusive with fundID)
+//   - fundID:      Filter by fund ID (mutually exclusive with portfolioID; checked if portfolioID is empty)
 //
-// Returns a slice of DividendFund containing all historical dividend payments.
-func (s *DividendService) GetDividendFund(portfolioID string) ([]model.DividendFund, error) {
-	dividendFund, err := s.dividendRepo.GetDividendPerPortfolioFund(portfolioID)
+// Returns a slice of DividendFund containing all historical dividend payments for the given filter.
+func (s *DividendService) GetDividendFund(portfolioID, fundID string) ([]model.DividendFund, error) {
+	dividendFund, err := s.dividendRepo.GetDividendPerPortfolioFund(portfolioID, fundID)
 	if err != nil {
 		return nil, err
 	}
@@ -485,6 +485,42 @@ func applyUpdateFields(dividend *model.Dividend, req request.UpdateDividendReque
 
 	if req.DividendPerShare != nil {
 		dividend.DividendPerShare = *req.DividendPerShare
+	}
+
+	return nil
+}
+
+// DeleteDividend removes a dividend and its associated reinvestment transaction atomically.
+// The dividend row is deleted first (since it holds the FK reference to the transaction),
+// then the reinvestment transaction is deleted if one exists.
+//
+// Returns ErrDividendNotFound if the dividend does not exist.
+// Returns an error if any database operation fails; both deletions are rolled back on error.
+func (s *DividendService) DeleteDividend(ctx context.Context, id string) error {
+
+	dividend, err := s.dividendRepo.GetDividend(id)
+	if err != nil {
+		return err
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }() //nolint:errcheck // Rollback is a no-op after Commit; error is intentionally ignored.
+
+	if err := s.dividendRepo.WithTx(tx).DeleteDividend(ctx, id); err != nil {
+		return fmt.Errorf("failed to delete dividend: %w", err)
+	}
+
+	if dividend.ReinvestmentTransactionID != "" {
+		if err := s.transactionRepo.WithTx(tx).DeleteTransaction(ctx, dividend.ReinvestmentTransactionID); err != nil {
+			return fmt.Errorf("failed to delete reinvestment transaction: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit transaction: %w", err)
 	}
 
 	return nil

@@ -277,20 +277,30 @@ func (r *DividendRepository) parseDividendRecords(t *model.Dividend, recordDateS
 	return nil
 }
 
-// GetDividendPerPortfolioFund retrieves all dividend records for funds in a specific portfolio.
-// This method performs a JOIN across dividend, portfolio_fund, and fund tables to return
-// enriched dividend data including fund names and dividend types.
+// GetDividendPerPortfolioFund retrieves enriched dividend records filtered by either portfolio or fund.
+// Performs a JOIN across dividend, portfolio_fund, and fund tables to return DividendFund rows
+// including fund names and dividend types. Exactly one of portfolioID or fundID must be non-empty;
+// if both are empty an empty slice is returned immediately.
 //
 // Parameters:
-//   - portfolioID: The portfolio ID to retrieve dividends for. Returns empty slice if empty string.
+//   - portfolioID: Filter by portfolio ID (mutually exclusive with fundID)
+//   - fundID:      Filter by fund ID (mutually exclusive with portfolioID; checked if portfolioID is empty)
 //
-// Returns a slice of DividendFund containing all historical dividend payments for the portfolio.
-// The results include both reinvested and distributed dividends across all funds held in the portfolio.
-func (r *DividendRepository) GetDividendPerPortfolioFund(portfolioID string) ([]model.DividendFund, error) {
-	if portfolioID == "" {
+// Returns a slice of DividendFund ordered by ex_dividend_date ascending.
+// Returns an empty non-nil slice if no matching rows are found.
+func (r *DividendRepository) GetDividendPerPortfolioFund(portfolioID, fundID string) ([]model.DividendFund, error) {
+	var whereStatement, queryID string
+	if portfolioID != "" {
+		whereStatement = "WHERE pf.portfolio_id = ?"
+		queryID = portfolioID
+	} else if fundID != "" {
+		whereStatement = "WHERE pf.fund_id = ?"
+		queryID = fundID
+	} else {
 		return []model.DividendFund{}, nil
 	}
 
+	//#nosec G202 -- Safe: placeholders are generated programmatically, not from user input
 	query := `
 	SELECT
 		d.id, d.fund_id, f.name, d.portfolio_fund_id, d.record_date, d.ex_dividend_date,
@@ -299,11 +309,11 @@ func (r *DividendRepository) GetDividendPerPortfolioFund(portfolioID string) ([]
 	FROM dividend d
 	INNER JOIN portfolio_fund pf ON d.portfolio_fund_id = pf.id
 	INNER JOIN fund f ON pf.fund_id = f.id
-	WHERE pf.portfolio_id = ?
+	` + whereStatement + `
 	ORDER BY d.ex_dividend_date ASC
 	`
 
-	rows, err := r.db.Query(query, portfolioID)
+	rows, err := r.db.Query(query, queryID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query dividend table: %w", err)
 	}
@@ -369,6 +379,8 @@ func (r *DividendRepository) GetDividendPerPortfolioFund(portfolioID string) ([]
 	return dividendFund, nil
 }
 
+// GetDividend retrieves a single dividend record by ID.
+// Returns ErrDividendNotFound if no record with the given ID exists.
 func (r *DividendRepository) GetDividend(dividendID string) (model.Dividend, error) {
 	query := `
 		SELECT
@@ -427,6 +439,8 @@ func (r *DividendRepository) GetDividend(dividendID string) (model.Dividend, err
 	return d, nil
 }
 
+// InsertDividend inserts a new dividend record into the database.
+// Nullable fields (BuyOrderDate, ReinvestmentTransactionID) are written as SQL NULL when zero/empty.
 func (r *DividendRepository) InsertDividend(ctx context.Context, d *model.Dividend) error {
 	query := `
         INSERT INTO dividend (
@@ -467,6 +481,9 @@ func (r *DividendRepository) InsertDividend(ctx context.Context, d *model.Divide
 	return nil
 }
 
+// UpdateDividend updates an existing dividend record in the database.
+// Returns ErrDividendNotFound if no row with the dividend's ID exists.
+// Nullable fields (BuyOrderDate, ReinvestmentTransactionID) are written as SQL NULL when zero/empty.
 func (r *DividendRepository) UpdateDividend(ctx context.Context, d *model.Dividend) error {
 	query := `
         UPDATE dividend
@@ -502,6 +519,28 @@ func (r *DividendRepository) UpdateDividend(ctx context.Context, d *model.Divide
 
 	if err != nil {
 		return fmt.Errorf("failed to update dividend: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return apperrors.ErrDividendNotFound
+	}
+
+	return nil
+}
+
+// DeleteDividend removes a dividend record from the database by its ID.
+// Returns ErrDividendNotFound if no row with the given ID exists.
+func (r *DividendRepository) DeleteDividend(ctx context.Context, dividendID string) error {
+	query := `DELETE FROM dividend WHERE id = ?`
+
+	result, err := r.getQuerier().ExecContext(ctx, query, dividendID)
+	if err != nil {
+		return fmt.Errorf("failed to delete dividend: %w", err)
 	}
 
 	rowsAffected, err := result.RowsAffected()

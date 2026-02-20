@@ -636,7 +636,7 @@ func TestDividendHandler_DividendPerPortfolio(t *testing.T) {
 		}
 	})
 
-	t.Run("returns empty array when portfolio has no dividends", func(t *testing.T) {
+	t.Run("returns 404 when portfolio has no dividends", func(t *testing.T) {
 		handler, db := setupHandler(t)
 
 		portfolio := testutil.NewPortfolio().Build(t, db)
@@ -650,20 +650,8 @@ func TestDividendHandler_DividendPerPortfolio(t *testing.T) {
 
 		handler.DividendPerPortfolio(w, req)
 
-		if w.Code != http.StatusOK {
-			t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
-		}
-
-		var response []model.DividendFund
-		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
-		json.NewDecoder(w.Body).Decode(&response)
-
-		if response == nil {
-			t.Error("Expected non-nil array, got nil")
-		}
-
-		if len(response) != 0 {
-			t.Errorf("Expected empty array, got %d dividends", len(response))
+		if w.Code != http.StatusNotFound {
+			t.Errorf("Expected 404, got %d: %s", w.Code, w.Body.String())
 		}
 	})
 
@@ -681,6 +669,204 @@ func TestDividendHandler_DividendPerPortfolio(t *testing.T) {
 		w := httptest.NewRecorder()
 
 		handler.DividendPerPortfolio(w, req)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Errorf("Expected 500, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+}
+
+func TestDividendHandler_DividendPerFund(t *testing.T) {
+	setupHandler := func(t *testing.T) (*DividendHandler, *sql.DB) {
+		t.Helper()
+		db := testutil.SetupTestDB(t)
+		ds := testutil.NewTestDividendService(t, db)
+		return NewDividendHandler(ds), db
+	}
+
+	t.Run("returns dividends for fund successfully", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		fund := testutil.NewFund().Build(t, db)
+		pf := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+
+		testutil.NewDividend(fund.ID, pf.ID).
+			WithDividendPerShare(1.00).
+			WithSharesOwned(50).
+			Build(t, db)
+
+		req := testutil.NewRequestWithURLParams(
+			http.MethodGet,
+			"/api/dividend/fund/"+fund.ID,
+			map[string]string{"uuid": fund.ID},
+		)
+		w := httptest.NewRecorder()
+
+		handler.DividendPerFund(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var response []model.DividendFund
+		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if len(response) != 1 {
+			t.Errorf("Expected 1 dividend, got %d", len(response))
+		}
+		if response[0].FundID != fund.ID {
+			t.Errorf("Expected fundId %s, got %s", fund.ID, response[0].FundID)
+		}
+	})
+
+	t.Run("returns 404 when fund has no dividends", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		fund := testutil.NewFund().Build(t, db)
+
+		req := testutil.NewRequestWithURLParams(
+			http.MethodGet,
+			"/api/dividend/fund/"+fund.ID,
+			map[string]string{"uuid": fund.ID},
+		)
+		w := httptest.NewRecorder()
+
+		handler.DividendPerFund(w, req)
+
+		if w.Code != http.StatusNotFound {
+			t.Errorf("Expected 404, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("returns 500 on database error", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		fund := testutil.NewFund().Build(t, db)
+		db.Close()
+
+		req := testutil.NewRequestWithURLParams(
+			http.MethodGet,
+			"/api/dividend/fund/"+fund.ID,
+			map[string]string{"uuid": fund.ID},
+		)
+		w := httptest.NewRecorder()
+
+		handler.DividendPerFund(w, req)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Errorf("Expected 500, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+}
+
+func TestDividendHandler_DeleteDividend(t *testing.T) {
+	setupHandler := func(t *testing.T) (*DividendHandler, *sql.DB) {
+		t.Helper()
+		db := testutil.SetupTestDB(t)
+		ds := testutil.NewTestDividendService(t, db)
+		return NewDividendHandler(ds), db
+	}
+
+	txDate := time.Now().UTC().AddDate(0, 0, -30)
+
+	t.Run("deletes dividend successfully", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		fund := testutil.NewFund().Build(t, db)
+		pf := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+		div := testutil.NewDividend(fund.ID, pf.ID).Build(t, db)
+
+		req := testutil.NewRequestWithURLParams(
+			http.MethodDelete,
+			"/api/dividend/"+div.ID,
+			map[string]string{"uuid": div.ID},
+		)
+		w := httptest.NewRecorder()
+
+		handler.DeleteDividend(w, req)
+
+		if w.Code != http.StatusNoContent {
+			t.Errorf("Expected 204, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("deletes dividend with reinvestment transaction successfully", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		fund := testutil.NewFund().WithDividendType("STOCK").Build(t, db)
+		pf := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+		testutil.NewTransaction(pf.ID).WithDate(txDate).WithShares(100).Build(t, db)
+
+		// Create a dividend with full reinvestment so it has a reinvestmentTransactionId
+		recDate := time.Now().UTC().AddDate(0, 0, -20).Format("2006-01-02")
+		exDate := time.Now().UTC().AddDate(0, 0, -15).Format("2006-01-02")
+		buyDate := time.Now().UTC().AddDate(0, 0, -10).Format("2006-01-02")
+		body := `{
+			"portfolioFundId": "` + pf.ID + `",
+			"recordDate": "` + recDate + `",
+			"exDividendDate": "` + exDate + `",
+			"dividendPerShare": 0.50,
+			"buyOrderDate": "` + buyDate + `",
+			"reinvestmentShares": 10.0,
+			"reinvestmentPrice": 5.0
+		}`
+		createReq := testutil.NewRequestWithBody(http.MethodPost, "/api/dividend", body)
+		createW := httptest.NewRecorder()
+		handler.CreateDividend(createW, createReq)
+		if createW.Code != http.StatusCreated {
+			t.Fatalf("Setup failed: expected 201, got %d: %s", createW.Code, createW.Body.String())
+		}
+		var created model.DividendFund
+		//nolint:errcheck // Test setup
+		json.NewDecoder(createW.Body).Decode(&created)
+
+		req := testutil.NewRequestWithURLParams(
+			http.MethodDelete,
+			"/api/dividend/"+created.ID,
+			map[string]string{"uuid": created.ID},
+		)
+		w := httptest.NewRecorder()
+
+		handler.DeleteDividend(w, req)
+
+		if w.Code != http.StatusNoContent {
+			t.Errorf("Expected 204, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("returns 404 for non-existent dividend", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		req := testutil.NewRequestWithURLParams(
+			http.MethodDelete,
+			"/api/dividend/"+testutil.MakeID(),
+			map[string]string{"uuid": testutil.MakeID()},
+		)
+		w := httptest.NewRecorder()
+
+		handler.DeleteDividend(w, req)
+
+		if w.Code != http.StatusNotFound {
+			t.Errorf("Expected 404, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("returns 500 on database error", func(t *testing.T) {
+		handler, db := setupHandler(t)
+		db.Close()
+
+		req := testutil.NewRequestWithURLParams(
+			http.MethodDelete,
+			"/api/dividend/"+testutil.MakeID(),
+			map[string]string{"uuid": testutil.MakeID()},
+		)
+		w := httptest.NewRecorder()
+
+		handler.DeleteDividend(w, req)
 
 		if w.Code != http.StatusInternalServerError {
 			t.Errorf("Expected 500, got %d: %s", w.Code, w.Body.String())

@@ -55,13 +55,39 @@ func (h *DividendHandler) DividendPerPortfolio(w http.ResponseWriter, r *http.Re
 
 	portfolioID := chi.URLParam(r, "uuid")
 
-	dividends, err := h.dividendService.GetDividendFund(portfolioID)
+	dividends, err := h.dividendService.GetDividendFund(portfolioID, "")
 	if err != nil {
-		if errors.Is(err, apperrors.ErrPortfolioNotFound) {
-			response.RespondError(w, http.StatusNotFound, apperrors.ErrPortfolioNotFound.Error(), err.Error())
-			return
-		}
 		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToRetrieveDividends.Error(), err.Error())
+		return
+	}
+	if len(dividends) == 0 {
+		response.RespondError(w, http.StatusNotFound, apperrors.ErrPortfolioFundNotFound.Error(), "")
+		return
+	}
+
+	response.RespondJSON(w, http.StatusOK, dividends)
+}
+
+// DividendPerFund handles GET requests to retrieve all dividends for a specific fund.
+// Returns dividend details including fund information, amounts, dates, and reinvestment status
+// for all portfolio positions that held the specified fund.
+//
+// Endpoint: GET /api/dividend/fund/{uuid}
+// Response: 200 OK with array of DividendFund
+// Error: 400 Bad Request if fund ID is invalid (validated by middleware)
+// Error: 404 Not Found if no dividends exist for the fund
+// Error: 500 Internal Server Error if retrieval fails
+func (h *DividendHandler) DividendPerFund(w http.ResponseWriter, r *http.Request) {
+
+	fundID := chi.URLParam(r, "uuid")
+
+	dividends, err := h.dividendService.GetDividendFund("", fundID)
+	if err != nil {
+		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToRetrieveDividends.Error(), err.Error())
+		return
+	}
+	if len(dividends) == 0 {
+		response.RespondError(w, http.StatusNotFound, apperrors.ErrPortfolioFundNotFound.Error(), "")
 		return
 	}
 
@@ -154,21 +180,19 @@ func (h *DividendHandler) UpdateDividend(w http.ResponseWriter, r *http.Request)
 // Error: 400 Bad Request if dividend ID is invalid (validated by middleware)
 // Error: 404 Not Found if dividend not found
 // Error: 500 Internal Server Error if deletion fails
+func (h *DividendHandler) DeleteDividend(w http.ResponseWriter, r *http.Request) {
+	dividendID := chi.URLParam(r, "uuid")
 
-// to-do
-// func (h *DividendHandler) DeleteDividend(w http.ResponseWriter, r *http.Request) {
-// 	dividendID := chi.URLParam(r, "uuid")
+	err := h.dividendService.DeleteDividend(r.Context(), dividendID)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrDividendNotFound) {
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrDividendNotFound.Error(), err.Error())
+			return
+		}
 
-// 	err := h.dividendService.DeleteDividend(r.Context(), dividendID)
-// 	if err != nil {
-// 		if errors.Is(err, apperrors.ErrDividendNotFound) {
-// 			response.RespondError(w, http.StatusNotFound, apperrors.ErrDividendNotFound.Error(), err.Error())
-// 			return
-// 		}
+		response.RespondError(w, http.StatusInternalServerError, "failed to delete dividend", err.Error())
+		return
+	}
 
-// 		response.RespondError(w, http.StatusInternalServerError, "failed to delete dividend", err.Error())
-// 		return
-// 	}
-
-// 	response.RespondJSON(w, http.StatusNoContent, nil)
-// }
+	response.RespondJSON(w, http.StatusNoContent, nil)
+}

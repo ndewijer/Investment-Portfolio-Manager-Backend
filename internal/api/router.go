@@ -113,12 +113,17 @@ func NewRouter(
 				r.Use(custommiddleware.ValidateUUIDMiddleware)
 				r.Get("/", dividendHandler.GetDividend)
 				r.Put("/", dividendHandler.UpdateDividend)
-				//r.Delete("/", dividendHandler.DeleteDividend)
+				r.Delete("/", dividendHandler.DeleteDividend)
 			})
 
 			r.Route("/portfolio/{uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", func(r chi.Router) {
 				r.Use(custommiddleware.ValidateUUIDMiddleware)
 				r.Get("/", dividendHandler.DividendPerPortfolio)
+			})
+
+			r.Route("/fund/{uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", func(r chi.Router) {
+				r.Use(custommiddleware.ValidateUUIDMiddleware)
+				r.Get("/", dividendHandler.DividendPerFund)
 			})
 		})
 

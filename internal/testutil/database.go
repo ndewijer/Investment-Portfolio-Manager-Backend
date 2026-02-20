@@ -122,7 +122,7 @@ func createTestSchema(db *sql.DB) error {
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY(fund_id) REFERENCES fund(id),
 			FOREIGN KEY(portfolio_fund_id) REFERENCES portfolio_fund(id) ON DELETE CASCADE,
-			FOREIGN KEY(reinvestment_transaction_id) REFERENCES "transaction"(id) ON DELETE CASCADE
+			FOREIGN KEY(reinvestment_transaction_id) REFERENCES "transaction"(id) ON DELETE RESTRICT
 		);
 
 		-- Fund price table
