@@ -337,63 +337,69 @@ func (r *DividendRepository) GetDividendPerPortfolioFund(portfolioID, fundID str
 	defer rows.Close()
 
 	dividendFund := []model.DividendFund{}
-
 	for rows.Next() {
-		var recordDateStr, exDividendStr string
-		var buyOrderStr, reinvestmentTxID sql.NullString
-		var t model.DividendFund
-
-		err := rows.Scan(
-			&t.ID,
-			&t.FundID,
-			&t.FundName,
-			&t.PortfolioFundID,
-			&recordDateStr,
-			&exDividendStr,
-			&t.SharesOwned,
-			&t.DividendPerShare,
-			&t.TotalAmount,
-			&t.ReinvestmentStatus,
-			&buyOrderStr,
-			&reinvestmentTxID,
-			&t.DividendType,
-		)
+		t, err := r.scanDividendFundRow(rows)
 		if err != nil {
-			return nil, fmt.Errorf("failed to scan dividend table results: %w", err)
+			return nil, err
 		}
-
-		t.RecordDate, err = ParseTime(recordDateStr)
-		if err != nil || t.RecordDate.IsZero() {
-			return nil, fmt.Errorf("failed to parse date: %w", err)
-		}
-
-		t.ExDividendDate, err = ParseTime(exDividendStr)
-		if err != nil || t.ExDividendDate.IsZero() {
-			return nil, fmt.Errorf("failed to parse date: %w", err)
-		}
-
-		// BuyOrderDate is nullable
-		if buyOrderStr.Valid {
-			buyDate, err := ParseTime(buyOrderStr.String)
-			if err != nil || buyDate.IsZero() {
-				return nil, fmt.Errorf("failed to parse buy_order_date: %w", err)
-			}
-			t.BuyOrderDate = &buyDate // Assign pointer for nullable field
-		}
-
-		// ReinvestmentTransactionID is nullable
-		if reinvestmentTxID.Valid {
-			t.ReinvestmentTransactionID = reinvestmentTxID.String
-		}
-
 		dividendFund = append(dividendFund, t)
-
 	}
 	if err = rows.Err(); err != nil {
 		return nil, fmt.Errorf("error iterating dividend table: %w", err)
 	}
 
 	return dividendFund, nil
+}
+
+// scanDividendFundRow scans a single row from a DividendFund query into a DividendFund model.
+// Extracted from GetDividendPerPortfolioFund to reduce cyclomatic complexity.
+func (r *DividendRepository) scanDividendFundRow(rows *sql.Rows) (model.DividendFund, error) {
+	var recordDateStr, exDividendStr string
+	var buyOrderStr, reinvestmentTxID sql.NullString
+	var t model.DividendFund
+
+	err := rows.Scan(
+		&t.ID,
+		&t.FundID,
+		&t.FundName,
+		&t.PortfolioFundID,
+		&recordDateStr,
+		&exDividendStr,
+		&t.SharesOwned,
+		&t.DividendPerShare,
+		&t.TotalAmount,
+		&t.ReinvestmentStatus,
+		&buyOrderStr,
+		&reinvestmentTxID,
+		&t.DividendType,
+	)
+	if err != nil {
+		return model.DividendFund{}, fmt.Errorf("failed to scan dividend table results: %w", err)
+	}
+
+	t.RecordDate, err = ParseTime(recordDateStr)
+	if err != nil || t.RecordDate.IsZero() {
+		return model.DividendFund{}, fmt.Errorf("failed to parse date: %w", err)
+	}
+
+	t.ExDividendDate, err = ParseTime(exDividendStr)
+	if err != nil || t.ExDividendDate.IsZero() {
+		return model.DividendFund{}, fmt.Errorf("failed to parse date: %w", err)
+	}
+
+	if buyOrderStr.Valid {
+		buyDate, err := ParseTime(buyOrderStr.String)
+		if err != nil || buyDate.IsZero() {
+			return model.DividendFund{}, fmt.Errorf("failed to parse buy_order_date: %w", err)
+		}
+		t.BuyOrderDate = &buyDate
+	}
+
+	if reinvestmentTxID.Valid {
+		t.ReinvestmentTransactionID = reinvestmentTxID.String
+	}
+
+	return t, nil
 }
 
 // GetDividend retrieves a single dividend record by ID.
