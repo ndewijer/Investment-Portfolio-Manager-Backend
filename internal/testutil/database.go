@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/google/uuid"
 	_ "modernc.org/sqlite" // Test Package
 )
 
@@ -20,8 +21,12 @@ import (
 func SetupTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 
-	// In-memory database (destroyed when connection closes)
-	db, err := sql.Open("sqlite", ":memory:")
+	// Named shared in-memory database: all connections to the same name share
+	// the same data, so transactions see schema and test data without needing
+	// to pin to a single connection. Each test gets a unique name so they
+	// remain fully isolated from one another.
+	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", uuid.New().String())
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		t.Fatalf("Failed to open test database: %v", err)
 	}

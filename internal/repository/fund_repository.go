@@ -39,6 +39,7 @@ func (r *FundRepository) getQuerier() interface {
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 	Exec(query string, args ...any) (sql.Result, error)
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+	PrepareContext(ctx context.Context, query string) (*sql.Stmt, error)
 } {
 	if r.tx != nil {
 		return r.tx
@@ -840,38 +841,12 @@ func (r *FundRepository) InsertFundPrice(ctx context.Context, fp model.FundPrice
 //   - error: If transaction creation, statement preparation, any insertion,
 //     or commit fails. All errors are wrapped with context.
 //   - nil: If fundPrices is empty (no-op) or all insertions succeed
-//
-// Note: This method creates its own transaction and does not respect getQuerier().
-// It cannot be nested within another transaction via WithTx().
 func (r *FundRepository) InsertFundPrices(ctx context.Context, fundPrices []model.FundPrice) error {
 	if len(fundPrices) == 0 {
 		return nil
 	}
 
-	var tx *sql.Tx
-	var err error
-	var shouldCommit bool
-
-	if r.tx != nil {
-		tx = r.tx
-		shouldCommit = false
-	} else {
-		tx, err = r.db.BeginTx(ctx, nil)
-		if err != nil {
-			return fmt.Errorf("failed to begin 'insert fund_prices' transaction: %w", err)
-		}
-		shouldCommit = true
-		defer func() {
-			if err != nil {
-				// Rollback is safe to call even after Commit. If Commit succeeds, this is a no-op.
-				// If Commit fails, this ensures the transaction is rolled back.
-				//nolint:errcheck
-				tx.Rollback()
-			}
-		}()
-	}
-
-	stmt, err := tx.PrepareContext(ctx, `
+	stmt, err := r.getQuerier().PrepareContext(ctx, `
         INSERT INTO fund_price (id, fund_id, date, price)
         VALUES (?, ?, ?, ?)
     `)
@@ -884,11 +859,6 @@ func (r *FundRepository) InsertFundPrices(ctx context.Context, fundPrices []mode
 		_, err := stmt.ExecContext(ctx, fp.ID, fp.FundID, fp.Date.Format("2006-01-02"), fp.Price)
 		if err != nil {
 			return fmt.Errorf("failed to insert fund price for %s on %s: %w", fp.FundID, fp.Date.Format("2006-01-02"), err)
-		}
-	}
-	if shouldCommit {
-		if err := tx.Commit(); err != nil {
-			return fmt.Errorf("failed to commit 'insert fund_prices' transaction: %w", err)
 		}
 	}
 

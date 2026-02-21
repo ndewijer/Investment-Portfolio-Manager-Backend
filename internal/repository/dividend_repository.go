@@ -32,6 +32,7 @@ func (r *DividendRepository) getQuerier() interface {
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 	Exec(query string, args ...any) (sql.Result, error)
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+	PrepareContext(ctx context.Context, query string) (*sql.Stmt, error)
 } {
 	if r.tx != nil {
 		return r.tx

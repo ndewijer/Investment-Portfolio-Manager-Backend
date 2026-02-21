@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"time"
 
@@ -15,32 +16,35 @@ import (
 
 // FundService handles fund-related business logic operations.
 type FundService struct {
+	db                      *sql.DB
 	fundRepo                *repository.FundRepository
 	transactionService      *TransactionService
 	dividendService         *DividendService
 	realizedGainLossService *RealizedGainLossService
 	dataLoaderService       *DataLoaderService
-	portfolioService        *PortfolioService
+	portfolioRepo           *repository.PortfolioRepository
 	yahooClient             yahoo.Client
 }
 
 // NewFundService creates a new FundService with the provided repository dependencies.
 func NewFundService(
+	db *sql.DB,
 	fundRepo *repository.FundRepository,
 	transactionService *TransactionService,
 	dividendService *DividendService,
 	realizedGainLossService *RealizedGainLossService,
 	dataLoaderService *DataLoaderService,
-	portfolioService *PortfolioService,
+	portfolioRepo *repository.PortfolioRepository,
 	yahooClient yahoo.Client,
 ) *FundService {
 	return &FundService{
+		db:                      db,
 		fundRepo:                fundRepo,
 		transactionService:      transactionService,
 		dividendService:         dividendService,
 		realizedGainLossService: realizedGainLossService,
 		dataLoaderService:       dataLoaderService,
-		portfolioService:        portfolioService,
+		portfolioRepo:           portfolioRepo,
 		yahooClient:             yahooClient,
 	}
 }
@@ -93,12 +97,12 @@ func (s *FundService) GetAllPortfolioFundListings() ([]model.PortfolioFundListin
 // All monetary values are rounded to two decimal places.
 func (s *FundService) GetPortfolioFunds(portfolioID string) ([]model.PortfolioFundResponse, error) {
 
-	portfolio, err := s.portfolioService.GetPortfoliosForRequest(portfolioID)
+	portfolio, err := s.portfolioRepo.GetPortfolioOnID(portfolioID)
 	if err != nil {
 		return nil, err
 	}
 
-	data, err := s.dataLoaderService.LoadForPortfolios(portfolio, time.Time{}, time.Now().UTC())
+	data, err := s.dataLoaderService.LoadForPortfolios([]model.Portfolio{portfolio}, time.Time{}, time.Now().UTC())
 	if err != nil {
 		return nil, err
 	}
@@ -160,20 +164,30 @@ func (s *FundService) CheckUsage(fundID string) (model.FundUsage, error) {
 // Validates that both the portfolio and fund exist before creating the relationship.
 // This allows a fund to be tracked within a specific portfolio.
 func (s *FundService) CreatePortfolioFund(ctx context.Context, req request.CreatePortfolioFundRequest) error {
-	_, err := s.portfolioService.GetPortfolio(req.PortfolioID)
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }() //nolint:errcheck // Rollback is a no-op after Commit; error is intentionally ignored.
+
+	_, err = s.portfolioRepo.WithTx(tx).GetPortfolioOnID(req.PortfolioID)
 	if err != nil {
 		return err
 	}
 
-	_, err = s.GetFund(req.FundID)
+	_, err = s.fundRepo.WithTx(tx).GetFund(req.FundID)
 	if err != nil {
 		return err
 	}
 
-	if err := s.fundRepo.InsertPortfolioFund(ctx, req.PortfolioID, req.FundID); err != nil {
+	if err := s.fundRepo.WithTx(tx).InsertPortfolioFund(ctx, req.PortfolioID, req.FundID); err != nil {
 		return fmt.Errorf("failed to create portfolio_fund: %w", err)
 	}
 
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("commit transaction: %w", err)
+	}
 	return nil
 }
 
@@ -182,14 +196,24 @@ func (s *FundService) CreatePortfolioFund(ctx context.Context, req request.Creat
 // This does not delete the fund itself, only removes it from the portfolio.
 func (s *FundService) DeletePortfolioFund(ctx context.Context, pfID string) error {
 
-	_, err := s.fundRepo.GetPortfolioFund(pfID)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }() //nolint:errcheck // Rollback is a no-op after Commit; error is intentionally ignored.
+
+	_, err = s.fundRepo.WithTx(tx).GetPortfolioFund(pfID)
 	if err != nil {
 		return err
 	}
 
-	err = s.fundRepo.DeletePortfolioFund(ctx, pfID)
+	err = s.fundRepo.WithTx(tx).DeletePortfolioFund(ctx, pfID)
 	if err != nil {
 		return err
+	}
+
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("commit transaction: %w", err)
 	}
 
 	return nil
@@ -241,7 +265,14 @@ func (s *FundService) UpdateFund(
 	id string,
 	req request.UpdateFundRequest,
 ) (*model.Fund, error) {
-	fund, err := s.fundRepo.GetFund(id)
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }() //nolint:errcheck // Rollback is a no-op after Commit; error is intentionally ignored.
+
+	fund, err := s.fundRepo.WithTx(tx).GetFund(id)
 	if err != nil {
 		return nil, err
 	}
@@ -267,8 +298,12 @@ func (s *FundService) UpdateFund(
 		fund.DividendType = *req.DividendType
 	}
 
-	if err := s.fundRepo.UpdateFund(ctx, &fund); err != nil {
+	if err := s.fundRepo.WithTx(tx).UpdateFund(ctx, &fund); err != nil {
 		return nil, fmt.Errorf("failed to update fund: %w", err)
+	}
+
+	if err = tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit transaction: %w", err)
 	}
 
 	return &fund, nil
@@ -289,23 +324,33 @@ func (s *FundService) UpdateFund(
 //   - error if deletion fails
 func (s *FundService) DeleteFund(ctx context.Context, id string) error {
 
-	_, err := s.fundRepo.GetFund(id)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }() //nolint:errcheck // Rollback is a no-op after Commit; error is intentionally ignored.
+
+	_, err = s.fundRepo.WithTx(tx).GetFund(id)
 	if err != nil {
 		return err
 	}
 
-	usage, err := s.CheckUsage(id)
+	usage, err := s.fundRepo.WithTx(tx).CheckUsage(id)
 	if err != nil {
 		return fmt.Errorf("failed to check fund usage: %w", err)
 	}
 
-	if usage.InUsage {
+	if len(usage) > 0 {
 		return apperrors.ErrFundInUse
 	}
 
-	err = s.fundRepo.DeleteFund(ctx, id)
+	err = s.fundRepo.WithTx(tx).DeleteFund(ctx, id)
 	if err != nil {
 		return fmt.Errorf("failed to delete fund: %w", err)
+	}
+
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("commit transaction: %w", err)
 	}
 
 	return nil
@@ -543,9 +588,19 @@ func (s *FundService) UpdateHistoricalFundPrice(ctx context.Context, fundID stri
 		return 0, nil
 	}
 
-	err = s.fundRepo.InsertFundPrices(ctx, missingFundPrices)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }() //nolint:errcheck // Rollback is a no-op after Commit; error is intentionally ignored.
+
+	err = s.fundRepo.WithTx(tx).InsertFundPrices(ctx, missingFundPrices)
 	if err != nil {
 		return 0, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("commit transaction: %w", err)
 	}
 
 	return len(missingFundPrices), nil
