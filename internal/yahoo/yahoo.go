@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -158,8 +159,8 @@ func (c PriceChart) GetIndicatorForDate(target time.Time) (Indicators, bool) {
 //   - Response: Raw API response containing price data
 //   - error: If the HTTP request fails, API returns an error, or no results found
 func (c *FinanceClient) QueryYahooFiveDaySymbol(symbol string) (Response, error) {
-	url := fmt.Sprintf("https://query1.finance.yahoo.com/v8/finance/chart/%s?interval=1d&range=5d", symbol)
-	result, err := c.queryYahoo(url)
+	queryURL := fmt.Sprintf("https://query1.finance.yahoo.com/v8/finance/chart/%s?interval=1d&range=5d", url.PathEscape(symbol))
+	result, err := c.queryYahoo(queryURL)
 	if err != nil {
 		return Response{}, err
 	}
@@ -190,13 +191,13 @@ func (c *FinanceClient) QueryYahooSymbolByDateRange(symbol string, startDate, en
 	// we get all data up to and including the endDate
 	adjustedEndDate := endDate.AddDate(0, 0, 1)
 
-	url := fmt.Sprintf(
+	queryURL := fmt.Sprintf(
 		"https://query1.finance.yahoo.com/v8/finance/chart/%s?interval=1d&period1=%d&period2=%d",
-		symbol,
+		url.PathEscape(symbol),
 		startDate.Unix(),
 		adjustedEndDate.Unix(),
 	)
-	result, err := c.queryYahoo(url)
+	result, err := c.queryYahoo(queryURL)
 	if err != nil {
 		return Response{}, err
 	}
@@ -230,6 +231,7 @@ func (c *FinanceClient) queryYahoo(url string) (Response, error) {
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
 	req.Header.Set("Accept", "application/json")
 
+	//nolint:gosec // G704: URL is constructed from a hardcoded Yahoo Finance base with url.PathEscape applied to the symbol; the host cannot be redirected by user input.
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return Response{}, err

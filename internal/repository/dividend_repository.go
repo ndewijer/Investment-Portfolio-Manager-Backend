@@ -1,11 +1,13 @@
 package repository
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"strings"
 	"time"
 
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/apperrors"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 )
 
@@ -13,6 +15,28 @@ import (
 // It handles retrieving dividend records and reinvestment information.
 type DividendRepository struct {
 	db *sql.DB
+	tx *sql.Tx
+}
+
+func (r *DividendRepository) WithTx(tx *sql.Tx) *DividendRepository {
+	return &DividendRepository{
+		db: r.db,
+		tx: tx,
+	}
+}
+
+func (r *DividendRepository) getQuerier() interface {
+	Query(query string, args ...any) (*sql.Rows, error)
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	QueryRow(query string, args ...any) *sql.Row
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+	Exec(query string, args ...any) (sql.Result, error)
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+} {
+	if r.tx != nil {
+		return r.tx
+	}
+	return r.db
 }
 
 // NewDividendRepository creates a new DividendRepository with the provided database connection.
@@ -26,7 +50,7 @@ func NewDividendRepository(db *sql.DB) *DividendRepository {
 // Returns []Dividend.
 // Handles nullable fields like buy_order_date and reinvestment_transaction_id appropriately.
 // This grouping allows callers to decide how to aggregate (by portfolio, by fund, etc.) after retrieval.
-func (r *DividendRepository) GetDividend() ([]model.Dividend, error) {
+func (r *DividendRepository) GetAllDividend() ([]model.Dividend, error) {
 
 	// Retrieve all dividend based on returned portfolio_fund IDs
 	dividendQuery := `
@@ -253,20 +277,47 @@ func (r *DividendRepository) parseDividendRecords(t *model.Dividend, recordDateS
 	return nil
 }
 
-// GetDividendPerPortfolioFund retrieves all dividend records for funds in a specific portfolio.
-// This method performs a JOIN across dividend, portfolio_fund, and fund tables to return
-// enriched dividend data including fund names and dividend types.
+// GetDividendPerPortfolioFund retrieves enriched dividend records filtered by either portfolio or fund.
+// Performs a JOIN across dividend, portfolio_fund, and fund tables to return DividendFund rows
+// including fund names and dividend types. Exactly one of portfolioID or fundID must be non-empty;
+// if both are empty an empty slice is returned immediately.
+//
+// An existence check is performed first to distinguish between:
+//   - Entity does not exist → ErrPortfolioNotFound or ErrFundNotFound
+//   - Entity exists but has no dividends → empty slice
 //
 // Parameters:
-//   - portfolioID: The portfolio ID to retrieve dividends for. Returns empty slice if empty string.
+//   - portfolioID: Filter by portfolio ID (mutually exclusive with fundID)
+//   - fundID:      Filter by fund ID (mutually exclusive with portfolioID; checked if portfolioID is empty)
 //
-// Returns a slice of DividendFund containing all historical dividend payments for the portfolio.
-// The results include both reinvested and distributed dividends across all funds held in the portfolio.
-func (r *DividendRepository) GetDividendPerPortfolioFund(portfolioID string) ([]model.DividendFund, error) {
-	if portfolioID == "" {
+// Returns a slice of DividendFund ordered by ex_dividend_date ascending.
+func (r *DividendRepository) GetDividendPerPortfolioFund(portfolioID, fundID string) ([]model.DividendFund, error) {
+	var whereStatement, existsStatement, queryID string
+	var notFoundErr error
+
+	if portfolioID != "" {
+		whereStatement = "WHERE pf.portfolio_id = ?"
+		existsStatement = "SELECT COUNT(*) FROM portfolio_fund WHERE portfolio_id = ?"
+		queryID = portfolioID
+		notFoundErr = apperrors.ErrPortfolioNotFound
+	} else if fundID != "" {
+		whereStatement = "WHERE pf.fund_id = ?"
+		existsStatement = "SELECT COUNT(*) FROM portfolio_fund WHERE fund_id = ?"
+		queryID = fundID
+		notFoundErr = apperrors.ErrFundNotFound
+	} else {
 		return []model.DividendFund{}, nil
 	}
 
+	var count int
+	if err := r.db.QueryRow(existsStatement, queryID).Scan(&count); err != nil {
+		return nil, fmt.Errorf("failed to check existence: %w", err)
+	}
+	if count == 0 {
+		return nil, notFoundErr
+	}
+
+	//#nosec G202 -- Safe: placeholders are generated programmatically, not from user input
 	query := `
 	SELECT
 		d.id, d.fund_id, f.name, d.portfolio_fund_id, d.record_date, d.ex_dividend_date,
@@ -275,72 +326,254 @@ func (r *DividendRepository) GetDividendPerPortfolioFund(portfolioID string) ([]
 	FROM dividend d
 	INNER JOIN portfolio_fund pf ON d.portfolio_fund_id = pf.id
 	INNER JOIN fund f ON pf.fund_id = f.id
-	WHERE pf.portfolio_id = ?
+	` + whereStatement + `
 	ORDER BY d.ex_dividend_date ASC
 	`
 
-	rows, err := r.db.Query(query, portfolioID)
+	rows, err := r.db.Query(query, queryID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query dividend table: %w", err)
 	}
 	defer rows.Close()
 
 	dividendFund := []model.DividendFund{}
-
 	for rows.Next() {
-		var recordDateStr, exDividendStr string
-		var buyOrderStr, reinvestmentTxID sql.NullString
-		var t model.DividendFund
-
-		err := rows.Scan(
-			&t.ID,
-			&t.FundID,
-			&t.FundName,
-			&t.PortfolioFundID,
-			&recordDateStr,
-			&exDividendStr,
-			&t.SharesOwned,
-			&t.DividendPerShare,
-			&t.TotalAmount,
-			&t.ReinvestmentStatus,
-			&buyOrderStr,
-			&reinvestmentTxID,
-			&t.DividendType,
-		)
+		t, err := r.scanDividendFundRow(rows)
 		if err != nil {
-			return nil, fmt.Errorf("failed to scan dividend table results: %w", err)
+			return nil, err
 		}
-
-		t.RecordDate, err = ParseTime(recordDateStr)
-		if err != nil || t.RecordDate.IsZero() {
-			return nil, fmt.Errorf("failed to parse date: %w", err)
-		}
-
-		t.ExDividendDate, err = ParseTime(exDividendStr)
-		if err != nil || t.ExDividendDate.IsZero() {
-			return nil, fmt.Errorf("failed to parse date: %w", err)
-		}
-
-		// BuyOrderDate is nullable
-		if buyOrderStr.Valid {
-			buyDate, err := ParseTime(buyOrderStr.String)
-			if err != nil || buyDate.IsZero() {
-				return nil, fmt.Errorf("failed to parse buy_order_date: %w", err)
-			}
-			t.BuyOrderDate = &buyDate // Assign pointer for nullable field
-		}
-
-		// ReinvestmentTransactionID is nullable
-		if reinvestmentTxID.Valid {
-			t.ReinvestmentTransactionID = reinvestmentTxID.String
-		}
-
 		dividendFund = append(dividendFund, t)
-
 	}
 	if err = rows.Err(); err != nil {
 		return nil, fmt.Errorf("error iterating dividend table: %w", err)
 	}
 
 	return dividendFund, nil
+}
+
+// scanDividendFundRow scans a single row from a DividendFund query into a DividendFund model.
+// Extracted from GetDividendPerPortfolioFund to reduce cyclomatic complexity.
+func (r *DividendRepository) scanDividendFundRow(rows *sql.Rows) (model.DividendFund, error) {
+	var recordDateStr, exDividendStr string
+	var buyOrderStr, reinvestmentTxID sql.NullString
+	var t model.DividendFund
+
+	err := rows.Scan(
+		&t.ID,
+		&t.FundID,
+		&t.FundName,
+		&t.PortfolioFundID,
+		&recordDateStr,
+		&exDividendStr,
+		&t.SharesOwned,
+		&t.DividendPerShare,
+		&t.TotalAmount,
+		&t.ReinvestmentStatus,
+		&buyOrderStr,
+		&reinvestmentTxID,
+		&t.DividendType,
+	)
+	if err != nil {
+		return model.DividendFund{}, fmt.Errorf("failed to scan dividend table results: %w", err)
+	}
+
+	t.RecordDate, err = ParseTime(recordDateStr)
+	if err != nil || t.RecordDate.IsZero() {
+		return model.DividendFund{}, fmt.Errorf("failed to parse date: %w", err)
+	}
+
+	t.ExDividendDate, err = ParseTime(exDividendStr)
+	if err != nil || t.ExDividendDate.IsZero() {
+		return model.DividendFund{}, fmt.Errorf("failed to parse date: %w", err)
+	}
+
+	if buyOrderStr.Valid {
+		buyDate, err := ParseTime(buyOrderStr.String)
+		if err != nil || buyDate.IsZero() {
+			return model.DividendFund{}, fmt.Errorf("failed to parse buy_order_date: %w", err)
+		}
+		t.BuyOrderDate = &buyDate
+	}
+
+	if reinvestmentTxID.Valid {
+		t.ReinvestmentTransactionID = reinvestmentTxID.String
+	}
+
+	return t, nil
+}
+
+// GetDividend retrieves a single dividend record by ID.
+// Returns ErrDividendNotFound if no record with the given ID exists.
+func (r *DividendRepository) GetDividend(dividendID string) (model.Dividend, error) {
+	query := `
+		SELECT
+			id, fund_id, portfolio_fund_id, record_date, ex_dividend_date,
+			shares_owned, dividend_per_share, total_amount, reinvestment_status,
+			buy_order_date, reinvestment_transaction_id
+		FROM dividend
+		WHERE id = ?
+      `
+	var d model.Dividend
+	var RecordDateStr, ExDividendDateStr string
+	var buyOrderDateStr, reinvestmentTransactionIDString sql.NullString
+
+	err := r.db.QueryRow(query, dividendID).Scan(
+		&d.ID,
+		&d.FundID,
+		&d.PortfolioFundID,
+		&RecordDateStr,
+		&ExDividendDateStr,
+		&d.SharesOwned,
+		&d.DividendPerShare,
+		&d.TotalAmount,
+		&d.ReinvestmentStatus,
+		&buyOrderDateStr,
+		&reinvestmentTransactionIDString,
+	)
+
+	if err == sql.ErrNoRows {
+		return model.Dividend{}, apperrors.ErrDividendNotFound
+	}
+	if err != nil {
+		return d, fmt.Errorf("failed to get dividend: %w", err)
+	}
+
+	d.RecordDate, err = ParseTime(RecordDateStr)
+	if err != nil || d.RecordDate.IsZero() {
+		return d, fmt.Errorf("failed to parse recordDate: %w", err)
+	}
+
+	d.ExDividendDate, err = ParseTime(ExDividendDateStr)
+	if err != nil || d.ExDividendDate.IsZero() {
+		return d, fmt.Errorf("failed to parse exDividendDate: %w", err)
+	}
+
+	if buyOrderDateStr.Valid {
+		d.BuyOrderDate, err = ParseTime(buyOrderDateStr.String)
+		if err != nil || d.BuyOrderDate.IsZero() {
+			return d, fmt.Errorf("failed to parse buyOrderDate: %w", err)
+		}
+	}
+
+	if reinvestmentTransactionIDString.Valid {
+		d.ReinvestmentTransactionID = reinvestmentTransactionIDString.String
+	}
+
+	return d, nil
+}
+
+// InsertDividend inserts a new dividend record into the database.
+// Nullable fields (BuyOrderDate, ReinvestmentTransactionID) are written as SQL NULL when zero/empty.
+func (r *DividendRepository) InsertDividend(ctx context.Context, d *model.Dividend) error {
+	query := `
+        INSERT INTO dividend (
+		id, fund_id, portfolio_fund_id, record_date, ex_dividend_date, shares_owned, dividend_per_share,
+		total_amount, reinvestment_status, buy_order_date, reinvestment_transaction_id, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `
+
+	var buyOrderDate any
+	if !d.BuyOrderDate.IsZero() {
+		buyOrderDate = d.BuyOrderDate.Format("2006-01-02")
+	}
+
+	var reinvestmentTransactionID any
+	if d.ReinvestmentTransactionID != "" {
+		reinvestmentTransactionID = d.ReinvestmentTransactionID
+	}
+
+	_, err := r.getQuerier().ExecContext(ctx, query,
+		d.ID,
+		d.FundID,
+		d.PortfolioFundID,
+		d.RecordDate.Format("2006-01-02 01:02:01"),
+		d.ExDividendDate.Format("2006-01-02 01:02:01"),
+		d.SharesOwned,
+		d.DividendPerShare,
+		d.TotalAmount,
+		d.ReinvestmentStatus,
+		buyOrderDate,
+		reinvestmentTransactionID,
+		d.CreatedAt.Format("2006-01-02 01:02:01"),
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to insert dividend: %w", err)
+	}
+
+	return nil
+}
+
+// UpdateDividend updates an existing dividend record in the database.
+// Returns ErrDividendNotFound if no row with the dividend's ID exists.
+// Nullable fields (BuyOrderDate, ReinvestmentTransactionID) are written as SQL NULL when zero/empty.
+func (r *DividendRepository) UpdateDividend(ctx context.Context, d *model.Dividend) error {
+	query := `
+        UPDATE dividend
+        SET fund_id = ?, portfolio_fund_id = ?, record_date = ?, ex_dividend_date = ?, shares_owned = ?, dividend_per_share = ?,
+		total_amount = ?, reinvestment_status = ?, buy_order_date = ?, reinvestment_transaction_id = ?, created_at = ?
+        WHERE id = ?
+    `
+
+	var buyOrderDate any
+	if !d.BuyOrderDate.IsZero() {
+		buyOrderDate = d.BuyOrderDate.Format("2006-01-02")
+	}
+
+	var reinvestmentTransactionID any
+	if d.ReinvestmentTransactionID != "" {
+		reinvestmentTransactionID = d.ReinvestmentTransactionID
+	}
+
+	result, err := r.getQuerier().ExecContext(ctx, query,
+		d.FundID,
+		d.PortfolioFundID,
+		d.RecordDate.Format("2006-01-02 01:02:01"),
+		d.ExDividendDate.Format("2006-01-02 01:02:01"),
+		d.SharesOwned,
+		d.DividendPerShare,
+		d.TotalAmount,
+		d.ReinvestmentStatus,
+		buyOrderDate,
+		reinvestmentTransactionID,
+		d.CreatedAt.Format("2006-01-02 01:02:01"),
+		d.ID,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to update dividend: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return apperrors.ErrDividendNotFound
+	}
+
+	return nil
+}
+
+// DeleteDividend removes a dividend record from the database by its ID.
+// Returns ErrDividendNotFound if no row with the given ID exists.
+func (r *DividendRepository) DeleteDividend(ctx context.Context, dividendID string) error {
+	query := `DELETE FROM dividend WHERE id = ?`
+
+	result, err := r.getQuerier().ExecContext(ctx, query, dividendID)
+	if err != nil {
+		return fmt.Errorf("failed to delete dividend: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return apperrors.ErrDividendNotFound
+	}
+
+	return nil
 }

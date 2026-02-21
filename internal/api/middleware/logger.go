@@ -3,6 +3,7 @@ package middleware
 import (
 	"log"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -17,11 +18,13 @@ func Logger(next http.Handler) http.Handler {
 		// Call the next handler
 		next.ServeHTTP(wrapped, r)
 
-		// Log the request
+		// Sanitize user-supplied values to prevent log injection: strip CR/LF before logging.
+		sanitize := strings.NewReplacer("\n", "", "\r", "").Replace
+		//nolint:gosec // G706: method and path are sanitized above to strip newlines/carriage-returns before logging.
 		log.Printf(
 			"%s %s %d %s",
-			r.Method,
-			r.URL.Path,
+			sanitize(r.Method),
+			sanitize(r.URL.Path),
 			wrapped.statusCode,
 			time.Since(start),
 		)

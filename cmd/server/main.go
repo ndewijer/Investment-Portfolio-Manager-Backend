@@ -120,7 +120,10 @@ func createRepoAndServices(db *sql.DB) (
 		fundRepo,
 	)
 	dividendService := service.NewDividendService(
+		db,
 		dividendRepo,
+		fundRepo,
+		transactionRepo,
 	)
 	portfolioService := service.NewPortfolioService(
 		portfolioRepo,

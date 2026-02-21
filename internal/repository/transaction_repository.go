@@ -118,9 +118,6 @@ func (r *TransactionRepository) GetTransactions(pfIDs []string, startDate, endDa
 
 		transactionsByPortfolioFund[t.PortfolioFundID] = append(transactionsByPortfolioFund[t.PortfolioFundID], t)
 	}
-	if err == sql.ErrNoRows {
-		return transactionsByPortfolioFund, nil
-	}
 
 	if err = rows.Err(); err != nil {
 		return nil, fmt.Errorf("error iterating transaction table: %w", err)
@@ -453,4 +450,40 @@ func (r *TransactionRepository) DeleteTransaction(ctx context.Context, transacti
 	}
 
 	return nil
+}
+
+// GetSharesOnDate calculates the total shares held for a portfolio fund as of the given date.
+// Aggregates all transactions up to and including the date using a SQL SUM:
+//   - "buy" and "dividend" transactions add shares
+//   - "sell" transactions subtract shares
+//
+// Returns 0.0 if no transactions exist for the given portfolio fund up to the date.
+// Returns ErrInvalidPortfolioID if portfolioFundID is empty.
+func (r *TransactionRepository) GetSharesOnDate(portfolioFundID string, date time.Time) (float64, error) {
+
+	if portfolioFundID == "" {
+		return 0.0, apperrors.ErrInvalidPortfolioID
+	}
+
+	query := `
+		SELECT COALESCE(SUM(CASE
+			WHEN type IN ('buy', 'dividend') THEN shares
+			WHEN type = 'sell'  THEN -shares
+			ELSE 0
+		END), 0)
+		FROM "transaction"
+		WHERE portfolio_fund_id = ?
+		AND date <= ?
+	`
+
+	var f float64
+
+	err := r.db.QueryRow(query, portfolioFundID, date.Format("2006-01-02")).Scan(
+		&f,
+	)
+	if err != nil {
+		return 0.0, fmt.Errorf("failed to query transaction table: %w", err)
+	}
+
+	return f, nil
 }

@@ -61,7 +61,7 @@ This backend aims to replicate all 73 endpoints from the Python backend. Below i
 │   ├── POST        /{id}/price/historical      ⬜ SKIPPING - Covered by /fund-prices/{id}/update for now - Update historical prices for a fund
 │   └── POST        /{id}/price/today           ⬜ SKIPPING - Covered by /fund-prices/{id}/update for now - Update today's price for a fund
 |
-├── /transaction (6/6 endpoints) ⬜
+├── /transaction (6/6 endpoints) ✅
 │   ├── GET    /                                ✅ List all transactions
 │   ├── POST   /                                ✅ Create transaction
 │   ├── GET    /{id}                            ✅ Get transaction by ID
@@ -69,14 +69,14 @@ This backend aims to replicate all 73 endpoints from the Python backend. Below i
 │   ├── DELETE /{id}                            ✅ Delete transaction
 │   └── GET    /portfolio/{portfolioID}         ✅ Get transaction by ID
 │
-├── /dividend (2/7 endpoints) ⬜
+├── /dividend (7/7 endpoints) ✅
 │   ├── GET    /                                ✅ List all dividends
-│   ├── POST   /                                ⬜ Create dividend
-│   ├── GET    /{id}                            ⬜ Get dividend by ID
+│   ├── POST   /                                ✅ Create dividend
+│   ├── GET    /{id}                            ✅ Get dividend by ID
 |   |── GET    /portfolio/{portfolioId}         ✅ Get dividends per portfolioID
-│   ├── PUT    /{id}                            ⬜ Update dividend
-│   ├── DELETE /{id}                            ⬜ Delete dividend
-│   └── POST   /{id}/process-reinvestment       ⬜ Process dividend reinvestment
+|   |── GET    /fund/{fundId}                   ✅ Get dividends per FundID
+│   ├── PUT    /{id}                            ✅ Update dividend
+│   └── DELETE /{id}                            ✅ Delete dividend
 │
 ├── /ibkr (7/19 endpoints) ⬜
 │   ├── POST    /config                                    ⬜ Create or update IBKR configuration
@@ -114,7 +114,7 @@ This backend aims to replicate all 73 endpoints from the Python backend. Below i
     └── PUT /system-settings/logging      ⬜ Update logging configuration settings
 
 Legend: ✅ Implemented | 🚧 In Progress | ⬜ Planned
-Overall Progress: 49/72 endpoints (68%)
+Overall Progress: 54/72 endpoints (75%)
 ```
 
 ## Quick Start
