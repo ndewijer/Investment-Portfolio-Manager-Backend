@@ -261,7 +261,7 @@ func (s *DividendService) UpdateDividend(
 
 	dividend.SharesOwned = shares
 	dividend.TotalAmount = shares * dividend.DividendPerShare
-	dividend.CreatedAt = time.Now().UTC()
+	dividend.CreatedAt = time.Now().UTC() // Intentional: tracks latest modification, not original creation.
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -424,7 +424,7 @@ func (s *DividendService) updateReinvestmentTransaction(ctx context.Context, tx 
 	transaction.Date = dividend.BuyOrderDate
 	transaction.Shares = *req.ReinvestmentShares
 	transaction.CostPerShare = *req.ReinvestmentPrice
-	transaction.CreatedAt = time.Now().UTC()
+	transaction.CreatedAt = time.Now().UTC() // Intentional: tracks latest modification, not original creation.
 
 	if err := s.transactionRepo.WithTx(tx).UpdateTransaction(ctx, &transaction); err != nil {
 		return fmt.Errorf("failed to update reinvestment transaction: %w", err)

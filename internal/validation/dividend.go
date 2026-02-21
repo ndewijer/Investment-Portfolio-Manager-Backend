@@ -58,16 +58,13 @@ func ValidateCreateDividend(req request.CreateDividendRequest) error {
 			errors["buyOrderDate"] = err.Error()
 		}
 	}
-	if req.ReinvestmentShares != 0.0 {
-		if req.ReinvestmentShares <= 0.0 {
-			errors["reinvestmentShares"] = "reinvestmentShares must be positive"
-		}
+
+	if req.ReinvestmentShares < 0.0 {
+		errors["reinvestmentShares"] = "reinvestmentShares must be positive"
 	}
 
-	if req.ReinvestmentPrice != 0.0 {
-		if req.ReinvestmentPrice <= 0.0 {
-			errors["reinvestmentPrice"] = "reinvestmentPrice must be positive"
-		}
+	if req.ReinvestmentPrice < 0.0 {
+		errors["reinvestmentPrice"] = "reinvestmentPrice must be positive"
 	}
 
 	if len(errors) > 0 {
@@ -77,15 +74,17 @@ func ValidateCreateDividend(req request.CreateDividendRequest) error {
 	return nil
 }
 
-// ValidateUpdateDividend validates a transaction update request.
+// ValidateUpdateDividend validates a dividend update request.
 // All fields are optional, but if provided, they must meet the same constraints as create.
 //
 // Optional fields (validated if provided):
 //   - portfolioFundId: Must be a valid UUID if provided
-//   - date: Must be in YYYY-MM-DD format if provided
-//   - type: Must be one of: buy, sell, dividend, fee if provided
-//   - shares: Must be non-zero if provided
-//   - costPerShare: Must be non-zero if provided
+//   - recordDate: Must be in YYYY-MM-DD format if provided
+//   - exDividendDate: Must be in YYYY-MM-DD format if provided
+//   - dividendPerShare: Must be positive if provided
+//   - buyOrderDate: Must be in YYYY-MM-DD format if provided
+//   - reinvestmentShares: Must be positive if provided
+//   - reinvestmentPrice: Must be positive if provided
 //
 // Returns a validation Error with field-specific error messages if validation fails.
 //
@@ -105,7 +104,7 @@ func ValidateUpdateDividend(req request.UpdateDividendRequest) error {
 		}
 		_, err := time.Parse("2006-01-02", *req.RecordDate)
 		if err != nil {
-			errors["date"] = err.Error()
+			errors["recordDate"] = err.Error()
 		}
 	}
 

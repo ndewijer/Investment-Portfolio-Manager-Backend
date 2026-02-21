@@ -74,7 +74,7 @@ This backend aims to replicate all 73 endpoints from the Python backend. Below i
 │   ├── POST   /                                ✅ Create dividend
 │   ├── GET    /{id}                            ✅ Get dividend by ID
 |   |── GET    /portfolio/{portfolioId}         ✅ Get dividends per portfolioID
-|   |── GET    /fund/{portfolioId}              ✅ Get dividends per FundID
+|   |── GET    /fund/{fundId}                   ✅ Get dividends per FundID
 │   ├── PUT    /{id}                            ✅ Update dividend
 │   └── DELETE /{id}                            ✅ Delete dividend
 │

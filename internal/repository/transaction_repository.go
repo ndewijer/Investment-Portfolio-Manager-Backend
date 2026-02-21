@@ -118,9 +118,6 @@ func (r *TransactionRepository) GetTransactions(pfIDs []string, startDate, endDa
 
 		transactionsByPortfolioFund[t.PortfolioFundID] = append(transactionsByPortfolioFund[t.PortfolioFundID], t)
 	}
-	if len(transactionsByPortfolioFund) == 0 {
-		return transactionsByPortfolioFund, nil
-	}
 
 	if err = rows.Err(); err != nil {
 		return nil, fmt.Errorf("error iterating transaction table: %w", err)
@@ -479,18 +476,11 @@ func (r *TransactionRepository) GetSharesOnDate(portfolioFundID string, date tim
 		AND date <= ?
 	`
 
-	args := make([]any, 2)
-	args[0] = portfolioFundID
-	args[1] = date.Format("2006-01-02")
-
 	var f float64
 
-	err := r.db.QueryRow(query, args...).Scan(
+	err := r.db.QueryRow(query, portfolioFundID, date.Format("2006-01-02")).Scan(
 		&f,
 	)
-	if err == sql.ErrNoRows {
-		return 0.0, apperrors.ErrTransactionNotFound
-	}
 	if err != nil {
 		return 0.0, fmt.Errorf("failed to query transaction table: %w", err)
 	}

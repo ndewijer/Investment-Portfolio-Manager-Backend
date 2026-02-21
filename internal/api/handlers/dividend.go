@@ -57,11 +57,15 @@ func (h *DividendHandler) DividendPerPortfolio(w http.ResponseWriter, r *http.Re
 
 	dividends, err := h.dividendService.GetDividendFund(portfolioID, "")
 	if err != nil {
+		if errors.Is(err, apperrors.ErrPortfolioNotFound) {
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrPortfolioNotFound.Error(), err.Error())
+			return
+		}
 		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToRetrieveDividends.Error(), err.Error())
 		return
 	}
 	if len(dividends) == 0 {
-		response.RespondError(w, http.StatusNotFound, apperrors.ErrPortfolioFundNotFound.Error(), "")
+		response.RespondError(w, http.StatusNotFound, apperrors.ErrDividendNotFound.Error(), "")
 		return
 	}
 
@@ -83,22 +87,36 @@ func (h *DividendHandler) DividendPerFund(w http.ResponseWriter, r *http.Request
 
 	dividends, err := h.dividendService.GetDividendFund("", fundID)
 	if err != nil {
+		if errors.Is(err, apperrors.ErrFundNotFound) {
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrFundNotFound.Error(), err.Error())
+			return
+		}
 		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToRetrieveDividends.Error(), err.Error())
 		return
 	}
 	if len(dividends) == 0 {
-		response.RespondError(w, http.StatusNotFound, apperrors.ErrPortfolioFundNotFound.Error(), "")
+		response.RespondError(w, http.StatusNotFound, apperrors.ErrDividendNotFound.Error(), "")
 		return
 	}
 
 	response.RespondJSON(w, http.StatusOK, dividends)
 }
 
+// GetDividend handles GET requests to retrieve a single dividend by ID.
+//
+// Endpoint: GET /api/dividend/{uuid}
+// Response: 200 OK with Dividend
+// Error: 404 Not Found if dividend not found
+// Error: 500 Internal Server Error if retrieval fails
 func (h *DividendHandler) GetDividend(w http.ResponseWriter, r *http.Request) {
 	dividendID := chi.URLParam(r, "uuid")
 
 	dividends, err := h.dividendService.GetDividend(dividendID)
 	if err != nil {
+		if errors.Is(err, apperrors.ErrDividendNotFound) {
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrDividendNotFound.Error(), err.Error())
+			return
+		}
 		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToRetrieveDividends.Error(), err.Error())
 		return
 	}

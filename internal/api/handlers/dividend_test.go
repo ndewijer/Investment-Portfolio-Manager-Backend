@@ -107,6 +107,88 @@ func TestDividendHandler_GetAllDividends(t *testing.T) {
 	})
 }
 
+func TestDividendHandler_GetDividend(t *testing.T) {
+	setupHandler := func(t *testing.T) (*DividendHandler, *sql.DB) {
+		t.Helper()
+		db := testutil.SetupTestDB(t)
+		ds := testutil.NewTestDividendService(t, db)
+		return NewDividendHandler(ds), db
+	}
+
+	t.Run("returns dividend by ID successfully", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		fund := testutil.NewFund().Build(t, db)
+		pf := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+		div := testutil.NewDividend(fund.ID, pf.ID).
+			WithDividendPerShare(1.50).
+			WithSharesOwned(200).
+			Build(t, db)
+
+		req := testutil.NewRequestWithURLParams(
+			http.MethodGet,
+			"/api/dividend/"+div.ID,
+			map[string]string{"uuid": div.ID},
+		)
+		w := httptest.NewRecorder()
+
+		handler.GetDividend(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var response model.Dividend
+		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if response.ID != div.ID {
+			t.Errorf("Expected ID %s, got %s", div.ID, response.ID)
+		}
+		if response.DividendPerShare != 1.50 {
+			t.Errorf("Expected dividendPerShare 1.50, got %f", response.DividendPerShare)
+		}
+	})
+
+	t.Run("returns 404 for non-existent dividend", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		id := testutil.MakeID()
+		req := testutil.NewRequestWithURLParams(
+			http.MethodGet,
+			"/api/dividend/"+id,
+			map[string]string{"uuid": id},
+		)
+		w := httptest.NewRecorder()
+
+		handler.GetDividend(w, req)
+
+		if w.Code != http.StatusNotFound {
+			t.Errorf("Expected 404, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("returns 500 on database error", func(t *testing.T) {
+		handler, db := setupHandler(t)
+		db.Close()
+
+		id := testutil.MakeID()
+		req := testutil.NewRequestWithURLParams(
+			http.MethodGet,
+			"/api/dividend/"+id,
+			map[string]string{"uuid": id},
+		)
+		w := httptest.NewRecorder()
+
+		handler.GetDividend(w, req)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Errorf("Expected 500, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+}
+
 //nolint:gocyclo // Comprehensive handler test with multiple subtests and assertions, cannot be split well.
 func TestDividendHandler_CreateDividend(t *testing.T) {
 	setupHandler := func(t *testing.T) (*DividendHandler, *sql.DB) {
@@ -721,7 +803,7 @@ func TestDividendHandler_DividendPerFund(t *testing.T) {
 		}
 	})
 
-	t.Run("returns 404 when fund has no dividends", func(t *testing.T) {
+	t.Run("returns 404 when fund has no portfolio associations", func(t *testing.T) {
 		handler, db := setupHandler(t)
 
 		fund := testutil.NewFund().Build(t, db)

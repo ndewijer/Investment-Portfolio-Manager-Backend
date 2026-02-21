@@ -63,8 +63,8 @@ func NewTestDataloaderService(t *testing.T, db *sql.DB) *service.DataLoaderServi
 
 	portfolioRepo := repository.NewPortfolioRepository(db)
 	fundRepo := repository.NewFundRepository(db)
-	transactionService := service.NewTransactionService(repository.NewTransactionRepository(db), fundRepo)
 	transactionRepo := repository.NewTransactionRepository(db)
+	transactionService := service.NewTransactionService(transactionRepo, fundRepo)
 	dividendService := service.NewDividendService(db, repository.NewDividendRepository(db), fundRepo, transactionRepo)
 	realizedGainLossService := service.NewRealizedGainLossService(repository.NewRealizedGainLossRepository(db))
 
@@ -81,8 +81,8 @@ func NewTestFundService(t *testing.T, db *sql.DB) *service.FundService {
 	t.Helper()
 
 	fundRepo := repository.NewFundRepository(db)
-	transactionService := service.NewTransactionService(repository.NewTransactionRepository(db), fundRepo)
 	transactionRepo := repository.NewTransactionRepository(db)
+	transactionService := service.NewTransactionService(transactionRepo, fundRepo)
 	dividendService := service.NewDividendService(db, repository.NewDividendRepository(db), fundRepo, transactionRepo)
 	realizedGainLossService := service.NewRealizedGainLossService(repository.NewRealizedGainLossRepository(db))
 	dataLoaderService := service.NewDataLoaderService(
@@ -111,8 +111,8 @@ func NewTestFundServiceWithMockYahoo(t *testing.T, db *sql.DB, mockYahoo yahoo.C
 	t.Helper()
 
 	fundRepo := repository.NewFundRepository(db)
-	transactionService := service.NewTransactionService(repository.NewTransactionRepository(db), fundRepo)
 	transactionRepo := repository.NewTransactionRepository(db)
+	transactionService := service.NewTransactionService(transactionRepo, fundRepo)
 	dividendService := service.NewDividendService(db, repository.NewDividendRepository(db), fundRepo, transactionRepo)
 	realizedGainLossService := service.NewRealizedGainLossService(repository.NewRealizedGainLossRepository(db))
 	dataLoaderService := service.NewDataLoaderService(
@@ -140,8 +140,8 @@ func NewTestMaterializedService(t *testing.T, db *sql.DB) *service.MaterializedS
 	materializedRepo := repository.NewMaterializedRepository(db)
 	portfolioRepo := repository.NewPortfolioRepository(db)
 	fundRepo := repository.NewFundRepository(db)
-	transactionService := service.NewTransactionService(repository.NewTransactionRepository(db), fundRepo)
 	transactionRepo := repository.NewTransactionRepository(db)
+	transactionService := service.NewTransactionService(transactionRepo, fundRepo)
 	dividendService := service.NewDividendService(db, repository.NewDividendRepository(db), fundRepo, transactionRepo)
 	realizedGainLossService := service.NewRealizedGainLossService(repository.NewRealizedGainLossRepository(db))
 	dataLoaderService := service.NewDataLoaderService(
