@@ -282,22 +282,39 @@ func (r *DividendRepository) parseDividendRecords(t *model.Dividend, recordDateS
 // including fund names and dividend types. Exactly one of portfolioID or fundID must be non-empty;
 // if both are empty an empty slice is returned immediately.
 //
+// An existence check is performed first to distinguish between:
+//   - Entity does not exist → ErrPortfolioNotFound or ErrFundNotFound
+//   - Entity exists but has no dividends → empty slice
+//
 // Parameters:
 //   - portfolioID: Filter by portfolio ID (mutually exclusive with fundID)
 //   - fundID:      Filter by fund ID (mutually exclusive with portfolioID; checked if portfolioID is empty)
 //
 // Returns a slice of DividendFund ordered by ex_dividend_date ascending.
-// Returns an empty non-nil slice if no matching rows are found.
 func (r *DividendRepository) GetDividendPerPortfolioFund(portfolioID, fundID string) ([]model.DividendFund, error) {
-	var whereStatement, queryID string
+	var whereStatement, existsStatement, queryID string
+	var notFoundErr error
+
 	if portfolioID != "" {
 		whereStatement = "WHERE pf.portfolio_id = ?"
+		existsStatement = "SELECT COUNT(*) FROM portfolio_fund WHERE portfolio_id = ?"
 		queryID = portfolioID
+		notFoundErr = apperrors.ErrPortfolioNotFound
 	} else if fundID != "" {
 		whereStatement = "WHERE pf.fund_id = ?"
+		existsStatement = "SELECT COUNT(*) FROM portfolio_fund WHERE fund_id = ?"
 		queryID = fundID
+		notFoundErr = apperrors.ErrFundNotFound
 	} else {
 		return []model.DividendFund{}, nil
+	}
+
+	var count int
+	if err := r.db.QueryRow(existsStatement, queryID).Scan(&count); err != nil {
+		return nil, fmt.Errorf("failed to check existence: %w", err)
+	}
+	if count == 0 {
+		return nil, notFoundErr
 	}
 
 	//#nosec G202 -- Safe: placeholders are generated programmatically, not from user input

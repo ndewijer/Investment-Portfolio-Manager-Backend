@@ -718,10 +718,32 @@ func TestDividendHandler_DividendPerPortfolio(t *testing.T) {
 		}
 	})
 
-	t.Run("returns 404 when portfolio has no dividends", func(t *testing.T) {
+	t.Run("returns 404 when portfolio has no portfolio_fund associations", func(t *testing.T) {
 		handler, db := setupHandler(t)
 
 		portfolio := testutil.NewPortfolio().Build(t, db)
+
+		req := testutil.NewRequestWithURLParams(
+			http.MethodGet,
+			"/api/dividend/portfolio/"+portfolio.ID,
+			map[string]string{"uuid": portfolio.ID},
+		)
+		w := httptest.NewRecorder()
+
+		handler.DividendPerPortfolio(w, req)
+
+		if w.Code != http.StatusNotFound {
+			t.Errorf("Expected 404, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("returns 404 when portfolio exists but has no dividends", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		fund := testutil.NewFund().Build(t, db)
+		testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+		// portfolio_fund exists but no dividend records
 
 		req := testutil.NewRequestWithURLParams(
 			http.MethodGet,
@@ -803,10 +825,32 @@ func TestDividendHandler_DividendPerFund(t *testing.T) {
 		}
 	})
 
-	t.Run("returns 404 when fund has no portfolio associations", func(t *testing.T) {
+	t.Run("returns 404 when fund has no portfolio_fund associations", func(t *testing.T) {
 		handler, db := setupHandler(t)
 
 		fund := testutil.NewFund().Build(t, db)
+
+		req := testutil.NewRequestWithURLParams(
+			http.MethodGet,
+			"/api/dividend/fund/"+fund.ID,
+			map[string]string{"uuid": fund.ID},
+		)
+		w := httptest.NewRecorder()
+
+		handler.DividendPerFund(w, req)
+
+		if w.Code != http.StatusNotFound {
+			t.Errorf("Expected 404, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("returns 404 when fund exists but has no dividends", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		fund := testutil.NewFund().Build(t, db)
+		testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+		// portfolio_fund exists but no dividend records
 
 		req := testutil.NewRequestWithURLParams(
 			http.MethodGet,
