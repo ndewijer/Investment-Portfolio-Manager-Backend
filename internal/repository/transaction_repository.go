@@ -37,6 +37,7 @@ func (r *TransactionRepository) getQuerier() interface {
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 	Exec(query string, args ...any) (sql.Result, error)
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+	PrepareContext(ctx context.Context, query string) (*sql.Stmt, error)
 } {
 	if r.tx != nil {
 		return r.tx
@@ -81,7 +82,7 @@ func (r *TransactionRepository) GetTransactions(pfIDs []string, startDate, endDa
 	transactionArgs = append(transactionArgs, startDate.Format("2006-01-02"))
 	transactionArgs = append(transactionArgs, endDate.Format("2006-01-02"))
 
-	rows, err := r.db.Query(transactionQuery, transactionArgs...)
+	rows, err := r.getQuerier().Query(transactionQuery, transactionArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query transaction table: %w", err)
 	}
@@ -156,7 +157,7 @@ func (r *TransactionRepository) GetOldestTransaction(pfIDs []string) time.Time {
 		oldestTransactionArgs[i] = id
 	}
 
-	err := r.db.QueryRow(oldestTransactionQuery, oldestTransactionArgs...).Scan(&oldestDateStr)
+	err := r.getQuerier().QueryRow(oldestTransactionQuery, oldestTransactionArgs...).Scan(&oldestDateStr)
 	if err != nil || !oldestDateStr.Valid {
 		return time.Time{}
 	}
@@ -208,7 +209,7 @@ func (r *TransactionRepository) GetTransactionsPerPortfolio(portfolioID string) 
 		args = append(args, portfolioID)
 	}
 
-	rows, err := r.db.Query(transactionQuery, args...)
+	rows, err := r.getQuerier().Query(transactionQuery, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query transaction table: %w", err)
 	}
@@ -288,7 +289,7 @@ func (r *TransactionRepository) GetTransaction(transactionID string) (model.Tran
 	var t model.TransactionResponse
 	var dateStr string
 	var ibkrTransactionIDStr sql.NullString
-	err := r.db.QueryRow(transactionQuery, transactionID).Scan(
+	err := r.getQuerier().QueryRow(transactionQuery, transactionID).Scan(
 		&t.ID,
 		&t.PortfolioFundID,
 		&t.FundName,
@@ -333,7 +334,7 @@ func (r *TransactionRepository) GetTransactionByID(transactionID string) (model.
 	var t model.Transaction
 	var dateStr, createdAtStr string
 
-	err := r.db.QueryRow(query, transactionID).Scan(
+	err := r.getQuerier().QueryRow(query, transactionID).Scan(
 		&t.ID,
 		&t.PortfolioFundID,
 		&dateStr,
@@ -478,7 +479,7 @@ func (r *TransactionRepository) GetSharesOnDate(portfolioFundID string, date tim
 
 	var f float64
 
-	err := r.db.QueryRow(query, portfolioFundID, date.Format("2006-01-02")).Scan(
+	err := r.getQuerier().QueryRow(query, portfolioFundID, date.Format("2006-01-02")).Scan(
 		&f,
 	)
 	if err != nil {

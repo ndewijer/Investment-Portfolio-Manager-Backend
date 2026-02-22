@@ -36,6 +36,7 @@ func (r *PortfolioRepository) getQuerier() interface {
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 	Exec(query string, args ...any) (sql.Result, error)
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+	PrepareContext(ctx context.Context, query string) (*sql.Stmt, error)
 } {
 	if r.tx != nil {
 		return r.tx
@@ -64,7 +65,7 @@ func (r *PortfolioRepository) GetPortfolios(filter model.PortfolioFilter) ([]mod
 		args = append(args, 0)
 	}
 
-	rows, err := r.db.Query(query, args...)
+	rows, err := r.getQuerier().Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query portfolios table: %w", err)
 	}
@@ -104,7 +105,7 @@ func (r *PortfolioRepository) GetPortfolioOnID(portfolioID string) (model.Portfo
       `
 	var p model.Portfolio
 
-	err := r.db.QueryRow(query, portfolioID).Scan(
+	err := r.getQuerier().QueryRow(query, portfolioID).Scan(
 		&p.ID,
 		&p.Name,
 		&p.Description,
@@ -158,7 +159,7 @@ func (r *PortfolioRepository) GetPortfolioFundsOnPortfolioID(portfolios []model.
 		fundArgs[i] = p.ID
 	}
 
-	rows, err := r.db.Query(fundQuery, fundArgs...)
+	rows, err := r.getQuerier().Query(fundQuery, fundArgs...)
 	if err != nil {
 		return nil, nil, nil, nil, nil, fmt.Errorf("failed to query portfolio_fund or funds table: %w", err)
 	}
@@ -222,7 +223,7 @@ func (r *PortfolioRepository) GetPortfoliosByFundID(fundID string) ([]model.Port
 		WHERE pf.fund_id = ?
 	`
 
-	rows, err := r.db.Query(fundQuery, fundID)
+	rows, err := r.getQuerier().Query(fundQuery, fundID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query portfolio_fund or portfolio table: %w", err)
 	}

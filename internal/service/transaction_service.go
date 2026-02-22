@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"time"
 
@@ -13,15 +14,17 @@ import (
 
 // TransactionService handles fund-related business logic operations.
 type TransactionService struct {
+	db              *sql.DB
 	transactionRepo *repository.TransactionRepository
 	fundRepo        *repository.FundRepository
 }
 
 // NewTransactionService creates a new TransactionService with the provided repository dependencies.
 func NewTransactionService(
-	transactionRepo *repository.TransactionRepository, fundRepo *repository.FundRepository,
+	db *sql.DB, transactionRepo *repository.TransactionRepository, fundRepo *repository.FundRepository,
 ) *TransactionService {
 	return &TransactionService{
+		db:              db,
 		transactionRepo: transactionRepo,
 		fundRepo:        fundRepo,
 	}
@@ -58,7 +61,13 @@ func (s *TransactionService) GetTransaction(transactionID string) (model.Transac
 // Returns an error if date parsing fails or database insertion fails.
 func (s *TransactionService) CreateTransaction(ctx context.Context, req request.CreateTransactionRequest) (*model.Transaction, error) {
 
-	_, err := s.fundRepo.GetPortfolioFund(req.PortfolioFundID)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }() //nolint:errcheck // Rollback is a no-op after Commit; error is intentionally ignored.
+
+	_, err = s.fundRepo.WithTx(tx).GetPortfolioFund(req.PortfolioFundID)
 	if err != nil {
 		return nil, err
 	}
@@ -78,8 +87,12 @@ func (s *TransactionService) CreateTransaction(ctx context.Context, req request.
 		CreatedAt:       time.Now().UTC(),
 	}
 
-	if err := s.transactionRepo.InsertTransaction(ctx, transaction); err != nil {
+	if err := s.transactionRepo.WithTx(tx).InsertTransaction(ctx, transaction); err != nil {
 		return nil, fmt.Errorf("failed to create transaction: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit transaction: %w", err)
 	}
 
 	return transaction, nil
@@ -97,13 +110,20 @@ func (s *TransactionService) UpdateTransaction(
 	id string,
 	req request.UpdateTransactionRequest,
 ) (*model.Transaction, error) {
-	transaction, err := s.transactionRepo.GetTransactionByID(id)
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }() //nolint:errcheck // Rollback is a no-op after Commit; error is intentionally ignored.
+
+	transaction, err := s.transactionRepo.WithTx(tx).GetTransactionByID(id)
 	if err != nil {
 		return nil, err
 	}
 
 	if req.PortfolioFundID != nil {
-		_, err = s.fundRepo.GetPortfolioFund(*req.PortfolioFundID)
+		_, err = s.fundRepo.WithTx(tx).GetPortfolioFund(*req.PortfolioFundID)
 		if err != nil {
 			return nil, err
 		}
@@ -126,8 +146,12 @@ func (s *TransactionService) UpdateTransaction(
 		transaction.CostPerShare = *req.CostPerShare
 	}
 
-	if err := s.transactionRepo.UpdateTransaction(ctx, &transaction); err != nil {
+	if err := s.transactionRepo.WithTx(tx).UpdateTransaction(ctx, &transaction); err != nil {
 		return nil, fmt.Errorf("failed to update transaction: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit transaction: %w", err)
 	}
 
 	return &transaction, nil
@@ -140,15 +164,24 @@ func (s *TransactionService) UpdateTransaction(
 // Returns an error if the database deletion fails.
 func (s *TransactionService) DeleteTransaction(ctx context.Context, id string) error {
 
-	_, err := s.transactionRepo.GetTransactionByID(id)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }() //nolint:errcheck // Rollback is a no-op after Commit; error is intentionally ignored.
+
+	_, err = s.transactionRepo.WithTx(tx).GetTransactionByID(id)
 	if err != nil {
 		return err
 	}
 
-	err = s.transactionRepo.DeleteTransaction(ctx, id)
+	err = s.transactionRepo.WithTx(tx).DeleteTransaction(ctx, id)
 	if err != nil {
 		return fmt.Errorf("failed to delete transaction: %w", err)
 	}
 
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit transaction: %w", err)
+	}
 	return nil
 }

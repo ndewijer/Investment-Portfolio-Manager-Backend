@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -14,14 +15,17 @@ import (
 // It coordinates between multiple repositories to compute portfolio summaries
 // and aggregate metrics.
 type PortfolioService struct {
+	db            *sql.DB
 	portfolioRepo *repository.PortfolioRepository
 }
 
 // NewPortfolioService creates a new PortfolioService with the provided repository dependencies.
 func NewPortfolioService(
+	db *sql.DB,
 	portfolioRepo *repository.PortfolioRepository,
 ) *PortfolioService {
 	return &PortfolioService{
+		db:            db,
 		portfolioRepo: portfolioRepo,
 	}
 }
@@ -125,7 +129,14 @@ func (s *PortfolioService) UpdatePortfolio(
 	id string,
 	req request.UpdatePortfolioRequest,
 ) (*model.Portfolio, error) {
-	portfolio, err := s.portfolioRepo.GetPortfolioOnID(id)
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }() //nolint:errcheck // Rollback is a no-op after Commit; error is intentionally ignored.
+
+	portfolio, err := s.portfolioRepo.WithTx(tx).GetPortfolioOnID(id)
 	if err != nil {
 		return nil, err
 	}
@@ -143,8 +154,12 @@ func (s *PortfolioService) UpdatePortfolio(
 		portfolio.ExcludeFromOverview = *req.ExcludeFromOverview
 	}
 
-	if err := s.portfolioRepo.UpdatePortfolio(ctx, &portfolio); err != nil {
+	if err := s.portfolioRepo.WithTx(tx).UpdatePortfolio(ctx, &portfolio); err != nil {
 		return nil, fmt.Errorf("failed to update portfolio: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit transaction: %w", err)
 	}
 
 	return &portfolio, nil
@@ -152,14 +167,24 @@ func (s *PortfolioService) UpdatePortfolio(
 
 func (s *PortfolioService) DeletePortfolio(ctx context.Context, id string) error {
 
-	_, err := s.portfolioRepo.GetPortfolioOnID(id)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }() //nolint:errcheck // Rollback is a no-op after Commit; error is intentionally ignored.
+
+	_, err = s.portfolioRepo.WithTx(tx).GetPortfolioOnID(id)
 	if err != nil {
 		return err
 	}
 
-	err = s.portfolioRepo.DeletePortfolio(ctx, id)
+	err = s.portfolioRepo.WithTx(tx).DeletePortfolio(ctx, id)
 	if err != nil {
 		return err
+	}
+
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("commit transaction: %w", err)
 	}
 
 	return nil

@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -14,11 +15,34 @@ import (
 // It handles retrieving ibkr information.
 type IbkrRepository struct {
 	db *sql.DB
+	tx *sql.Tx
 }
 
 // NewIbkrRepository creates a new IbkrRepository with the provided database connection.
 func NewIbkrRepository(db *sql.DB) *IbkrRepository {
 	return &IbkrRepository{db: db}
+}
+
+func (r *IbkrRepository) WithTx(tx *sql.Tx) *IbkrRepository {
+	return &IbkrRepository{
+		db: r.db,
+		tx: tx,
+	}
+}
+
+func (r *IbkrRepository) getQuerier() interface {
+	Query(query string, args ...any) (*sql.Rows, error)
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	QueryRow(query string, args ...any) *sql.Row
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+	Exec(query string, args ...any) (sql.Result, error)
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+	PrepareContext(ctx context.Context, query string) (*sql.Stmt, error)
+} {
+	if r.tx != nil {
+		return r.tx
+	}
+	return r.db
 }
 
 // GetIbkrConfig retrieves the IBKR integration configuration from the database.
@@ -33,7 +57,7 @@ func (r *IbkrRepository) GetIbkrConfig() (*model.IbkrConfig, error) {
 
 	var ic model.IbkrConfig
 	var tokenExpiresStr, lastImportStr, defaultAllocationStr sql.NullString
-	err := r.db.QueryRow(query).Scan(
+	err := r.getQuerier().QueryRow(query).Scan(
 		&ic.FlexQueryID,
 		&tokenExpiresStr,
 		&lastImportStr,
@@ -125,7 +149,7 @@ func (r *IbkrRepository) GetPendingDividends(symbol, isin string) ([]model.Pendi
 		`
 	}
 
-	rows, err := r.db.Query(query, args...)
+	rows, err := r.getQuerier().Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query dividend table: %w", err)
 	}
@@ -202,7 +226,7 @@ func (r *IbkrRepository) GetInbox(status, transactionType string) ([]model.IBKRT
 	query += `
 		ORDER BY transaction_date DESC
 	`
-	rows, err := r.db.Query(query, args...)
+	rows, err := r.getQuerier().Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query IBKR Transactions table: %w", err)
 	}
@@ -264,7 +288,7 @@ func (r *IbkrRepository) GetIbkrInboxCount() (model.IBKRInboxCount, error) {
       `
 
 	count := model.IBKRInboxCount{}
-	err := r.db.QueryRow(query).Scan(&count.Count)
+	err := r.getQuerier().QueryRow(query).Scan(&count.Count)
 	if err == sql.ErrNoRows {
 		return model.IBKRInboxCount{
 			Count: 0,
@@ -293,7 +317,7 @@ func (r *IbkrRepository) GetIbkrTransaction(transactionID string) (model.IBKRTra
       `
 
 	t := model.IBKRTransaction{}
-	err := r.db.QueryRow(query, transactionID).Scan(
+	err := r.getQuerier().QueryRow(query, transactionID).Scan(
 		&t.ID,
 		&t.IBKRTransactionID,
 		&t.TransactionDate,
@@ -339,7 +363,7 @@ func (r *IbkrRepository) GetIbkrTransactionAllocations(IBKRtransactionID string)
 		WHERE ibkr_transaction_id = ?
       `
 
-	rows, err := r.db.Query(query, IBKRtransactionID)
+	rows, err := r.getQuerier().Query(query, IBKRtransactionID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query ibkr_transaction table: %w", err)
 	}

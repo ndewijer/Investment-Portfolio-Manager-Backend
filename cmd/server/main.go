@@ -116,6 +116,7 @@ func createRepoAndServices(db *sql.DB) (
 		realizedGainLossRepo,
 	)
 	transactionService := service.NewTransactionService(
+		db,
 		transactionRepo,
 		fundRepo,
 	)
@@ -126,6 +127,7 @@ func createRepoAndServices(db *sql.DB) (
 		transactionRepo,
 	)
 	portfolioService := service.NewPortfolioService(
+		db,
 		portfolioRepo,
 	)
 	dataloaderService := service.NewDataLoaderService(
@@ -136,12 +138,13 @@ func createRepoAndServices(db *sql.DB) (
 		realizedGainLossService,
 	)
 	fundService := service.NewFundService(
+		db,
 		fundRepo,
 		transactionService,
 		dividendService,
 		realizedGainLossService,
 		dataloaderService,
-		portfolioService,
+		portfolioRepo,
 		yahooClient,
 	)
 	ibkrService := service.NewIbkrService(
