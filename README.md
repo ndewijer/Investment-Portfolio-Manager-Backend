@@ -6,7 +6,7 @@ A personal learning project rebuilding the Investment Portfolio Manager backend 
 
 ## Project Status
 
-🚧 **In Active Development** - Currently implementing core functionality
+🚧 **In Active Development** - 75% complete (54/72 endpoints implemented)
 
 This is a ground-up rewrite of the [Investment Portfolio Manager backend](https://github.com/ndewijer/Investment-Portfolio-Manager) from Python/Flask to Go. The goal is to achieve feature parity while learning Go idioms, patterns, and ecosystem.
 
@@ -191,7 +191,17 @@ Investment-Portfolio-Manager-Backend/
 │   │   └── database.go               # Database connection
 │   ├── service/                      # Business logic layer
 │   │   ├── system_service.go
-│   │   └── portfolio_service.go
+│   │   ├── portfolio_service.go
+│   │   ├── fund_service.go
+│   │   ├── transaction_service.go
+│   │   ├── dividend_service.go
+│   │   ├── ibkr_service.go
+│   │   ├── developer_service.go
+│   │   ├── materialized_service.go
+│   │   └── realizedGainLoss_service.go
+│   ├── apperrors/                    # Centralized error types
+│   ├── validation/                   # Input validation helpers
+│   ├── yahoo/                        # Yahoo Finance integration
 │   ├── testutil/                     # Test utilities and helpers
 │   └── version/
 │       └── version.go                # Version information
@@ -218,6 +228,13 @@ Investment-Portfolio-Manager-Backend/
 - **[Setup Explained](docs/SETUP_EXPLAINED.md)** - Detailed explanation of how everything works
 - **[Go Pointers Guide](docs/GO_POINTERS_EXPLAINED.md)** - Understanding pointers in Go
 - **[Testing Guide](docs/GO_TESTING_GUIDE.md)** - Testing patterns and practices
+- **[Testing Quick Reference](docs/TESTING_QUICK_REFERENCE.md)** - Quick reference for test commands and builders
+- **[Endpoint Testing Guide](docs/ENDPOINT_TESTING_GUIDE.md)** - Patterns for testing HTTP endpoints
+- **[Repository Transaction Patterns](docs/REPOSITORY_TRANSACTION_PATTERNS.md)** - Transaction management patterns
+- **[Write Operations Guide](docs/WRITE_OPERATIONS_GUIDE.md)** - Patterns for POST/PUT/DELETE handlers
+- **[Go Best Practices](docs/GO_BEST_PRACTICES.md)** - Project-specific Go conventions
+- **[Logging Implementation](docs/LOGGING_IMPLEMENTATION.md)** - Structured logging setup and usage
+- **[Tooling Recommendations](docs/TOOLING_RECOMMENDATIONS.md)** - Recommended tools and CI/CD setup
 
 ### Architecture Overview
 
@@ -241,9 +258,9 @@ This separation ensures:
 
 ## Development Approach
 
-### Phase 1-2: Learning with database/sql ✅ Current Phase
+### Phase 1-2: Learning with database/sql ✅ Complete
 
-Starting with raw `database/sql` to understand:
+Built with raw `database/sql` to understand:
 - How query execution works
 - Pointer semantics and scanning
 - Transaction management
@@ -358,6 +375,6 @@ This project is a learning exercise inspired by the need to consolidate multiple
 
 ---
 
-**Current Focus:** Implementing portfolio CRUD operations and building up core repository patterns with `database/sql`.
+**Current Focus:** Completing IBKR and developer endpoints (remaining 25% of API surface).
 
-**Next Steps:** Complete portfolio endpoints, then move to fund management, followed by transaction and dividend handling.
+**Next Steps:** Full IBKR import flow, remaining developer utilities, then Phase 3 migration to sqlc + Atlas.
