@@ -64,7 +64,7 @@ func (r *FundRepository) GetAllFunds() ([]model.Fund, error) {
 		)  fp ON f.id = fp.fund_id
       `
 
-	rows, err := r.db.Query(query)
+	rows, err := r.getQuerier().Query(query)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to query fund table: %w", err)
@@ -126,7 +126,7 @@ func (r *FundRepository) GetFund(fundID string) (model.Fund, error) {
 
 	var f model.Fund
 	var priceStr sql.NullFloat64
-	err := r.db.QueryRow(query, fundID).Scan(
+	err := r.getQuerier().QueryRow(query, fundID).Scan(
 		&f.ID,
 		&f.Name,
 		&f.Isin,
@@ -179,7 +179,7 @@ func (r *FundRepository) GetFunds(fundIDs []string) ([]model.Fund, error) {
 		fundArgs[i] = id
 	}
 
-	rows, err := r.db.Query(fundQuery, fundArgs...)
+	rows, err := r.getQuerier().Query(fundQuery, fundArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query fund table: %w", err)
 	}
@@ -262,7 +262,7 @@ func (r *FundRepository) GetFundPrice(fundIDs []string, startDate, endDate time.
 	fundPriceArgs = append(fundPriceArgs, startDate.Format("2006-01-02"))
 	fundPriceArgs = append(fundPriceArgs, endDate.Format("2006-01-02"))
 
-	rows, err := r.db.Query(fundPriceQuery, fundPriceArgs...)
+	rows, err := r.getQuerier().Query(fundPriceQuery, fundPriceArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query fund_price table: %w", err)
 	}
@@ -320,7 +320,7 @@ func (r *FundRepository) GetPortfolioFunds(PortfolioID string) ([]model.Portfoli
 		fundArgs = append(fundArgs, PortfolioID)
 	}
 
-	rows, err := r.db.Query(fundQuery, fundArgs...)
+	rows, err := r.getQuerier().Query(fundQuery, fundArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve portfolio funds via portfolio_fund JOIN (portfolio_id=%s): %w", PortfolioID, err)
 	}
@@ -371,7 +371,7 @@ func (r *FundRepository) GetAllPortfolioFundListings() ([]model.PortfolioFundLis
 		ORDER BY p.name ASC, f.name ASC
 	`
 
-	rows, err := r.db.Query(query)
+	rows, err := r.getQuerier().Query(query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query portfolio_fund listings: %w", err)
 	}
@@ -419,7 +419,7 @@ func (r *FundRepository) GetSymbol(symbol string) (*model.Symbol, error) {
 	var sb model.Symbol
 	var exchangeStr, currencyStr, isinStr, dataSource, lastUpdatedStr sql.NullString
 	var isValidstr sql.NullBool
-	err := r.db.QueryRow(query, symbol).Scan(
+	err := r.getQuerier().QueryRow(query, symbol).Scan(
 		&sb.ID,
 		&sb.Symbol,
 		&sb.Name,
@@ -501,7 +501,7 @@ func (r *FundRepository) GetFundBySymbolOrIsin(symbol, isin string) (model.Fund,
 
 	var f model.Fund
 
-	err := r.db.QueryRow(query, args...).Scan(
+	err := r.getQuerier().QueryRow(query, args...).Scan(
 		&f.ID,
 		&f.Name,
 		&f.Isin,
@@ -538,7 +538,7 @@ func (r *FundRepository) GetPortfolioFundsbyFundID(fundID string) ([]model.Portf
 		WHERE fund_id = ?
 	`
 
-	rows, err := r.db.Query(query, fundID)
+	rows, err := r.getQuerier().Query(query, fundID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query portfolio_fund listings: %w", err)
 	}
@@ -603,7 +603,7 @@ func (r *FundRepository) CheckUsage(fundID string) ([]model.PortfolioTransaction
 
 	PFTs := make([]model.PortfolioTransaction, 0, len(pfs))
 
-	rows, err := r.db.Query(query, pfIDs...)
+	rows, err := r.getQuerier().Query(query, pfIDs...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query transaction table: %w", err)
 	}
@@ -642,7 +642,7 @@ func (r *FundRepository) GetPortfolioFund(pfID string) (model.PortfolioFund, err
 
 	var pf model.PortfolioFund
 
-	err := r.db.QueryRow(query, pfID).Scan(
+	err := r.getQuerier().QueryRow(query, pfID).Scan(
 		&pf.ID,
 		&pf.PortfolioID,
 		&pf.FundID,
@@ -823,23 +823,24 @@ func (r *FundRepository) InsertFundPrice(ctx context.Context, fp model.FundPrice
 // This method is optimized for inserting large numbers of prices at once, such as
 // during historical data backfilling operations.
 //
-// The method uses a prepared statement within a transaction to efficiently insert
-// multiple records while maintaining atomicity. If any insertion fails, all changes
-// are rolled back.
+// The method uses a prepared statement via getQuerier() to efficiently insert
+// multiple records. Atomicity depends on the caller: this method participates in
+// an external transaction when called via WithTx(tx), and has no atomicity guarantee
+// when called without one. The sole caller (UpdateHistoricalFundPrice in FundService)
+// always wraps this call in a service-level transaction.
 //
 // Implementation Details:
-//   - Creates a dedicated transaction for the batch operation
+//   - Participates in the caller's transaction via WithTx; no internal transaction is created
 //   - Prepares a single INSERT statement reused for all records
 //   - Formats dates as "2006-01-02" for database compatibility
-//   - Commits only after all insertions succeed
+//   - Rollback/commit is the responsibility of the calling service
 //
 // Parameters:
 //   - ctx: Context for cancellation and timeout control
 //   - fundPrices: Slice of FundPrice records to insert
 //
 // Returns:
-//   - error: If transaction creation, statement preparation, any insertion,
-//     or commit fails. All errors are wrapped with context.
+//   - error: If statement preparation or any insertion fails. All errors are wrapped with context.
 //   - nil: If fundPrices is empty (no-op) or all insertions succeed
 func (r *FundRepository) InsertFundPrices(ctx context.Context, fundPrices []model.FundPrice) error {
 	if len(fundPrices) == 0 {

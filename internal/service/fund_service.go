@@ -89,7 +89,8 @@ func (s *FundService) GetAllPortfolioFundListings() ([]model.PortfolioFundListin
 // and data loading.
 //
 // Parameters:
-//   - portfolioID: The portfolio ID to retrieve funds for. If empty, returns all active portfolios.
+//   - portfolioID: The portfolio ID to retrieve funds for. Must be non-empty; callers are
+//     expected to validate this before calling (the HTTP handler rejects empty IDs).
 //
 // Returns a slice of PortfolioFund structs with all metric fields populated:
 // TotalShares, LatestPrice, AverageCost, TotalCost, CurrentValue, UnrealizedGainLoss,
@@ -97,6 +98,8 @@ func (s *FundService) GetAllPortfolioFundListings() ([]model.PortfolioFundListin
 // All monetary values are rounded to two decimal places.
 func (s *FundService) GetPortfolioFunds(portfolioID string) ([]model.PortfolioFundResponse, error) {
 
+	// Direct repo call (not via PortfolioService) because the handler guarantees a non-empty
+	// portfolioID, making the multi-portfolio resolution in GetPortfoliosForRequest unnecessary.
 	portfolio, err := s.portfolioRepo.GetPortfolioOnID(portfolioID)
 	if err != nil {
 		return nil, err
@@ -171,6 +174,8 @@ func (s *FundService) CreatePortfolioFund(ctx context.Context, req request.Creat
 	}
 	defer func() { _ = tx.Rollback() }() //nolint:errcheck // Rollback is a no-op after Commit; error is intentionally ignored.
 
+	// Direct repo call via WithTx (not via PortfolioService) to include the existence check
+	// within the service-level transaction without passing tx through service boundaries.
 	_, err = s.portfolioRepo.WithTx(tx).GetPortfolioOnID(req.PortfolioID)
 	if err != nil {
 		return err

@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -16,11 +17,34 @@ import (
 // It handles retrieving Developer records and reinvestment information.
 type DeveloperRepository struct {
 	db *sql.DB
+	tx *sql.Tx
 }
 
 // NewDeveloperRepository creates a new DeveloperRepository with the provided database connection.
 func NewDeveloperRepository(db *sql.DB) *DeveloperRepository {
 	return &DeveloperRepository{db: db}
+}
+
+func (r *DeveloperRepository) WithTx(tx *sql.Tx) *DeveloperRepository {
+	return &DeveloperRepository{
+		db: r.db,
+		tx: tx,
+	}
+}
+
+func (r *DeveloperRepository) getQuerier() interface {
+	Query(query string, args ...any) (*sql.Rows, error)
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	QueryRow(query string, args ...any) *sql.Row
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+	Exec(query string, args ...any) (sql.Result, error)
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+	PrepareContext(ctx context.Context, query string) (*sql.Stmt, error)
+} {
+	if r.tx != nil {
+		return r.tx
+	}
+	return r.db
 }
 
 // GetLogs retrieves log entries from the database with dynamic filtering and cursor-based pagination.
@@ -136,7 +160,7 @@ func (r *DeveloperRepository) GetLogs(filters *request.LogFilters) (*model.LogRe
 	args = append(args, filters.PerPage+1)
 
 	// Execute query
-	rows, err := r.db.Query(query, args...)
+	rows, err := r.getQuerier().Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query log table: %w", err)
 	}
@@ -234,7 +258,7 @@ func (r *DeveloperRepository) GetLoggingConfig() (model.LoggingSetting, error) {
 		Enabled: true,
 		Level:   "info",
 	}
-	err := r.db.QueryRow(queryEnabled).Scan(
+	err := r.getQuerier().QueryRow(queryEnabled).Scan(
 		&conf.Enabled,
 	)
 	if err == sql.ErrNoRows {
@@ -243,7 +267,7 @@ func (r *DeveloperRepository) GetLoggingConfig() (model.LoggingSetting, error) {
 		return conf, err
 	}
 
-	err = r.db.QueryRow(queryLevel).Scan(
+	err = r.getQuerier().QueryRow(queryLevel).Scan(
 		&conf.Level,
 	)
 	if err == sql.ErrNoRows {
@@ -270,7 +294,7 @@ func (r *DeveloperRepository) GetExchangeRate(fromCurrency, toCurrency string, d
 `
 	rate := model.ExchangeRate{}
 	var dateStr string
-	err := r.db.QueryRow(query, fromCurrency, toCurrency, dateTime.Format("2006-01-02")).Scan(
+	err := r.getQuerier().QueryRow(query, fromCurrency, toCurrency, dateTime.Format("2006-01-02")).Scan(
 		&rate.FromCurrency,
 		&rate.ToCurrency,
 		&rate.Rate,
