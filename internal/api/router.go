@@ -163,6 +163,7 @@ func NewRouter(
 		r.Route("/developer", func(r chi.Router) {
 			developerHandler := handlers.NewDeveloperHandler(developerService)
 			r.Get("/logs", developerHandler.GetLogs)
+			r.Delete("/logs", developerHandler.DeleteLogs)
 			r.Get("/system-settings/logging", developerHandler.GetLoggingConfig)
 			r.Get("/csv/fund-prices/template", developerHandler.GetFundPriceCSVTemplate)
 			r.Get("/csv/transactions/template", developerHandler.GetTransactionCSVTemplate)

@@ -340,3 +340,43 @@ func (r *DeveloperRepository) UpdateExchangeRate(ctx context.Context, exRate mod
 
 	return nil
 }
+
+func (r *DeveloperRepository) AddLog(ctx context.Context, log model.Log) error {
+
+	query := `
+		INSERT INTO log (id, timestamp, level, category, message, details, source, request_id, stack_trace, http_status, ip_address, user_agent)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`
+
+	_, err := r.getQuerier().ExecContext(ctx, query,
+		log.ID,
+		log.Timestamp.Format("2006-01-02 15:04:05"),
+		log.Level,
+		log.Category,
+		log.Message,
+		log.Details,
+		log.Source,
+		log.RequestID,
+		log.StackTrace,
+		log.HTTPStatus,
+		log.IPAddress,
+		log.UserAgent,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to insert log: %w", err)
+	}
+
+	return nil
+}
+
+func (r *DeveloperRepository) DeleteLogs(ctx context.Context) error {
+	query := `DELETE FROM log`
+
+	_, err := r.getQuerier().ExecContext(ctx, query)
+	if err != nil {
+		return fmt.Errorf("failed to delete logs: %w", err)
+	}
+
+	return nil
+}

@@ -108,7 +108,7 @@ This backend aims to replicate all 73 endpoints from the Python backend. Below i
     ├── POST /fund-price                  ✅ Set fund price for specific date
     ├── POST /import-fund-prices          ⬜ Import fund prices from CSV file
     ├── POST /import-transactions         ⬜ Import transactions from CSV file
-    ├── DELETE /logs                      ⬜ Clear all system logs
+    ├── DELETE /logs                      ✅ Clear all system logs
     ├── GET /logs                         ✅ Get system logs with cursor-based pagination
     ├── GET /system-settings/logging      ✅ Get current logging configuration settings
     └── PUT /system-settings/logging      ⬜ Update logging configuration settings

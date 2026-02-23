@@ -155,3 +155,38 @@ func (s *DeveloperService) UpdateFundPrice(
 
 	return fp, nil
 }
+
+func (s *DeveloperService) DeleteLogs(ctx context.Context, ipAddress any, userAgent string) error {
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }() //nolint:errcheck // Rollback is a no-op after Commit; error is intentionally ignored.
+
+	if err := s.developerRepo.WithTx(tx).DeleteLogs(ctx); err != nil {
+		return fmt.Errorf("failed to delete logs: %w", err)
+	}
+	resetLog := model.Log{
+		ID:        uuid.New().String(),
+		Timestamp: time.Now().UTC(),
+		Level:     "INFO",
+		Category:  "DEVELOPER",
+		Message:   "All logs cleared by user",
+		Source:    "DeleteLogs",
+		UserAgent: userAgent,
+	}
+
+	if ip, ok := ipAddress.(string); ok {
+		resetLog.IPAddress = ip
+	}
+	if err := s.developerRepo.WithTx(tx).AddLog(ctx, resetLog); err != nil {
+		return fmt.Errorf("failed to add log: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit transaction: %w", err)
+	}
+
+	return nil
+}

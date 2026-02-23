@@ -13,14 +13,15 @@ type LogResponse struct {
 
 // Log represents a single system log entry with metadata and optional contextual information.
 type Log struct {
-	ID         string    `json:"id"`                   // Unique identifier for the log entry
-	Timestamp  time.Time `json:"timestamp"`            // When the log was created
-	Level      string    `json:"level"`                // Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-	Category   string    `json:"category"`             // Category of the log (portfolio, fund, transaction, etc.)
-	Message    string    `json:"message"`              // Primary log message
-	Details    string    `json:"details,omitempty"`    // Additional details or context (optional)
-	Source     string    `json:"source"`               // Source component that generated the log
-	RequestID  string    `json:"requestId,omitempty"`  // Request ID for tracing (optional)
+	ID         string    `json:"id"`                  // Unique identifier for the log entry
+	Timestamp  time.Time `json:"timestamp"`           // When the log was created
+	Level      string    `json:"level"`               // Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+	Category   string    `json:"category"`            // Category of the log (portfolio, fund, transaction, etc.)
+	Message    string    `json:"message"`             // Primary log message
+	Details    string    `json:"details,omitempty"`   // Additional details or context (optional)
+	Source     string    `json:"source"`              // Source component that generated the log
+	RequestID  string    `json:"requestId,omitempty"` // Request ID for tracing (optional)
+	StackTrace string    `json:"stack_trace,omitempty"`
 	HTTPStatus string    `json:"httpStatus,omitempty"` // HTTP status code if applicable (optional)
 	IPAddress  string    `json:"ipAddress,omitempty"`  // IP address of the request (optional)
 	UserAgent  string    `json:"userAgent,omitempty"`  // User agent string (optional)

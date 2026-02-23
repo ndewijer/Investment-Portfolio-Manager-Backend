@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"net"
 	"net/http"
 	"time"
 
@@ -293,4 +294,31 @@ func (h *DeveloperHandler) UpdateFundPrice(w http.ResponseWriter, r *http.Reques
 	}
 
 	response.RespondJSON(w, http.StatusOK, exRate)
+}
+
+func (h *DeveloperHandler) DeleteLogs(w http.ResponseWriter, r *http.Request) {
+
+	ipAddress := getClientIP(r)
+
+	err := h.DeveloperService.DeleteLogs(r.Context(), ipAddress, r.Header.Get("User-Agent"))
+	if err != nil {
+		response.RespondError(w, http.StatusInternalServerError, "failed to delete logs", err.Error())
+		return
+	}
+
+	response.RespondJSON(w, http.StatusNoContent, nil)
+}
+
+func getClientIP(r *http.Request) any {
+	if ip := r.Header.Get("X-Forwarded-For"); ip != "" {
+		return ip
+	}
+	if ip := r.Header.Get("X-Real-IP"); ip != "" {
+		return ip
+	}
+	ip, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return nil
+	}
+	return ip
 }
