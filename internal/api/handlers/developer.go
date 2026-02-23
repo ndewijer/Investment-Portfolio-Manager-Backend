@@ -10,6 +10,7 @@ import (
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/apperrors"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/service"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/validation"
 )
 
 // DeveloperHandler handles HTTP requests for Developer endpoints.
@@ -204,6 +205,29 @@ func (h *DeveloperHandler) GetExchangeRate(w http.ResponseWriter, r *http.Reques
 	response.RespondJSON(w, http.StatusOK, exchangeResponse)
 }
 
+func (h *DeveloperHandler) UpdateExchangeRate(w http.ResponseWriter, r *http.Request) {
+
+	req, err := parseJSON[request.SetExchangeRateRequest](r)
+	if err != nil {
+		response.RespondError(w, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
+
+	if err := validation.ValidateUpdateExchangeRate(req); err != nil {
+		response.RespondError(w, http.StatusBadRequest, "validation failed", err.Error())
+		return
+	}
+
+	exRate, err := h.DeveloperService.UpdateExchangeRate(r.Context(), req)
+	if err != nil {
+
+		response.RespondError(w, http.StatusInternalServerError, "failed to update exchange rate", err.Error())
+		return
+	}
+
+	response.RespondJSON(w, http.StatusOK, exRate)
+}
+
 // GetFundPrice handles GET requests to retrieve a fund's price for a specific date.
 // Returns the fund price if found for the given fund and date.
 //
@@ -246,4 +270,27 @@ func (h *DeveloperHandler) GetFundPrice(w http.ResponseWriter, r *http.Request) 
 	}
 
 	response.RespondJSON(w, http.StatusOK, fundPrice)
+}
+
+func (h *DeveloperHandler) UpdateFundPrice(w http.ResponseWriter, r *http.Request) {
+
+	req, err := parseJSON[request.SetFundPriceRequest](r)
+	if err != nil {
+		response.RespondError(w, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
+
+	if err := validation.ValidateUpdateFundPrice(req); err != nil {
+		response.RespondError(w, http.StatusBadRequest, "validation failed", err.Error())
+		return
+	}
+
+	exRate, err := h.DeveloperService.UpdateFundPrice(r.Context(), req)
+	if err != nil {
+
+		response.RespondError(w, http.StatusInternalServerError, "failed to update fund price", err.Error())
+		return
+	}
+
+	response.RespondJSON(w, http.StatusOK, exRate)
 }

@@ -381,7 +381,7 @@ func (r *TransactionRepository) InsertTransaction(ctx context.Context, t *model.
 		t.Type,
 		t.Shares,
 		t.CostPerShare,
-		t.CreatedAt.Format("2006-01-02 01:02:01"),
+		t.CreatedAt.Format("2006-01-02 15:04:05"),
 	)
 
 	if err != nil {
@@ -409,7 +409,7 @@ func (r *TransactionRepository) UpdateTransaction(ctx context.Context, t *model.
 		t.Type,
 		t.Shares,
 		t.CostPerShare,
-		t.CreatedAt.Format("2006-01-02 01:02:01"),
+		t.CreatedAt.Format("2006-01-02 15:04:05"),
 		t.ID,
 	)
 

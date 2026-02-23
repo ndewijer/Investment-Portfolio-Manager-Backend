@@ -109,6 +109,7 @@ func createRepoAndServices(db *sql.DB) (
 	yahooClient := yahoo.NewFinanceClient()
 
 	developerService := service.NewDeveloperService(
+		db,
 		developerRepo,
 		fundRepo,
 	)

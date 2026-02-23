@@ -2,8 +2,13 @@ package service
 
 import (
 	"context"
+	"database/sql"
+	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/request"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/apperrors"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
@@ -12,16 +17,19 @@ import (
 
 // DeveloperService handles Developer-related business logic operations.
 type DeveloperService struct {
+	db            *sql.DB
 	developerRepo *repository.DeveloperRepository
 	fundRepo      *repository.FundRepository
 }
 
 // NewDeveloperService creates a new DeveloperService with the provided repository dependencies.
 func NewDeveloperService(
+	db *sql.DB,
 	developerRepo *repository.DeveloperRepository,
 	fundRepo *repository.FundRepository,
 ) *DeveloperService {
 	return &DeveloperService{
+		db:            db,
 		developerRepo: developerRepo,
 		fundRepo:      fundRepo,
 	}
@@ -52,6 +60,45 @@ func (s *DeveloperService) GetExchangeRate(fromCurrency, toCurrency string, date
 	return s.developerRepo.GetExchangeRate(fromCurrency, toCurrency, dateTime)
 }
 
+func (s *DeveloperService) UpdateExchangeRate(
+	ctx context.Context,
+	req request.SetExchangeRateRequest,
+) (model.ExchangeRate, error) {
+
+	var exRate model.ExchangeRate
+	var err error
+
+	exRate.Date, err = time.Parse("2006-01-02", req.Date)
+	if err != nil {
+		return model.ExchangeRate{}, err
+	}
+	exRate.ID = uuid.New().String()
+	exRate.ToCurrency = req.ToCurrency
+	exRate.FromCurrency = req.FromCurrency
+
+	rateFloat, err := strconv.ParseFloat(strings.TrimSpace(req.Rate), 64)
+	if err != nil {
+		return model.ExchangeRate{}, err
+	}
+	exRate.Rate = rateFloat
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return model.ExchangeRate{}, fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }() //nolint:errcheck // Rollback is a no-op after Commit; error is intentionally ignored.
+
+	if err := s.developerRepo.WithTx(tx).UpdateExchangeRate(ctx, exRate); err != nil {
+		return model.ExchangeRate{}, fmt.Errorf("failed to update exchange rate: %w", err)
+	}
+
+	if err = tx.Commit(); err != nil {
+		return model.ExchangeRate{}, fmt.Errorf("commit transaction: %w", err)
+	}
+
+	return exRate, nil
+}
+
 // GetFundPrice retrieves the price for a specific fund on a specific date.
 // Uses the FundRepository's GetFundPrice method to fetch the price.
 // Returns ErrFundPriceNotFound if no price exists for the given fund and date.
@@ -69,4 +116,42 @@ func (s *DeveloperService) GetFundPrice(fundID string, dateTime time.Time) (mode
 	}
 
 	return fundPrices[fundID][0], nil
+}
+
+func (s *DeveloperService) UpdateFundPrice(
+	ctx context.Context,
+	req request.SetFundPriceRequest,
+) (model.FundPrice, error) {
+
+	var fp model.FundPrice
+	var err error
+
+	fp.Date, err = time.Parse("2006-01-02", req.Date)
+	if err != nil {
+		return model.FundPrice{}, err
+	}
+	priceFloat, err := strconv.ParseFloat(strings.TrimSpace(req.Price), 64)
+	if err != nil {
+		return model.FundPrice{}, err
+	}
+	fp.Price = priceFloat
+	fp.FundID = req.FundID
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return model.FundPrice{}, fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }() //nolint:errcheck // Rollback is a no-op after Commit; error is intentionally ignored.
+
+	fp.ID = uuid.New().String()
+
+	if err := s.fundRepo.WithTx(tx).UpdateFundPrice(ctx, fp); err != nil {
+		return model.FundPrice{}, fmt.Errorf("failed to update fund price: %w", err)
+	}
+
+	if err = tx.Commit(); err != nil {
+		return model.FundPrice{}, fmt.Errorf("commit transaction: %w", err)
+	}
+
+	return fp, nil
 }

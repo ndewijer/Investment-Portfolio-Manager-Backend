@@ -312,3 +312,31 @@ func (r *DeveloperRepository) GetExchangeRate(fromCurrency, toCurrency string, d
 
 	return &rate, nil
 }
+
+func (r *DeveloperRepository) UpdateExchangeRate(ctx context.Context, exRate model.ExchangeRate) error {
+
+	query := `
+        INSERT INTO exchange_rate (id, from_currency, to_currency, rate, date, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(from_currency, to_currency, date) DO UPDATE SET
+            rate = ?,
+			created_at = ?
+    `
+
+	_, err := r.getQuerier().ExecContext(ctx, query,
+		exRate.ID,
+		exRate.FromCurrency,
+		exRate.ToCurrency,
+		exRate.Rate,
+		exRate.Date.Format("2006-01-02"),
+		time.Now().UTC().Format("2006-01-02 15:04:05"),
+		exRate.Rate,
+		time.Now().UTC().Format("2006-01-02 15:04:05"),
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to upsert exchange rate: %w", err)
+	}
+
+	return nil
+}

@@ -487,15 +487,15 @@ func (r *DividendRepository) InsertDividend(ctx context.Context, d *model.Divide
 		d.ID,
 		d.FundID,
 		d.PortfolioFundID,
-		d.RecordDate.Format("2006-01-02 01:02:01"),
-		d.ExDividendDate.Format("2006-01-02 01:02:01"),
+		d.RecordDate.Format("2006-01-02 15:04:05"),
+		d.ExDividendDate.Format("2006-01-02 15:04:05"),
 		d.SharesOwned,
 		d.DividendPerShare,
 		d.TotalAmount,
 		d.ReinvestmentStatus,
 		buyOrderDate,
 		reinvestmentTransactionID,
-		d.CreatedAt.Format("2006-01-02 01:02:01"),
+		d.CreatedAt.Format("2006-01-02 15:04:05"),
 	)
 
 	if err != nil {
@@ -529,15 +529,15 @@ func (r *DividendRepository) UpdateDividend(ctx context.Context, d *model.Divide
 	result, err := r.getQuerier().ExecContext(ctx, query,
 		d.FundID,
 		d.PortfolioFundID,
-		d.RecordDate.Format("2006-01-02 01:02:01"),
-		d.ExDividendDate.Format("2006-01-02 01:02:01"),
+		d.RecordDate.Format("2006-01-02 15:04:05"),
+		d.ExDividendDate.Format("2006-01-02 15:04:05"),
 		d.SharesOwned,
 		d.DividendPerShare,
 		d.TotalAmount,
 		d.ReinvestmentStatus,
 		buyOrderDate,
 		reinvestmentTransactionID,
-		d.CreatedAt.Format("2006-01-02 01:02:01"),
+		d.CreatedAt.Format("2006-01-02 15:04:05"),
 		d.ID,
 	)
 

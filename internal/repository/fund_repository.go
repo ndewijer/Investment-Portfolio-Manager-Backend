@@ -586,3 +586,27 @@ func (r *FundRepository) InsertFundPrices(ctx context.Context, fundPrices []mode
 
 	return nil
 }
+
+func (r *FundRepository) UpdateFundPrice(ctx context.Context, fp model.FundPrice) error {
+
+	query := `
+		INSERT INTO fund_price (id, fund_id, date, price)
+		VALUES (?, ?, ?, ?)
+        ON CONFLICT(fund_id, date) DO UPDATE SET
+            price = ?
+    `
+
+	_, err := r.getQuerier().ExecContext(ctx, query,
+		fp.ID,
+		fp.FundID,
+		fp.Date.Format("2006-01-02"),
+		fp.Price,
+		fp.Price,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to upsert fund price: %w", err)
+	}
+
+	return nil
+}
