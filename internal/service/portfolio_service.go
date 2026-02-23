@@ -17,16 +17,19 @@ import (
 type PortfolioService struct {
 	db            *sql.DB
 	portfolioRepo *repository.PortfolioRepository
+	pfRepo        *repository.PortfolioFundRepository
 }
 
 // NewPortfolioService creates a new PortfolioService with the provided repository dependencies.
 func NewPortfolioService(
 	db *sql.DB,
 	portfolioRepo *repository.PortfolioRepository,
+	pfRepo *repository.PortfolioFundRepository,
 ) *PortfolioService {
 	return &PortfolioService{
 		db:            db,
 		portfolioRepo: portfolioRepo,
+		pfRepo:        pfRepo,
 	}
 }
 
@@ -68,7 +71,7 @@ func (s *PortfolioService) LoadActivePortfolios() ([]model.Portfolio, error) {
 //   - fundIDs: slice of all unique fund IDs
 //   - error: any error encountered
 func (s *PortfolioService) LoadAllPortfolioFunds(portfolios []model.Portfolio) (map[string][]model.Fund, map[string]string, map[string]string, []string, []string, error) {
-	return s.portfolioRepo.GetPortfolioFundsOnPortfolioID(portfolios)
+	return s.pfRepo.GetPortfolioFundsOnPortfolioID(portfolios)
 }
 
 // GetPortfoliosForRequest resolves a portfolio ID parameter into a slice of portfolios.

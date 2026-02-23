@@ -16,17 +16,17 @@ import (
 type TransactionService struct {
 	db              *sql.DB
 	transactionRepo *repository.TransactionRepository
-	fundRepo        *repository.FundRepository
+	pfRepo          *repository.PortfolioFundRepository
 }
 
 // NewTransactionService creates a new TransactionService with the provided repository dependencies.
 func NewTransactionService(
-	db *sql.DB, transactionRepo *repository.TransactionRepository, fundRepo *repository.FundRepository,
+	db *sql.DB, transactionRepo *repository.TransactionRepository, pfRepo *repository.PortfolioFundRepository,
 ) *TransactionService {
 	return &TransactionService{
 		db:              db,
 		transactionRepo: transactionRepo,
-		fundRepo:        fundRepo,
+		pfRepo:          pfRepo,
 	}
 }
 
@@ -67,7 +67,7 @@ func (s *TransactionService) CreateTransaction(ctx context.Context, req request.
 	}
 	defer func() { _ = tx.Rollback() }() //nolint:errcheck // Rollback is a no-op after Commit; error is intentionally ignored.
 
-	_, err = s.fundRepo.WithTx(tx).GetPortfolioFund(req.PortfolioFundID)
+	_, err = s.pfRepo.WithTx(tx).GetPortfolioFund(req.PortfolioFundID)
 	if err != nil {
 		return nil, err
 	}
@@ -123,7 +123,7 @@ func (s *TransactionService) UpdateTransaction(
 	}
 
 	if req.PortfolioFundID != nil {
-		_, err = s.fundRepo.WithTx(tx).GetPortfolioFund(*req.PortfolioFundID)
+		_, err = s.pfRepo.WithTx(tx).GetPortfolioFund(*req.PortfolioFundID)
 		if err != nil {
 			return nil, err
 		}

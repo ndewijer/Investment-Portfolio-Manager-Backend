@@ -64,6 +64,7 @@ Investment-Portfolio-Manager-Backend/
 │   │   └── ibkr_flex_service.go
 │   ├── repository/                    # Database access layer
 │   │   ├── portfolio_repository.go
+│   │   ├── portfolio_fund_repository.go
 │   │   ├── fund_repository.go
 │   │   ├── transaction_repository.go
 │   │   ├── dividend_repository.go

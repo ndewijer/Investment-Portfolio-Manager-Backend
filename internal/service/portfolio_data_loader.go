@@ -15,7 +15,7 @@ import (
 // It coordinates between multiple repositories and services to gather complete datasets
 // needed for portfolio history and fund metrics calculations.
 type DataLoaderService struct {
-	portfolioRepo           *repository.PortfolioRepository
+	pfRepo                  *repository.PortfolioFundRepository
 	fundRepo                *repository.FundRepository
 	transactionService      *TransactionService
 	dividendService         *DividendService
@@ -24,14 +24,14 @@ type DataLoaderService struct {
 
 // NewDataLoaderService creates a new DataLoaderService with the provided dependencies.
 func NewDataLoaderService(
-	portfolioRepo *repository.PortfolioRepository,
+	pfRepo *repository.PortfolioFundRepository,
 	fundRepo *repository.FundRepository,
 	transactionService *TransactionService,
 	dividendService *DividendService,
 	realizedGainLossService *RealizedGainLossService,
 ) *DataLoaderService {
 	return &DataLoaderService{
-		portfolioRepo:           portfolioRepo,
+		pfRepo:                  pfRepo,
 		fundRepo:                fundRepo,
 		transactionService:      transactionService,
 		dividendService:         dividendService,
@@ -125,13 +125,13 @@ func (s *DataLoaderService) LoadForPortfolios(
 	}
 
 	// Load portfolio funds for all portfolios
-	_, pfToPortfolio, pfToFund, pfIDs, fundIDs, err := s.portfolioRepo.GetPortfolioFundsOnPortfolioID(portfolios)
+	_, pfToPortfolio, pfToFund, pfIDs, fundIDs, err := s.pfRepo.GetPortfolioFundsOnPortfolioID(portfolios)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load portfolio funds: %w", err)
 	}
 	var portfolioFunds []model.PortfolioFundResponse
 	if len(portfolios) == 1 {
-		portfolioFunds, err = s.fundRepo.GetPortfolioFunds(portfolios[0].ID)
+		portfolioFunds, err = s.pfRepo.GetPortfolioFunds(portfolios[0].ID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load portfolio fund details: %w", err)
 		}

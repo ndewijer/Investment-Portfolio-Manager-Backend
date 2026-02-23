@@ -8,7 +8,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/request"
-	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/apperrors"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/repository"
 )
@@ -17,7 +16,7 @@ import (
 type DividendService struct {
 	db              *sql.DB
 	dividendRepo    *repository.DividendRepository
-	fundRepo        *repository.FundRepository
+	pfRepo          *repository.PortfolioFundRepository
 	transactionRepo *repository.TransactionRepository
 }
 
@@ -26,18 +25,18 @@ type DividendService struct {
 // Parameters:
 //   - db: Raw database connection, used to manage database transactions in CreateDividend.
 //   - dividendRepo: Repository for dividend table operations.
-//   - fundRepo: Repository for fund and portfolio-fund lookups.
+//   - pfRepo: Repository for portfolio-fund lookups.
 //   - transactionRepo: Repository for transaction table operations, including share calculations.
 func NewDividendService(
 	db *sql.DB,
 	dividendRepo *repository.DividendRepository,
-	fundRepo *repository.FundRepository,
+	pfRepo *repository.PortfolioFundRepository,
 	transactionRepo *repository.TransactionRepository,
 ) *DividendService {
 	return &DividendService{
 		db:              db,
 		dividendRepo:    dividendRepo,
-		fundRepo:        fundRepo,
+		pfRepo:          pfRepo,
 		transactionRepo: transactionRepo,
 	}
 }
@@ -148,7 +147,7 @@ func (s *DividendService) processDividendAmountForDate(dividend []model.Dividend
 //
 // Returns the created dividend with its generated ID, or an error if creation fails.
 func (s *DividendService) CreateDividend(ctx context.Context, req request.CreateDividendRequest) (*model.DividendFund, error) {
-	portfolioFund, err := s.findPortfolioFund(req.PortfolioFundID)
+	portfolioFund, err := s.pfRepo.GetPortfolioFundListing(req.PortfolioFundID)
 	if err != nil {
 		return nil, err
 	}
@@ -245,7 +244,7 @@ func (s *DividendService) UpdateDividend(
 		dividend.PortfolioFundID = *req.PortfolioFundID
 	}
 
-	portfolioFund, err := s.findPortfolioFund(dividend.PortfolioFundID)
+	portfolioFund, err := s.pfRepo.GetPortfolioFundListing(dividend.PortfolioFundID)
 	if err != nil {
 		return nil, err
 	}
@@ -288,23 +287,6 @@ func (s *DividendService) UpdateDividend(
 	}
 
 	return dividendToFund(dividend, portfolioFund), nil
-}
-
-// findPortfolioFund looks up a PortfolioFundListing by ID from the full listing.
-// Returns ErrFailedToRetrievePortfolioFunds if the ID is not found.
-func (s *DividendService) findPortfolioFund(portfolioFundID string) (model.PortfolioFundListing, error) {
-	pfs, err := s.fundRepo.GetAllPortfolioFundListings()
-	if err != nil {
-		return model.PortfolioFundListing{}, err
-	}
-
-	for _, v := range pfs {
-		if v.ID == portfolioFundID {
-			return v, nil
-		}
-	}
-
-	return model.PortfolioFundListing{}, apperrors.ErrFailedToRetrievePortfolioFunds
 }
 
 // applyReinvestment parses the BuyOrderDate and sets ReinvestmentStatus on the dividend.

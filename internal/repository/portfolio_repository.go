@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"strings"
 
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/apperrors"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
@@ -120,89 +119,6 @@ func (r *PortfolioRepository) GetPortfolioOnID(portfolioID string) (model.Portfo
 	}
 
 	return p, nil
-}
-
-// GetPortfolioFundsOnPortfolioID retrieves all funds associated with the given portfolios.
-// It performs a JOIN between portfolio_fund and fund tables to get complete fund information.
-//
-// Returns:
-//   - fundsByPortfolio: map[portfolioID][]Fund - funds grouped by portfolio
-//   - portfolioFundToPortfolio: map[portfolioFundID]portfolioID - lookup table
-//   - portfolioFundToFund: map[portfolioFundID]fundID - lookup table
-//   - pfIDs: slice of all portfolio_fund IDs
-//   - fundIDs: slice of all unique fund IDs (may contain duplicates)
-//   - error: any error encountered during the query
-//
-// If the input portfolios slice is empty, returns all nil values.
-func (r *PortfolioRepository) GetPortfolioFundsOnPortfolioID(portfolios []model.Portfolio) (map[string][]model.Fund, map[string]string, map[string]string, []string, []string, error) {
-	if len(portfolios) == 0 {
-		return nil, nil, nil, nil, nil, nil
-	}
-
-	portfolioPlaceholders := make([]string, len(portfolios))
-	for i := range portfolioPlaceholders {
-		portfolioPlaceholders[i] = "?"
-	}
-
-	//#nosec G202 -- Safe: placeholders are generated programmatically, not from user input
-	fundQuery := `
-		SELECT
-		portfolio_fund.id, portfolio_fund.portfolio_id,
-		fund.id, fund.name, fund.isin, fund.symbol, fund.currency, fund.exchange, fund.investment_type, fund.dividend_type
-		FROM portfolio_fund
-		JOIN fund ON fund.id = portfolio_fund.fund_id
-		WHERE portfolio_fund.portfolio_id IN (` + strings.Join(portfolioPlaceholders, ",") + `)
-	`
-
-	fundArgs := make([]any, len(portfolios))
-	for i, p := range portfolios {
-		fundArgs[i] = p.ID
-	}
-
-	rows, err := r.getQuerier().Query(fundQuery, fundArgs...)
-	if err != nil {
-		return nil, nil, nil, nil, nil, fmt.Errorf("failed to query portfolio_fund or funds table: %w", err)
-	}
-	defer rows.Close()
-
-	fundsByPortfolio := make(map[string][]model.Fund)
-	portfolioFundToPortfolio := make(map[string]string)
-	portfolioFundToFund := make(map[string]string)
-	var fundIDs, pfIDs []string
-
-	for rows.Next() {
-		var pfID string
-		var portfolioID string
-		var f model.Fund
-
-		err := rows.Scan(
-			&pfID,
-			&portfolioID,
-			&f.ID,
-			&f.Name,
-			&f.Isin,
-			&f.Symbol,
-			&f.Currency,
-			&f.Exchange,
-			&f.InvestmentType,
-			&f.DividendType,
-		)
-		if err != nil {
-			return nil, nil, nil, nil, nil, fmt.Errorf("failed to scan funds table results: %w", err)
-		}
-
-		fundsByPortfolio[portfolioID] = append(fundsByPortfolio[portfolioID], f)
-		portfolioFundToPortfolio[pfID] = portfolioID
-		portfolioFundToFund[pfID] = f.ID
-		pfIDs = append(pfIDs, pfID)
-		fundIDs = append(fundIDs, f.ID)
-
-	}
-	if err = rows.Err(); err != nil {
-		return nil, nil, nil, nil, nil, fmt.Errorf("error iterating funds table: %w", err)
-	}
-
-	return fundsByPortfolio, portfolioFundToPortfolio, portfolioFundToFund, pfIDs, fundIDs, nil
 }
 
 // GetPortfoliosByFundID retrieves all portfolios that hold a specific fund.
