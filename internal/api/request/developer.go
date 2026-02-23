@@ -12,3 +12,8 @@ type SetFundPriceRequest struct {
 	FundID string `json:"fundId"`
 	Price  string `json:"price"`
 }
+
+type SetLoggingConfig struct {
+	Enabled *bool  `json:"enabled"`
+	Level   string `json:"level"`
+}

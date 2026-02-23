@@ -279,6 +279,28 @@ func (r *DeveloperRepository) GetLoggingConfig() (model.LoggingSetting, error) {
 	return conf, nil
 }
 
+func (r *DeveloperRepository) SetLoggingConfig(ctx context.Context, setting model.SystemSetting) error {
+	query := `
+        INSERT INTO system_setting (id, key, value, updated_at)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(key) DO UPDATE SET
+            value = ?
+    `
+
+	_, err := r.getQuerier().ExecContext(ctx, query,
+		setting.ID,
+		setting.Key,
+		setting.Value,
+		setting.UpdatedAt.Format("2006-01-02 15:04:05"),
+		setting.Value,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to upsert system setting: %w", err)
+	}
+	return nil
+}
+
 // GetExchangeRate retrieves an exchange rate for a specific currency pair and date.
 // Queries the exchange_rate table for an exact match on from_currency, to_currency, and date.
 // Returns ErrExchangeRateNotFound if no matching rate exists.

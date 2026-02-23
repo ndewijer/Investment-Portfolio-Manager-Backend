@@ -91,6 +91,28 @@ func (h *DeveloperHandler) GetLoggingConfig(w http.ResponseWriter, _ *http.Reque
 	response.RespondJSON(w, http.StatusOK, setting)
 }
 
+func (h *DeveloperHandler) SetLoggingConfig(w http.ResponseWriter, r *http.Request) {
+
+	req, err := parseJSON[request.SetLoggingConfig](r)
+	if err != nil {
+		response.RespondError(w, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
+
+	if err := validation.ValidateLoggingConfig(req); err != nil {
+		response.RespondError(w, http.StatusBadRequest, "validation failed", err.Error())
+		return
+	}
+
+	logSetting, err := h.DeveloperService.SetLoggingConfig(r.Context(), req)
+	if err != nil {
+		response.RespondError(w, http.StatusInternalServerError, "failed to set logging config", err.Error())
+		return
+	}
+
+	response.RespondJSON(w, http.StatusOK, logSetting)
+}
+
 // GetFundPriceCSVTemplate handles GET requests to retrieve the CSV template for fund price imports.
 // Returns the expected CSV headers, an example row, and a description of the format.
 //

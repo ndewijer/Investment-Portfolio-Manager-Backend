@@ -111,7 +111,7 @@ This backend aims to replicate all 73 endpoints from the Python backend. Below i
     ├── DELETE /logs                      ✅ Clear all system logs
     ├── GET /logs                         ✅ Get system logs with cursor-based pagination
     ├── GET /system-settings/logging      ✅ Get current logging configuration settings
-    └── PUT /system-settings/logging      ⬜ Update logging configuration settings
+    └── PUT /system-settings/logging      ✅ Update logging configuration settings
 
 Legend: ✅ Implemented | 🚧 In Progress | ⬜ Planned
 Overall Progress: 54/72 endpoints (75%)

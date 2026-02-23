@@ -165,6 +165,7 @@ func NewRouter(
 			r.Get("/logs", developerHandler.GetLogs)
 			r.Delete("/logs", developerHandler.DeleteLogs)
 			r.Get("/system-settings/logging", developerHandler.GetLoggingConfig)
+			r.Put("/system-settings/logging", developerHandler.SetLoggingConfig)
 			r.Get("/csv/fund-prices/template", developerHandler.GetFundPriceCSVTemplate)
 			r.Get("/csv/transactions/template", developerHandler.GetTransactionCSVTemplate)
 			r.Get("/exchange-rate", developerHandler.GetExchangeRate)

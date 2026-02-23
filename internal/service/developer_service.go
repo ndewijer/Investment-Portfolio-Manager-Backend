@@ -53,6 +53,50 @@ func (s *DeveloperService) GetLoggingConfig() (model.LoggingSetting, error) {
 	return s.developerRepo.GetLoggingConfig()
 }
 
+func (s *DeveloperService) SetLoggingConfig(ctx context.Context, req request.SetLoggingConfig) (model.LoggingSetting, error) {
+
+	var logSetting model.LoggingSetting
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return model.LoggingSetting{}, fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }() //nolint:errcheck // Rollback is a no-op after Commit; error is intentionally ignored.
+	time := time.Now().UTC()
+	if req.Enabled != nil {
+		settingEnabled := model.SystemSetting{
+			ID:        uuid.New().String(),
+			Key:       "LOGGING_ENABLED",
+			Value:     req.Enabled,
+			UpdatedAt: &time,
+		}
+
+		if err := s.developerRepo.WithTx(tx).SetLoggingConfig(ctx, settingEnabled); err != nil {
+			return model.LoggingSetting{}, fmt.Errorf("failed to update LOGGING_ENABLED: %w", err)
+		}
+
+		logSetting.Enabled = *req.Enabled
+	}
+	if req.Level != "" {
+		settingLevel := model.SystemSetting{
+			ID:        uuid.New().String(),
+			Key:       "LOGGING_LEVEL",
+			Value:     req.Level,
+			UpdatedAt: &time,
+		}
+		if err := s.developerRepo.WithTx(tx).SetLoggingConfig(ctx, settingLevel); err != nil {
+			return model.LoggingSetting{}, fmt.Errorf("failed to update LOGGING_LEVEL: %w", err)
+		}
+
+		logSetting.Level = req.Level
+	}
+
+	if err = tx.Commit(); err != nil {
+		return model.LoggingSetting{}, fmt.Errorf("commit transaction: %w", err)
+	}
+
+	return logSetting, nil
+}
+
 // GetExchangeRate retrieves the exchange rate for a specific currency pair and date.
 // Returns ErrExchangeRateNotFound if no rate exists for the given parameters.
 func (s *DeveloperService) GetExchangeRate(fromCurrency, toCurrency string, dateTime time.Time) (*model.ExchangeRate, error) {
