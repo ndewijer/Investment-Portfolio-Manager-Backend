@@ -21,6 +21,7 @@ This document explains **why** we made specific implementation choices and **wha
 7. [Configuration Management](#7-configuration-management)
 8. [Error Handling Strategy](#8-error-handling-strategy)
 9. [Hybrid Database Approach](#9-hybrid-database-approach)
+10. [PortfolioFundRepository — Separate Join Table Repository](#10-portfoliofundrepository--separate-join-table-repository)
 
 ---
 
@@ -1438,6 +1439,83 @@ As you continue implementing, ask:
 - **Chi Router:** https://github.com/go-chi/chi
 - **sqlc:** https://docs.sqlc.dev/
 - **Atlas:** https://atlasgo.io/getting-started
+
+---
+
+## 10. PortfolioFundRepository — Separate Join Table Repository
+
+### Context
+
+The `portfolio_fund` table is a join table linking portfolios to funds. Methods for querying it were initially split between `fund_repository.go` (e.g. `GetPortfolioFunds`, `InsertPortfolioFund`, `CheckUsage`) and `portfolio_repository.go` (e.g. `GetPortfolioFundsOnPortfolioID`). This worked early on but caused problems as the codebase grew:
+
+- Service constructors had to accept both `FundRepository` and `PortfolioRepository` even when only portfolio_fund queries were needed.
+- The `DividendService` ended up with a `findPortfolioFund()` helper that fetched **all** portfolio fund listings and looped to find one by ID — purely because there was no single-record lookup function that fit without creating yet another near-duplicate SQL variant.
+- The service layer was directly invoking `fundRepo.GetPortfolioFund()` for what is conceptually a join-table operation, blurring the entity boundary.
+
+### Decision
+
+**Extract all `portfolio_fund` operations into a dedicated `PortfolioFundRepository`** in `internal/repository/portfolio_fund_repository.go`.
+
+Methods consolidated:
+- `GetPortfolioFund(id)` — raw join table row
+- `GetPortfolioFundListing(id)` — single enriched listing (no archive filter — ID lookup must work regardless of archive status)
+- `GetAllPortfolioFundListings()` — all active (non-archived) enriched listings
+- `GetPortfolioFunds(fundID)` — all funds in a portfolio by fund ID
+- `GetPortfolioFundsbyFundID(fundID)` — portfolios using a given fund
+- `GetPortfolioFundsOnPortfolioID(portfolioID)` — portfolio_fund rows for a portfolio
+- `CheckUsage(fundID)` — usage check before deletion
+- `InsertPortfolioFund(req, tx)` — insert
+- `DeletePortfolioFund(id, tx)` — delete
+
+The `findPortfolioFund()` antipattern in `DividendService` was deleted and replaced with a direct call to `pfRepo.GetPortfolioFundListing(id)`.
+
+### Alternatives Considered
+
+#### A. Keep methods in FundRepository and PortfolioRepository
+
+**Pros:**
+- No change required; less churn during active endpoint development.
+
+**Cons:**
+- Ownership is ambiguous — `portfolio_fund` is neither a fund nor a portfolio.
+- Service constructors were already being modified frequently; keeping the split would continue forcing double-repository injection.
+- The `findPortfolioFund` antipattern would need to be replicated into IBKR and developer services as they were built.
+
+#### B. Wait until sqlc migration
+
+**Pros:**
+- sqlc will generate typed query functions anyway; the repository struct is boilerplate that could be skipped.
+
+**Cons:**
+- sqlc migration is planned only after all ~72 endpoints are complete. With ~25% remaining (IBKR + developer), leaving the antipattern in place would let it spread into new code.
+- Constructor churn was already ongoing; deferring would not reduce it.
+
+#### C. Add a PortfolioFundService
+
+**Pros:**
+- Consistent with other domain objects that have both a repo and a service.
+
+**Cons:**
+- `portfolio_fund` has no business logic — it is purely a join table. All validation and orchestration lives in the consuming services. A service layer here would be empty indirection.
+
+### Rationale
+
+A join table that is queried from multiple services, inserted and deleted transactionally, and used in listing endpoints is its own data entity. Grouping its queries in one file makes ownership clear, removes the double-injection from constructors, and enables the single-record `GetPortfolioFundListing` lookup that eliminates the antipattern without creating another SQL variant.
+
+The timing was right because constructor signatures were in flux anyway (recently added `*sql.DB` and `*sql.Tx` for transaction orchestration), so the migration cost was low and the benefit — preventing the antipattern from reaching new IBKR/developer code — was immediate.
+
+### Trade-offs
+
+**Pros:**
+- Clear entity ownership: all `portfolio_fund` SQL lives in one file.
+- Eliminates the `findPortfolioFund` antipattern (fetch-all + loop).
+- Service constructors only inject `pfRepo` instead of both `fundRepo` and `portfolioRepo` where only join-table queries are needed.
+- Blocks the antipattern from spreading into remaining endpoints.
+
+**Cons:**
+- Constructor updates were required across all affected services and test helpers — a one-time migration cost.
+- Adds another file to the repository layer, increasing total file count.
+- Will be partially superseded by sqlc-generated code, but the conceptual separation will remain valid.
 
 ---
 

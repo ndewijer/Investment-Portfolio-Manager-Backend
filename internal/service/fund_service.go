@@ -18,6 +18,7 @@ import (
 type FundService struct {
 	db                      *sql.DB
 	fundRepo                *repository.FundRepository
+	pfRepo                  *repository.PortfolioFundRepository
 	transactionService      *TransactionService
 	dividendService         *DividendService
 	realizedGainLossService *RealizedGainLossService
@@ -30,6 +31,7 @@ type FundService struct {
 func NewFundService(
 	db *sql.DB,
 	fundRepo *repository.FundRepository,
+	pfRepo *repository.PortfolioFundRepository,
 	transactionService *TransactionService,
 	dividendService *DividendService,
 	realizedGainLossService *RealizedGainLossService,
@@ -40,6 +42,7 @@ func NewFundService(
 	return &FundService{
 		db:                      db,
 		fundRepo:                fundRepo,
+		pfRepo:                  pfRepo,
 		transactionService:      transactionService,
 		dividendService:         dividendService,
 		realizedGainLossService: realizedGainLossService,
@@ -71,7 +74,7 @@ func (s *FundService) GetSymbol(symbol string) (*model.Symbol, error) {
 // Returns a listing of funds across all portfolios (non-archived) with portfolio and fund names.
 // Used for the GET /api/portfolio/funds endpoint.
 func (s *FundService) GetAllPortfolioFundListings() ([]model.PortfolioFundListing, error) {
-	return s.fundRepo.GetAllPortfolioFundListings()
+	return s.pfRepo.GetAllPortfolioFundListings()
 }
 
 // GetPortfolioFunds retrieves detailed fund metrics for all funds in a portfolio.
@@ -148,7 +151,7 @@ func (s *FundService) LoadFundPrices(fundIDs []string, startDate, endDate time.T
 //
 // Use case: Call before deletion to prevent losing historical data.
 func (s *FundService) CheckUsage(fundID string) (model.FundUsage, error) {
-	checkUsage, err := s.fundRepo.CheckUsage(fundID)
+	checkUsage, err := s.pfRepo.CheckUsage(fundID)
 	if err != nil {
 		return model.FundUsage{}, err
 	}
@@ -186,7 +189,7 @@ func (s *FundService) CreatePortfolioFund(ctx context.Context, req request.Creat
 		return err
 	}
 
-	if err := s.fundRepo.WithTx(tx).InsertPortfolioFund(ctx, req.PortfolioID, req.FundID); err != nil {
+	if err := s.pfRepo.WithTx(tx).InsertPortfolioFund(ctx, req.PortfolioID, req.FundID); err != nil {
 		return fmt.Errorf("failed to create portfolio_fund: %w", err)
 	}
 
@@ -207,12 +210,12 @@ func (s *FundService) DeletePortfolioFund(ctx context.Context, pfID string) erro
 	}
 	defer func() { _ = tx.Rollback() }() //nolint:errcheck // Rollback is a no-op after Commit; error is intentionally ignored.
 
-	_, err = s.fundRepo.WithTx(tx).GetPortfolioFund(pfID)
+	_, err = s.pfRepo.WithTx(tx).GetPortfolioFund(pfID)
 	if err != nil {
 		return err
 	}
 
-	err = s.fundRepo.WithTx(tx).DeletePortfolioFund(ctx, pfID)
+	err = s.pfRepo.WithTx(tx).DeletePortfolioFund(ctx, pfID)
 	if err != nil {
 		return err
 	}
@@ -340,7 +343,7 @@ func (s *FundService) DeleteFund(ctx context.Context, id string) error {
 		return err
 	}
 
-	usage, err := s.fundRepo.WithTx(tx).CheckUsage(id)
+	usage, err := s.pfRepo.WithTx(tx).CheckUsage(id)
 	if err != nil {
 		return fmt.Errorf("failed to check fund usage: %w", err)
 	}
@@ -549,7 +552,7 @@ func (s *FundService) UpdateHistoricalFundPrice(ctx context.Context, fundID stri
 		return 0, apperrors.ErrInvalidSymbol
 	}
 
-	portfolioFunds, err := s.fundRepo.GetPortfolioFundsbyFundID(fundID)
+	portfolioFunds, err := s.pfRepo.GetPortfolioFundsbyFundID(fundID)
 	if err != nil {
 		return 0, err
 	}

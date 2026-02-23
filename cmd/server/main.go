@@ -95,6 +95,7 @@ func createRepoAndServices(db *sql.DB) (
 	portfolioRepo := repository.NewPortfolioRepository(db)
 	transactionRepo := repository.NewTransactionRepository(db)
 	fundRepo := repository.NewFundRepository(db)
+	pfRepo := repository.NewPortfolioFundRepository(db)
 	dividendRepo := repository.NewDividendRepository(db)
 	realizedGainLossRepo := repository.NewRealizedGainLossRepository(db)
 	materializedRepo := repository.NewMaterializedRepository(db)
@@ -118,20 +119,21 @@ func createRepoAndServices(db *sql.DB) (
 	transactionService := service.NewTransactionService(
 		db,
 		transactionRepo,
-		fundRepo,
+		pfRepo,
 	)
 	dividendService := service.NewDividendService(
 		db,
 		dividendRepo,
-		fundRepo,
+		pfRepo,
 		transactionRepo,
 	)
 	portfolioService := service.NewPortfolioService(
 		db,
 		portfolioRepo,
+		pfRepo,
 	)
 	dataloaderService := service.NewDataLoaderService(
-		portfolioRepo,
+		pfRepo,
 		fundRepo,
 		transactionService,
 		dividendService,
@@ -140,6 +142,7 @@ func createRepoAndServices(db *sql.DB) (
 	fundService := service.NewFundService(
 		db,
 		fundRepo,
+		pfRepo,
 		transactionService,
 		dividendService,
 		realizedGainLossService,

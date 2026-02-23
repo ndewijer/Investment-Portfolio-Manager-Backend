@@ -192,6 +192,7 @@ Investment-Portfolio-Manager-Backend/
 │   ├── service/                      # Business logic layer
 │   │   ├── system_service.go
 │   │   ├── portfolio_service.go
+│   │   ├── portfolio_data_loader.go
 │   │   ├── fund_service.go
 │   │   ├── transaction_service.go
 │   │   ├── dividend_service.go
