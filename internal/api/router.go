@@ -172,6 +172,8 @@ func NewRouter(
 			r.Post("/exchange-rate", developerHandler.UpdateExchangeRate)
 			r.Get("/fund-price", developerHandler.GetFundPrice)
 			r.Post("/fund-price", developerHandler.UpdateFundPrice)
+			r.Post("/import-fund-prices", developerHandler.ImportFundPrices)
+			r.Post("/import-transactions", developerHandler.ImportTransactions)
 		})
 	})
 

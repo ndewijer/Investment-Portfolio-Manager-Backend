@@ -2,8 +2,10 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/request"
@@ -343,4 +345,121 @@ func getClientIP(r *http.Request) any {
 		return nil
 	}
 	return ip
+}
+
+// ImportFundPrices handles POST requests to import fund prices from a CSV file.
+// Accepts multipart form data with fields: file (CSV), fundId (string).
+// Validates the fund exists, the file content-type/extension, and CSV structure before importing.
+//
+// Endpoint: POST /api/developer/import-fund-prices
+// Response: 200 OK with count of imported rows
+// Error: 400 Bad Request for invalid input or CSV format issues
+// Error: 500 Internal Server Error if import fails
+func (h *DeveloperHandler) ImportFundPrices(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseMultipartForm(10 << 20); err != nil { // 10 MB limit
+		response.RespondError(w, http.StatusBadRequest, "failed to parse form", err.Error())
+		return
+	}
+
+	fundID := strings.TrimSpace(r.FormValue("fundId"))
+	if fundID == "" {
+		response.RespondError(w, http.StatusBadRequest, "fundId is required", "")
+		return
+	}
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		response.RespondError(w, http.StatusBadRequest, "file is required", err.Error())
+		return
+	}
+	defer file.Close()
+
+	if err := validateCSVFile(header.Filename, header.Header.Get("Content-Type")); err != nil {
+		response.RespondError(w, http.StatusBadRequest, "invalid file", err.Error())
+		return
+	}
+
+	content := make([]byte, header.Size)
+	if _, err := file.Read(content); err != nil {
+		response.RespondError(w, http.StatusBadRequest, "failed to read file", err.Error())
+		return
+	}
+
+	count, err := h.DeveloperService.ImportFundPrices(r.Context(), fundID, content)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrFundNotFound) {
+			response.RespondError(w, http.StatusBadRequest, "fund not found", err.Error())
+			return
+		}
+		response.RespondError(w, http.StatusInternalServerError, "failed to import fund prices", err.Error())
+		return
+	}
+
+	response.RespondJSON(w, http.StatusOK, map[string]int{"imported": count})
+}
+
+// ImportTransactions handles POST requests to import transactions from a CSV file.
+// Accepts multipart form data with fields: file (CSV), fundId (portfolio-fund relationship ID).
+// Validates the portfolio-fund exists, the file content-type/extension, and CSV structure before importing.
+//
+// Endpoint: POST /api/developer/import-transactions
+// Response: 200 OK with count of imported rows
+// Error: 400 Bad Request for invalid input or CSV format issues
+// Error: 500 Internal Server Error if import fails
+func (h *DeveloperHandler) ImportTransactions(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseMultipartForm(10 << 20); err != nil { // 10 MB limit
+		response.RespondError(w, http.StatusBadRequest, "failed to parse form", err.Error())
+		return
+	}
+
+	portfolioFundID := strings.TrimSpace(r.FormValue("fundId"))
+	if portfolioFundID == "" {
+		response.RespondError(w, http.StatusBadRequest, "fundId is required", "")
+		return
+	}
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		response.RespondError(w, http.StatusBadRequest, "file is required", err.Error())
+		return
+	}
+	defer file.Close()
+
+	if err := validateCSVFile(header.Filename, header.Header.Get("Content-Type")); err != nil {
+		response.RespondError(w, http.StatusBadRequest, "invalid file", err.Error())
+		return
+	}
+
+	content := make([]byte, header.Size)
+	if _, err := file.Read(content); err != nil {
+		response.RespondError(w, http.StatusBadRequest, "failed to read file", err.Error())
+		return
+	}
+
+	count, err := h.DeveloperService.ImportTransactions(r.Context(), portfolioFundID, content)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrPortfolioFundNotFound) {
+			response.RespondError(w, http.StatusBadRequest, "portfolio-fund not found", err.Error())
+			return
+		}
+		response.RespondError(w, http.StatusInternalServerError, "failed to import transactions", err.Error())
+		return
+	}
+
+	response.RespondJSON(w, http.StatusOK, map[string]int{"imported": count})
+}
+
+// validateCSVFile checks that the uploaded file has a .csv extension and an acceptable Content-Type.
+func validateCSVFile(filename, contentType string) error {
+	if !strings.HasSuffix(strings.ToLower(filename), ".csv") {
+		return fmt.Errorf("file must have a .csv extension, got %q", filename)
+	}
+	ct := strings.ToLower(contentType)
+	allowed := []string{"text/csv", "text/plain", "application/csv", "application/vnd.ms-excel", "application/octet-stream"}
+	for _, a := range allowed {
+		if strings.Contains(ct, a) {
+			return nil
+		}
+	}
+	return fmt.Errorf("unexpected content-type %q; expected a CSV file", contentType)
 }

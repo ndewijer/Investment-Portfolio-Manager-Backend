@@ -1,8 +1,10 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"encoding/csv"
 	"fmt"
 	"strconv"
 	"strings"
@@ -17,9 +19,11 @@ import (
 
 // DeveloperService handles Developer-related business logic operations.
 type DeveloperService struct {
-	db            *sql.DB
-	developerRepo *repository.DeveloperRepository
-	fundRepo      *repository.FundRepository
+	db              *sql.DB
+	developerRepo   *repository.DeveloperRepository
+	fundRepo        *repository.FundRepository
+	transactionRepo *repository.TransactionRepository
+	pfRepo          *repository.PortfolioFundRepository
 }
 
 // NewDeveloperService creates a new DeveloperService with the provided repository dependencies.
@@ -27,11 +31,15 @@ func NewDeveloperService(
 	db *sql.DB,
 	developerRepo *repository.DeveloperRepository,
 	fundRepo *repository.FundRepository,
+	transactionRepo *repository.TransactionRepository,
+	pfRepo *repository.PortfolioFundRepository,
 ) *DeveloperService {
 	return &DeveloperService{
-		db:            db,
-		developerRepo: developerRepo,
-		fundRepo:      fundRepo,
+		db:              db,
+		developerRepo:   developerRepo,
+		fundRepo:        fundRepo,
+		transactionRepo: transactionRepo,
+		pfRepo:          pfRepo,
 	}
 }
 
@@ -232,5 +240,192 @@ func (s *DeveloperService) DeleteLogs(ctx context.Context, ipAddress any, userAg
 		return fmt.Errorf("commit transaction: %w", err)
 	}
 
+	return nil
+}
+
+// ImportFundPrices parses a CSV file and upserts fund prices for the given fund.
+// Validates that the fund exists, the file is valid CSV with required headers,
+// and each row has a parseable date and positive price.
+func (s *DeveloperService) ImportFundPrices(ctx context.Context, fundID string, content []byte) (int, error) {
+	// Validate fund exists
+	if _, err := s.fundRepo.GetFund(fundID); err != nil {
+		return 0, apperrors.ErrFundNotFound
+	}
+
+	headers, rows, err := parseCSV(content)
+	if err != nil {
+		return 0, err
+	}
+	if err := validateCSVHeaders(headers, []string{"date", "price"}); err != nil {
+		return 0, err
+	}
+
+	// Build column index map
+	colIdx := make(map[string]int, len(headers))
+	for i, h := range headers {
+		colIdx[h] = i
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }() //nolint:errcheck
+
+	count := 0
+	for i, row := range rows {
+		rowNum := i + 2 // 1-indexed, row 1 is headers
+
+		date, err := time.Parse("2006-01-02", strings.TrimSpace(row[colIdx["date"]]))
+		if err != nil {
+			return 0, fmt.Errorf("row %d: invalid date %q: %w", rowNum, row[colIdx["date"]], err)
+		}
+
+		price, err := strconv.ParseFloat(strings.TrimSpace(row[colIdx["price"]]), 64)
+		if err != nil || price <= 0 {
+			return 0, fmt.Errorf("row %d: price must be a positive number, got %q", rowNum, row[colIdx["price"]])
+		}
+
+		fp := model.FundPrice{
+			ID:     uuid.NewString(),
+			FundID: fundID,
+			Date:   date,
+			Price:  price,
+		}
+		if err := s.fundRepo.WithTx(tx).UpdateFundPrice(ctx, fp); err != nil {
+			return 0, fmt.Errorf("row %d: failed to upsert fund price: %w", rowNum, err)
+		}
+		count++
+	}
+
+	if count == 0 {
+		return 0, fmt.Errorf("no data rows found in CSV")
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("commit transaction: %w", err)
+	}
+
+	return count, nil
+}
+
+// ImportTransactions parses a CSV file and inserts transactions for the given portfolio-fund.
+// Validates that the portfolio-fund relationship exists, the file is valid CSV with required
+// headers, and each row has valid values.
+func (s *DeveloperService) ImportTransactions(ctx context.Context, portfolioFundID string, content []byte) (int, error) {
+	// Validate portfolio-fund exists
+	if _, err := s.pfRepo.GetPortfolioFund(portfolioFundID); err != nil {
+		return 0, apperrors.ErrPortfolioFundNotFound
+	}
+
+	headers, rows, err := parseCSV(content)
+	if err != nil {
+		return 0, err
+	}
+	if err := validateCSVHeaders(headers, []string{"date", "type", "shares", "cost_per_share"}); err != nil {
+		return 0, err
+	}
+
+	colIdx := make(map[string]int, len(headers))
+	for i, h := range headers {
+		colIdx[h] = i
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }() //nolint:errcheck
+
+	count := 0
+	for i, row := range rows {
+		rowNum := i + 2
+
+		date, err := time.Parse("2006-01-02", strings.TrimSpace(row[colIdx["date"]]))
+		if err != nil {
+			return 0, fmt.Errorf("row %d: invalid date %q: %w", rowNum, row[colIdx["date"]], err)
+		}
+
+		txType := strings.TrimSpace(strings.ToLower(row[colIdx["type"]]))
+		if txType == "" {
+			return 0, fmt.Errorf("row %d: type is required", rowNum)
+		}
+
+		shares, err := strconv.ParseFloat(strings.TrimSpace(row[colIdx["shares"]]), 64)
+		if err != nil || shares <= 0 {
+			return 0, fmt.Errorf("row %d: shares must be a positive number, got %q", rowNum, row[colIdx["shares"]])
+		}
+
+		costPerShare, err := strconv.ParseFloat(strings.TrimSpace(row[colIdx["cost_per_share"]]), 64)
+		if err != nil || costPerShare < 0 {
+			return 0, fmt.Errorf("row %d: cost_per_share must be a non-negative number, got %q", rowNum, row[colIdx["cost_per_share"]])
+		}
+
+		t := &model.Transaction{
+			ID:              uuid.NewString(),
+			PortfolioFundID: portfolioFundID,
+			Date:            date,
+			Type:            txType,
+			Shares:          shares,
+			CostPerShare:    costPerShare,
+			CreatedAt:       time.Now().UTC(),
+		}
+		if err := s.transactionRepo.WithTx(tx).InsertTransaction(ctx, t); err != nil {
+			return 0, fmt.Errorf("row %d: failed to insert transaction: %w", rowNum, err)
+		}
+		count++
+	}
+
+	if count == 0 {
+		return 0, fmt.Errorf("no data rows found in CSV")
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("commit transaction: %w", err)
+	}
+
+	return count, nil
+}
+
+// parseCSV strips a UTF-8 BOM if present and returns parsed CSV records.
+// The first returned slice is the header row; the rest are data rows.
+func parseCSV(content []byte) ([]string, [][]string, error) {
+	// Strip UTF-8 BOM (EF BB BF) to avoid header corruption
+	content = bytes.TrimPrefix(content, []byte{0xEF, 0xBB, 0xBF})
+
+	r := csv.NewReader(bytes.NewReader(content))
+	r.TrimLeadingSpace = true
+
+	records, err := r.ReadAll()
+	if err != nil {
+		return nil, nil, fmt.Errorf("invalid CSV format: %w", err)
+	}
+	if len(records) == 0 {
+		return nil, nil, fmt.Errorf("CSV file is empty")
+	}
+
+	headers := make([]string, len(records[0]))
+	for i, h := range records[0] {
+		headers[i] = strings.TrimSpace(strings.ToLower(h))
+	}
+
+	return headers, records[1:], nil
+}
+
+// validateCSVHeaders checks that all required headers are present.
+func validateCSVHeaders(headers []string, required []string) error {
+	headerSet := make(map[string]bool, len(headers))
+	for _, h := range headers {
+		headerSet[h] = true
+	}
+	var missing []string
+	for _, r := range required {
+		if !headerSet[r] {
+			missing = append(missing, r)
+		}
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("missing required CSV columns: %s", strings.Join(missing, ", "))
+	}
 	return nil
 }
