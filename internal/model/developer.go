@@ -52,6 +52,21 @@ var ValidLogCategories = map[LogCategory]bool{
 	LogCategoryDeveloper:   true,
 }
 
+// LogFilters represents parsed and validated parameters for querying system logs.
+// All fields are optional and can be combined. Populated by the HTTP layer and
+// consumed directly by the repository — no API-layer dependency required.
+type LogFilters struct {
+	Levels     []string   // Log levels to filter by (debug, info, warning, error, critical)
+	Categories []string   // Categories to filter by (portfolio, fund, transaction, etc.)
+	StartDate  *time.Time // Filter logs from this timestamp onwards (inclusive)
+	EndDate    *time.Time // Filter logs up to this timestamp (inclusive)
+	Source     string     // Filter by source field using partial match
+	Message    string     // Filter by message content using partial match
+	SortDir    string     // Sort direction: "asc" or "desc" (default: "desc")
+	Cursor     string     // Pagination cursor from previous response (format: "timestamp_id")
+	PerPage    int        // Number of results per page (1-100, default: 50)
+}
+
 // LogResponse represents a paginated response containing log entries.
 // Includes cursor-based pagination information for retrieving subsequent pages.
 type LogResponse struct {

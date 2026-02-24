@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/request"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/apperrors"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 )
@@ -62,7 +61,7 @@ func (r *DeveloperRepository) getQuerier() interface {
 // Returns one extra record beyond perPage to determine if more results exist.
 //
 //nolint:gocyclo,funlen // Complex filtering logic with dynamic WHERE clause requires length
-func (r *DeveloperRepository) GetLogs(filters *request.LogFilters) (*model.LogResponse, error) {
+func (r *DeveloperRepository) GetLogs(filters *model.LogFilters) (*model.LogResponse, error) {
 	// Build dynamic WHERE clause
 	var whereClauses []string
 	var args []any

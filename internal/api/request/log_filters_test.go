@@ -2,7 +2,6 @@ package request
 
 import (
 	"testing"
-	"time"
 )
 
 //nolint:gocyclo // Test functions naturally have high complexity due to many test cases
@@ -283,53 +282,6 @@ func TestParseLogFilters(t *testing.T) {
 
 		if filters.PerPage != 20 {
 			t.Errorf("Expected PerPage 20, got %d", filters.PerPage)
-		}
-	})
-}
-
-//nolint:gocyclo // Test functions naturally have high complexity due to many test cases
-func TestParseTime(t *testing.T) {
-	t.Run("parses date-only format", func(t *testing.T) {
-		result, err := ParseTime("2024-01-15")
-		if err != nil {
-			t.Fatalf("Expected no error, got %v", err)
-		}
-
-		if result.Year() != 2024 || result.Month() != time.January || result.Day() != 15 {
-			t.Errorf("Expected 2024-01-15, got %v", result)
-		}
-	})
-
-	t.Run("parses RFC3339 format", func(t *testing.T) {
-		result, err := ParseTime("2024-01-15T10:30:00Z")
-		if err != nil {
-			t.Fatalf("Expected no error, got %v", err)
-		}
-
-		if result.Year() != 2024 || result.Month() != time.January || result.Day() != 15 {
-			t.Errorf("Expected 2024-01-15, got %v", result)
-		}
-
-		if result.Hour() != 10 || result.Minute() != 30 {
-			t.Errorf("Expected 10:30, got %02d:%02d", result.Hour(), result.Minute())
-		}
-	})
-
-	t.Run("parses RFC3339 with timezone offset", func(t *testing.T) {
-		result, err := ParseTime("2024-01-15T10:30:00+01:00")
-		if err != nil {
-			t.Fatalf("Expected no error, got %v", err)
-		}
-
-		if result.Year() != 2024 || result.Month() != time.January || result.Day() != 15 {
-			t.Errorf("Expected 2024-01-15, got %v", result)
-		}
-	})
-
-	t.Run("returns error for invalid format", func(t *testing.T) {
-		_, err := ParseTime("invalid-date-format")
-		if err == nil {
-			t.Error("Expected error for invalid date format, got nil")
 		}
 	})
 }

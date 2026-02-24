@@ -46,7 +46,7 @@ func NewDeveloperService(
 // GetLogs retrieves system logs with the specified filters and pagination.
 // Returns a paginated response with cursor for fetching subsequent pages.
 // The context parameter is currently unused but reserved for future cancellation support.
-func (s *DeveloperService) GetLogs(_ context.Context, filters *request.LogFilters) (*model.LogResponse, error) {
+func (s *DeveloperService) GetLogs(_ context.Context, filters *model.LogFilters) (*model.LogResponse, error) {
 	// Add any business logic validation here if needed
 
 	// Pass filters to repository
