@@ -21,6 +21,7 @@ func NewPortfolioRepository(db *sql.DB) *PortfolioRepository {
 	return &PortfolioRepository{db: db}
 }
 
+// WithTx returns a new DeveloperRepository scoped to the provided transaction.
 func (r *PortfolioRepository) WithTx(tx *sql.Tx) *PortfolioRepository {
 	return &PortfolioRepository{
 		db: r.db,
@@ -28,6 +29,7 @@ func (r *PortfolioRepository) WithTx(tx *sql.Tx) *PortfolioRepository {
 	}
 }
 
+// getQuerier returns the active transaction if one is set, otherwise the database connection.
 func (r *PortfolioRepository) getQuerier() interface {
 	Query(query string, args ...any) (*sql.Rows, error)
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)

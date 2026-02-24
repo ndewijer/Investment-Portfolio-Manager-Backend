@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 )
 
 // LogFilters represents parsed and validated log filter parameters for querying system logs.
@@ -19,17 +21,6 @@ type LogFilters struct {
 	SortDir    string     // Sort direction: "asc" or "desc" (default: "desc")
 	Cursor     string     // Pagination cursor from previous response (format: "timestamp_id")
 	PerPage    int        // Number of results per page (1-100, default: 50)
-}
-
-// ValidLogLevels are the accepted log level values
-var ValidLogLevels = map[string]bool{
-	"debug": true, "info": true, "warning": true, "error": true, "critical": true,
-}
-
-// ValidCategories are the accepted category values
-var ValidCategories = map[string]bool{
-	"portfolio": true, "fund": true, "transaction": true, "dividend": true,
-	"system": true, "database": true, "security": true, "ibkr": true, "developer": true,
 }
 
 // ParseLogFilters extracts and validates log filters from query parameters.
@@ -63,7 +54,7 @@ func ParseLogFilters(
 		levels := strings.Split(levelsParam, ",")
 		for _, level := range levels {
 			level = strings.TrimSpace(strings.ToLower(level))
-			if !ValidLogLevels[level] {
+			if !model.ValidLogLevels[model.LogLevel(level)] {
 				return nil, fmt.Errorf("invalid log level: %s", level)
 			}
 			filters.Levels = append(filters.Levels, level)
@@ -75,7 +66,7 @@ func ParseLogFilters(
 		categories := strings.Split(categoriesParam, ",")
 		for _, category := range categories {
 			category = strings.TrimSpace(strings.ToLower(category))
-			if !ValidCategories[category] {
+			if !model.ValidLogCategories[model.LogCategory(category)] {
 				return nil, fmt.Errorf("invalid category: %s", category)
 			}
 			filters.Categories = append(filters.Categories, category)

@@ -23,6 +23,7 @@ func NewIbkrRepository(db *sql.DB) *IbkrRepository {
 	return &IbkrRepository{db: db}
 }
 
+// WithTx returns a new DeveloperRepository scoped to the provided transaction.
 func (r *IbkrRepository) WithTx(tx *sql.Tx) *IbkrRepository {
 	return &IbkrRepository{
 		db: r.db,
@@ -30,6 +31,7 @@ func (r *IbkrRepository) WithTx(tx *sql.Tx) *IbkrRepository {
 	}
 }
 
+// getQuerier returns the active transaction if one is set, otherwise the database connection.
 func (r *IbkrRepository) getQuerier() interface {
 	Query(query string, args ...any) (*sql.Rows, error)
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)

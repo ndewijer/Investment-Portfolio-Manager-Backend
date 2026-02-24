@@ -25,6 +25,7 @@ func NewDeveloperRepository(db *sql.DB) *DeveloperRepository {
 	return &DeveloperRepository{db: db}
 }
 
+// WithTx returns a new DeveloperRepository scoped to the provided transaction.
 func (r *DeveloperRepository) WithTx(tx *sql.Tx) *DeveloperRepository {
 	return &DeveloperRepository{
 		db: r.db,
@@ -32,6 +33,7 @@ func (r *DeveloperRepository) WithTx(tx *sql.Tx) *DeveloperRepository {
 	}
 }
 
+// getQuerier returns the active transaction if one is set, otherwise the database connection.
 func (r *DeveloperRepository) getQuerier() interface {
 	Query(query string, args ...any) (*sql.Rows, error)
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
@@ -335,6 +337,8 @@ func (r *DeveloperRepository) GetExchangeRate(fromCurrency, toCurrency string, d
 	return &rate, nil
 }
 
+// UpdateExchangeRate upserts an exchange rate record.
+// On conflict (same from_currency, to_currency, date), updates the rate and created_at fields.
 func (r *DeveloperRepository) UpdateExchangeRate(ctx context.Context, exRate model.ExchangeRate) error {
 
 	query := `
@@ -363,6 +367,7 @@ func (r *DeveloperRepository) UpdateExchangeRate(ctx context.Context, exRate mod
 	return nil
 }
 
+// AddLog inserts a single log entry into the log table.
 func (r *DeveloperRepository) AddLog(ctx context.Context, log model.Log) error {
 
 	query := `
@@ -392,6 +397,7 @@ func (r *DeveloperRepository) AddLog(ctx context.Context, log model.Log) error {
 	return nil
 }
 
+// DeleteLogs removes all entries from the log table.
 func (r *DeveloperRepository) DeleteLogs(ctx context.Context) error {
 	query := `DELETE FROM log`
 

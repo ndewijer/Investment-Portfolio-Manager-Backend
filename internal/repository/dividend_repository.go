@@ -18,6 +18,12 @@ type DividendRepository struct {
 	tx *sql.Tx
 }
 
+// NewDividendRepository creates a new DividendRepository with the provided database connection.
+func NewDividendRepository(db *sql.DB) *DividendRepository {
+	return &DividendRepository{db: db}
+}
+
+// WithTx returns a new DeveloperRepository scoped to the provided transaction.
 func (r *DividendRepository) WithTx(tx *sql.Tx) *DividendRepository {
 	return &DividendRepository{
 		db: r.db,
@@ -25,6 +31,7 @@ func (r *DividendRepository) WithTx(tx *sql.Tx) *DividendRepository {
 	}
 }
 
+// getQuerier returns the active transaction if one is set, otherwise the database connection.
 func (r *DividendRepository) getQuerier() interface {
 	Query(query string, args ...any) (*sql.Rows, error)
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
@@ -38,11 +45,6 @@ func (r *DividendRepository) getQuerier() interface {
 		return r.tx
 	}
 	return r.db
-}
-
-// NewDividendRepository creates a new DividendRepository with the provided database connection.
-func NewDividendRepository(db *sql.DB) *DividendRepository {
-	return &DividendRepository{db: db}
 }
 
 // GetDividend retrieves all dividends.

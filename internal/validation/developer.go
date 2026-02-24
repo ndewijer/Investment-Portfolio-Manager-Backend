@@ -7,12 +7,15 @@ import (
 	"time"
 
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/request"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 )
 
-var ValidLogLevels = map[string]bool{
-	"debug": true, "info": true, "warning": true, "error": true, "critical": true,
-}
+// ValidLogLevels is an alias for model.ValidLogLevels for use within validation functions.
+// The authoritative definition lives in model.ValidLogLevels.
+var ValidLogLevels = model.ValidLogLevels
 
+// ValidateUpdateExchangeRate validates a SetExchangeRateRequest.
+// Returns a validation Error if date, fromCurrency, toCurrency, or rate is missing or invalid.
 func ValidateUpdateExchangeRate(req request.SetExchangeRateRequest) error {
 	errors := make(map[string]string)
 
@@ -47,6 +50,8 @@ func ValidateUpdateExchangeRate(req request.SetExchangeRateRequest) error {
 
 }
 
+// ValidateUpdateFundPrice validates a SetFundPriceRequest.
+// Returns a validation Error if date, fundID, or price is missing or not a valid positive number.
 func ValidateUpdateFundPrice(req request.SetFundPriceRequest) error {
 	errors := make(map[string]string)
 
@@ -77,6 +82,8 @@ func ValidateUpdateFundPrice(req request.SetFundPriceRequest) error {
 
 }
 
+// ValidateLoggingConfig validates a SetLoggingConfig request.
+// Returns a validation Error if enabled is nil or level is empty/not in ValidLogLevels.
 func ValidateLoggingConfig(req request.SetLoggingConfig) error {
 	errors := make(map[string]string)
 
@@ -86,7 +93,7 @@ func ValidateLoggingConfig(req request.SetLoggingConfig) error {
 
 	if strings.TrimSpace(req.Level) == "" {
 		errors["level"] = "level is required"
-	} else if !ValidLogLevels[req.Level] {
+	} else if !ValidLogLevels[model.LogLevel(req.Level)] {
 		errors["level"] = fmt.Sprintf("invalid level: %s", req.Level)
 	}
 

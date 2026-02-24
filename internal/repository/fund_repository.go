@@ -23,6 +23,7 @@ func NewFundRepository(db *sql.DB) *FundRepository {
 	return &FundRepository{db: db}
 }
 
+// WithTx returns a new DeveloperRepository scoped to the provided transaction.
 func (r *FundRepository) WithTx(tx *sql.Tx) *FundRepository {
 	return &FundRepository{
 		db: r.db,
@@ -30,6 +31,7 @@ func (r *FundRepository) WithTx(tx *sql.Tx) *FundRepository {
 	}
 }
 
+// getQuerier returns the active transaction if one is set, otherwise the database connection.
 func (r *FundRepository) getQuerier() interface {
 	Query(query string, args ...any) (*sql.Rows, error)
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
@@ -587,6 +589,8 @@ func (r *FundRepository) InsertFundPrices(ctx context.Context, fundPrices []mode
 	return nil
 }
 
+// UpdateFundPrice upserts a fund price record.
+// On conflict (same fund_id, date), updates the price field.
 func (r *FundRepository) UpdateFundPrice(ctx context.Context, fp model.FundPrice) error {
 
 	query := `

@@ -61,6 +61,9 @@ func (s *DeveloperService) GetLoggingConfig() (model.LoggingSetting, error) {
 	return s.developerRepo.GetLoggingConfig()
 }
 
+// SetLoggingConfig updates the logging configuration in system settings.
+// Upserts LOGGING_ENABLED and LOGGING_LEVEL settings within a single transaction.
+// Only updates fields that are present in the request.
 func (s *DeveloperService) SetLoggingConfig(ctx context.Context, req request.SetLoggingConfig) (model.LoggingSetting, error) {
 
 	var logSetting model.LoggingSetting
@@ -112,6 +115,8 @@ func (s *DeveloperService) GetExchangeRate(fromCurrency, toCurrency string, date
 	return s.developerRepo.GetExchangeRate(fromCurrency, toCurrency, dateTime)
 }
 
+// UpdateExchangeRate creates or updates an exchange rate for a given currency pair and date.
+// Parses the rate from the request string and upserts the record within a transaction.
 func (s *DeveloperService) UpdateExchangeRate(
 	ctx context.Context,
 	req request.SetExchangeRateRequest,
@@ -170,6 +175,8 @@ func (s *DeveloperService) GetFundPrice(fundID string, dateTime time.Time) (mode
 	return fundPrices[fundID][0], nil
 }
 
+// UpdateFundPrice creates or updates a fund price for a given fund and date.
+// Parses the price from the request string and upserts the record within a transaction.
 func (s *DeveloperService) UpdateFundPrice(
 	ctx context.Context,
 	req request.SetFundPriceRequest,
@@ -208,6 +215,8 @@ func (s *DeveloperService) UpdateFundPrice(
 	return fp, nil
 }
 
+// DeleteLogs clears all log entries and records a single "logs cleared" audit entry.
+// Both the deletion and the new audit log are performed within a single transaction.
 func (s *DeveloperService) DeleteLogs(ctx context.Context, ipAddress any, userAgent string) error {
 
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -309,6 +318,48 @@ func (s *DeveloperService) ImportFundPrices(ctx context.Context, fundID string, 
 	return count, nil
 }
 
+// transactionRow holds validated fields parsed from a single CSV transaction row.
+type transactionRow struct {
+	date         time.Time
+	txType       string
+	shares       float64
+	costPerShare float64
+}
+
+// validateTransactionRow parses and validates a single CSV data row for transaction imports.
+// Returns a transactionRow with the parsed values, or an error describing the invalid field.
+func validateTransactionRow(row []string, colIdx map[string]int, rowNum int) (transactionRow, error) {
+	date, err := time.Parse("2006-01-02", strings.TrimSpace(row[colIdx["date"]]))
+	if err != nil {
+		return transactionRow{}, fmt.Errorf("row %d: invalid date %q: %w", rowNum, row[colIdx["date"]], err)
+	}
+
+	txType := strings.TrimSpace(strings.ToLower(row[colIdx["type"]]))
+	if txType == "" {
+		return transactionRow{}, fmt.Errorf("row %d: type is required", rowNum)
+	}
+	if !model.ValidTransactionTypes[model.TransactionType(txType)] {
+		return transactionRow{}, fmt.Errorf("row %d: type must be one of buy, sell, dividend, fee; got %q", rowNum, txType)
+	}
+
+	shares, err := strconv.ParseFloat(strings.TrimSpace(row[colIdx["shares"]]), 64)
+	if err != nil || shares <= 0 {
+		return transactionRow{}, fmt.Errorf("row %d: shares must be a positive number, got %q", rowNum, row[colIdx["shares"]])
+	}
+
+	costPerShare, err := strconv.ParseFloat(strings.TrimSpace(row[colIdx["cost_per_share"]]), 64)
+	if err != nil || costPerShare < 0 {
+		return transactionRow{}, fmt.Errorf("row %d: cost_per_share must be a non-negative number, got %q", rowNum, row[colIdx["cost_per_share"]])
+	}
+
+	return transactionRow{
+		date:         date,
+		txType:       txType,
+		shares:       shares,
+		costPerShare: costPerShare,
+	}, nil
+}
+
 // ImportTransactions parses a CSV file and inserts transactions for the given portfolio-fund.
 // Validates that the portfolio-fund relationship exists, the file is valid CSV with required
 // headers, and each row has valid values.
@@ -341,33 +392,18 @@ func (s *DeveloperService) ImportTransactions(ctx context.Context, portfolioFund
 	for i, row := range rows {
 		rowNum := i + 2
 
-		date, err := time.Parse("2006-01-02", strings.TrimSpace(row[colIdx["date"]]))
+		parsed, err := validateTransactionRow(row, colIdx, rowNum)
 		if err != nil {
-			return 0, fmt.Errorf("row %d: invalid date %q: %w", rowNum, row[colIdx["date"]], err)
-		}
-
-		txType := strings.TrimSpace(strings.ToLower(row[colIdx["type"]]))
-		if txType == "" {
-			return 0, fmt.Errorf("row %d: type is required", rowNum)
-		}
-
-		shares, err := strconv.ParseFloat(strings.TrimSpace(row[colIdx["shares"]]), 64)
-		if err != nil || shares <= 0 {
-			return 0, fmt.Errorf("row %d: shares must be a positive number, got %q", rowNum, row[colIdx["shares"]])
-		}
-
-		costPerShare, err := strconv.ParseFloat(strings.TrimSpace(row[colIdx["cost_per_share"]]), 64)
-		if err != nil || costPerShare < 0 {
-			return 0, fmt.Errorf("row %d: cost_per_share must be a non-negative number, got %q", rowNum, row[colIdx["cost_per_share"]])
+			return 0, err
 		}
 
 		t := &model.Transaction{
 			ID:              uuid.NewString(),
 			PortfolioFundID: portfolioFundID,
-			Date:            date,
-			Type:            txType,
-			Shares:          shares,
-			CostPerShare:    costPerShare,
+			Date:            parsed.date,
+			Type:            parsed.txType,
+			Shares:          parsed.shares,
+			CostPerShare:    parsed.costPerShare,
 			CreatedAt:       time.Now().UTC(),
 		}
 		if err := s.transactionRepo.WithTx(tx).InsertTransaction(ctx, t); err != nil {

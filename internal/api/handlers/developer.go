@@ -93,6 +93,14 @@ func (h *DeveloperHandler) GetLoggingConfig(w http.ResponseWriter, _ *http.Reque
 	response.RespondJSON(w, http.StatusOK, setting)
 }
 
+// SetLoggingConfig handles PUT requests to update the logging configuration.
+// Accepts a JSON body with enabled (bool) and level (string) fields.
+// Both fields are required; level must be one of: debug, info, warning, error, critical.
+//
+// Endpoint: PUT /api/developer/system-settings/logging
+// Response: 200 OK with updated LoggingSetting
+// Error: 400 Bad Request if body is invalid or validation fails
+// Error: 500 Internal Server Error if update fails
 func (h *DeveloperHandler) SetLoggingConfig(w http.ResponseWriter, r *http.Request) {
 
 	req, err := parseJSON[request.SetLoggingConfig](r)
@@ -230,6 +238,14 @@ func (h *DeveloperHandler) GetExchangeRate(w http.ResponseWriter, r *http.Reques
 	response.RespondJSON(w, http.StatusOK, exchangeResponse)
 }
 
+// UpdateExchangeRate handles POST requests to create or update an exchange rate.
+// Accepts a JSON body with date, fromCurrency, toCurrency, and rate fields.
+// Upserts the rate for the given currency pair and date.
+//
+// Endpoint: POST /api/developer/exchange-rate
+// Response: 200 OK with ExchangeRate
+// Error: 400 Bad Request if body is invalid or validation fails
+// Error: 500 Internal Server Error if update fails
 func (h *DeveloperHandler) UpdateExchangeRate(w http.ResponseWriter, r *http.Request) {
 
 	req, err := parseJSON[request.SetExchangeRateRequest](r)
@@ -297,6 +313,14 @@ func (h *DeveloperHandler) GetFundPrice(w http.ResponseWriter, r *http.Request) 
 	response.RespondJSON(w, http.StatusOK, fundPrice)
 }
 
+// UpdateFundPrice handles POST requests to create or update a fund price.
+// Accepts a JSON body with date, fundId, and price fields.
+// Upserts the price for the given fund and date.
+//
+// Endpoint: POST /api/developer/fund-price
+// Response: 200 OK with FundPrice
+// Error: 400 Bad Request if body is invalid or validation fails
+// Error: 500 Internal Server Error if update fails
 func (h *DeveloperHandler) UpdateFundPrice(w http.ResponseWriter, r *http.Request) {
 
 	req, err := parseJSON[request.SetFundPriceRequest](r)
@@ -320,6 +344,12 @@ func (h *DeveloperHandler) UpdateFundPrice(w http.ResponseWriter, r *http.Reques
 	response.RespondJSON(w, http.StatusOK, exRate)
 }
 
+// DeleteLogs handles DELETE requests to clear all logs from the database.
+// Records the deletion event as a new log entry after clearing.
+//
+// Endpoint: DELETE /api/developer/logs
+// Response: 204 No Content on success
+// Error: 500 Internal Server Error if deletion fails
 func (h *DeveloperHandler) DeleteLogs(w http.ResponseWriter, r *http.Request) {
 
 	ipAddress := getClientIP(r)
@@ -333,6 +363,9 @@ func (h *DeveloperHandler) DeleteLogs(w http.ResponseWriter, r *http.Request) {
 	response.RespondJSON(w, http.StatusNoContent, nil)
 }
 
+// getClientIP extracts the client IP address from a request.
+// Checks X-Forwarded-For and X-Real-IP headers before falling back to RemoteAddr.
+// Returns nil if the IP cannot be determined.
 func getClientIP(r *http.Request) any {
 	if ip := r.Header.Get("X-Forwarded-For"); ip != "" {
 		return ip

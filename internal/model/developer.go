@@ -2,6 +2,56 @@ package model
 
 import "time"
 
+// LogLevel represents an allowed log level value.
+type LogLevel string
+
+const (
+	LogLevelDebug    LogLevel = "debug"
+	LogLevelInfo     LogLevel = "info"
+	LogLevelWarning  LogLevel = "warning"
+	LogLevelError    LogLevel = "error"
+	LogLevelCritical LogLevel = "critical"
+)
+
+// ValidLogLevels is the authoritative set of allowed log level values.
+// Use this for validation anywhere log levels are accepted as input.
+var ValidLogLevels = map[LogLevel]bool{
+	LogLevelDebug:    true,
+	LogLevelInfo:     true,
+	LogLevelWarning:  true,
+	LogLevelError:    true,
+	LogLevelCritical: true,
+}
+
+// LogCategory represents an allowed log category value.
+type LogCategory string
+
+const (
+	LogCategoryPortfolio   LogCategory = "portfolio"
+	LogCategoryFund        LogCategory = "fund"
+	LogCategoryTransaction LogCategory = "transaction"
+	LogCategoryDividend    LogCategory = "dividend"
+	LogCategorySystem      LogCategory = "system"
+	LogCategoryDatabase    LogCategory = "database"
+	LogCategorySecurity    LogCategory = "security"
+	LogCategoryIBKR        LogCategory = "ibkr"
+	LogCategoryDeveloper   LogCategory = "developer"
+)
+
+// ValidLogCategories is the authoritative set of allowed log category values.
+// Use this for validation anywhere log categories are accepted as input.
+var ValidLogCategories = map[LogCategory]bool{
+	LogCategoryPortfolio:   true,
+	LogCategoryFund:        true,
+	LogCategoryTransaction: true,
+	LogCategoryDividend:    true,
+	LogCategorySystem:      true,
+	LogCategoryDatabase:    true,
+	LogCategorySecurity:    true,
+	LogCategoryIBKR:        true,
+	LogCategoryDeveloper:   true,
+}
+
 // LogResponse represents a paginated response containing log entries.
 // Includes cursor-based pagination information for retrieving subsequent pages.
 type LogResponse struct {
