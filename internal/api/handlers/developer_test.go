@@ -3,9 +3,12 @@ package handlers_test
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/textproto"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,6 +16,33 @@ import (
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/testutil"
 )
+
+// newMultipartRequestWithFileContentType is like newMultipartRequest but lets the caller
+// control the Content-Type header of the file part, to exercise validateCSVFile.
+func newMultipartRequestWithFileContentType(t *testing.T, method, path string, fields map[string]string, filename, fileContentType, csvContent string) *http.Request {
+	t.Helper()
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	for k, v := range fields {
+		if err := w.WriteField(k, v); err != nil {
+			t.Fatalf("WriteField %s: %v", k, err)
+		}
+	}
+	h := make(textproto.MIMEHeader)
+	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="file"; filename="%s"`, filename))
+	h.Set("Content-Type", fileContentType)
+	fw, err := w.CreatePart(h)
+	if err != nil {
+		t.Fatalf("CreatePart: %v", err)
+	}
+	if _, err := fw.Write([]byte(csvContent)); err != nil {
+		t.Fatalf("Write csv: %v", err)
+	}
+	w.Close()
+	req := httptest.NewRequest(method, path, &buf)
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	return req
+}
 
 // newMultipartRequest builds a multipart/form-data request with an optional CSV file attachment.
 func newMultipartRequest(t *testing.T, method, path string, fields map[string]string, filename, csvContent string) *http.Request {
@@ -97,6 +127,53 @@ func TestDeveloperHandler_GetLogs(t *testing.T) {
 			t.Errorf("expected 400, got %d", w.Code)
 		}
 	})
+
+	t.Run("returns logs after delete seeds audit entry", func(t *testing.T) {
+		handler := newDeveloperHandler(t)
+
+		delReq := httptest.NewRequest(http.MethodDelete, "/api/developer/logs", nil)
+		handler.DeleteLogs(httptest.NewRecorder(), delReq)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/developer/logs", nil)
+		w := httptest.NewRecorder()
+		handler.GetLogs(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("expected 200, got %d", w.Code)
+		}
+		var resp model.LogResponse
+		if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if len(resp.Logs) == 0 {
+			t.Error("expected at least one log entry after delete")
+		}
+	})
+
+	t.Run("level filter returns only matching logs", func(t *testing.T) {
+		handler := newDeveloperHandler(t)
+
+		// seed an INFO audit log via DeleteLogs
+		handler.DeleteLogs(httptest.NewRecorder(), httptest.NewRequest(http.MethodDelete, "/api/developer/logs", nil))
+
+		req := testutil.NewRequestWithQueryParams(http.MethodGet, "/api/developer/logs",
+			map[string]string{"level": "INFO"})
+		w := httptest.NewRecorder()
+		handler.GetLogs(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("expected 200, got %d", w.Code)
+		}
+		var resp model.LogResponse
+		if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		for _, l := range resp.Logs {
+			if l.Level != "INFO" {
+				t.Errorf("expected only INFO logs, got %s", l.Level)
+			}
+		}
+	})
 }
 
 // ---- GetLoggingConfig ----
@@ -116,6 +193,32 @@ func TestDeveloperHandler_GetLoggingConfig(t *testing.T) {
 		var setting model.LoggingSetting
 		if err := json.NewDecoder(w.Body).Decode(&setting); err != nil {
 			t.Fatalf("decode: %v", err)
+		}
+	})
+
+	t.Run("reflects values set by SetLoggingConfig", func(t *testing.T) {
+		handler := newDeveloperHandler(t)
+
+		setReq := testutil.NewRequestWithBody(http.MethodPut, "/api/developer/system-settings/logging",
+			`{"enabled": false, "level": "error"}`)
+		handler.SetLoggingConfig(httptest.NewRecorder(), setReq)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/developer/system-settings/logging", nil)
+		w := httptest.NewRecorder()
+		handler.GetLoggingConfig(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("expected 200, got %d", w.Code)
+		}
+		var setting model.LoggingSetting
+		if err := json.NewDecoder(w.Body).Decode(&setting); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if setting.Enabled != false {
+			t.Errorf("expected Enabled=false, got %v", setting.Enabled)
+		}
+		if setting.Level != "error" {
+			t.Errorf("expected Level=error, got %s", setting.Level)
 		}
 	})
 }
@@ -178,6 +281,30 @@ func TestDeveloperHandler_SetLoggingConfig(t *testing.T) {
 			t.Errorf("expected 400, got %d", w.Code)
 		}
 	})
+
+	t.Run("response body contains the values that were set", func(t *testing.T) {
+		handler := newDeveloperHandler(t)
+		req := testutil.NewRequestWithBody(http.MethodPut,
+			"/api/developer/system-settings/logging",
+			`{"enabled": true, "level": "warning"}`)
+		w := httptest.NewRecorder()
+
+		handler.SetLoggingConfig(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var setting model.LoggingSetting
+		if err := json.NewDecoder(w.Body).Decode(&setting); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if setting.Enabled != true {
+			t.Errorf("expected Enabled=true, got %v", setting.Enabled)
+		}
+		if setting.Level != "warning" {
+			t.Errorf("expected Level=warning, got %s", setting.Level)
+		}
+	})
 }
 
 // ---- GetFundPriceCSVTemplate ----
@@ -224,6 +351,24 @@ func TestDeveloperHandler_GetTransactionCSVTemplate(t *testing.T) {
 		}
 		if len(tmpl.Headers) != 4 {
 			t.Errorf("expected 4 headers, got %d", len(tmpl.Headers))
+		}
+	})
+
+	t.Run("description lists all four transaction types", func(t *testing.T) {
+		handler := newDeveloperHandler(t)
+		req := httptest.NewRequest(http.MethodGet, "/api/developer/csv/transactions/template", nil)
+		w := httptest.NewRecorder()
+
+		handler.GetTransactionCSVTemplate(w, req)
+
+		var tmpl model.TemplateModel
+		if err := json.NewDecoder(w.Body).Decode(&tmpl); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		for _, typ := range []string{"buy", "sell", "dividend", "fee"} {
+			if !strings.Contains(tmpl.Description, typ) {
+				t.Errorf("expected description to mention %q", typ)
+			}
 		}
 	})
 }
@@ -314,6 +459,32 @@ func TestDeveloperHandler_GetExchangeRate(t *testing.T) {
 			t.Errorf("expected 400, got %d", w.Code)
 		}
 	})
+
+	t.Run("missing toCurrency returns 400", func(t *testing.T) {
+		handler := newDeveloperHandler(t)
+		req := testutil.NewRequestWithQueryParams(http.MethodGet, "/api/developer/exchange-rate",
+			map[string]string{"fromCurrency": "USD", "date": "2024-01-15"})
+		w := httptest.NewRecorder()
+
+		handler.GetExchangeRate(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected 400, got %d", w.Code)
+		}
+	})
+
+	t.Run("missing date returns 400", func(t *testing.T) {
+		handler := newDeveloperHandler(t)
+		req := testutil.NewRequestWithQueryParams(http.MethodGet, "/api/developer/exchange-rate",
+			map[string]string{"fromCurrency": "USD", "toCurrency": "EUR"})
+		w := httptest.NewRecorder()
+
+		handler.GetExchangeRate(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected 400, got %d", w.Code)
+		}
+	})
 }
 
 // ---- UpdateExchangeRate ----
@@ -365,6 +536,45 @@ func TestDeveloperHandler_UpdateExchangeRate(t *testing.T) {
 	t.Run("invalid body returns 400", func(t *testing.T) {
 		handler := newDeveloperHandler(t)
 		req := testutil.NewRequestWithBody(http.MethodPost, "/api/developer/exchange-rate", `not json`)
+		w := httptest.NewRecorder()
+
+		handler.UpdateExchangeRate(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected 400, got %d", w.Code)
+		}
+	})
+
+	t.Run("negative rate returns 400", func(t *testing.T) {
+		handler := newDeveloperHandler(t)
+		req := testutil.NewRequestWithBody(http.MethodPost, "/api/developer/exchange-rate",
+			`{"date":"2024-03-01","fromCurrency":"USD","toCurrency":"EUR","rate":"-0.5"}`)
+		w := httptest.NewRecorder()
+
+		handler.UpdateExchangeRate(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected 400, got %d", w.Code)
+		}
+	})
+
+	t.Run("zero rate returns 400", func(t *testing.T) {
+		handler := newDeveloperHandler(t)
+		req := testutil.NewRequestWithBody(http.MethodPost, "/api/developer/exchange-rate",
+			`{"date":"2024-03-01","fromCurrency":"USD","toCurrency":"EUR","rate":"0"}`)
+		w := httptest.NewRecorder()
+
+		handler.UpdateExchangeRate(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected 400, got %d", w.Code)
+		}
+	})
+
+	t.Run("missing date returns 400", func(t *testing.T) {
+		handler := newDeveloperHandler(t)
+		req := testutil.NewRequestWithBody(http.MethodPost, "/api/developer/exchange-rate",
+			`{"fromCurrency":"USD","toCurrency":"EUR","rate":"0.91"}`)
 		w := httptest.NewRecorder()
 
 		handler.UpdateExchangeRate(w, req)
@@ -506,6 +716,78 @@ func TestDeveloperHandler_UpdateFundPrice(t *testing.T) {
 			t.Errorf("expected 400, got %d", w.Code)
 		}
 	})
+
+	t.Run("upsert existing price", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		fund := testutil.NewFund().Build(t, db)
+		testutil.NewFundPrice(fund.ID).WithDate(time.Date(2024, 3, 1, 0, 0, 0, 0, time.UTC)).WithPrice(100.0).Build(t, db)
+		svc := testutil.NewTestDeveloperService(t, db)
+		handler := handlers.NewDeveloperHandler(svc)
+
+		body, err := json.Marshal(map[string]string{
+			"date":   "2024-03-01",
+			"fundId": fund.ID,
+			"price":  "150.00",
+		})
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		req := testutil.NewRequestWithBody(http.MethodPost, "/api/developer/fund-price", string(body))
+		w := httptest.NewRecorder()
+
+		handler.UpdateFundPrice(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("negative price returns 400", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		fund := testutil.NewFund().Build(t, db)
+		svc := testutil.NewTestDeveloperService(t, db)
+		handler := handlers.NewDeveloperHandler(svc)
+
+		body, err := json.Marshal(map[string]string{
+			"date":   "2024-03-01",
+			"fundId": fund.ID,
+			"price":  "-10.00",
+		})
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		req := testutil.NewRequestWithBody(http.MethodPost, "/api/developer/fund-price", string(body))
+		w := httptest.NewRecorder()
+
+		handler.UpdateFundPrice(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected 400, got %d", w.Code)
+		}
+	})
+
+	t.Run("missing date returns 400", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		fund := testutil.NewFund().Build(t, db)
+		svc := testutil.NewTestDeveloperService(t, db)
+		handler := handlers.NewDeveloperHandler(svc)
+
+		body, err := json.Marshal(map[string]string{
+			"fundId": fund.ID,
+			"price":  "100.00",
+		})
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		req := testutil.NewRequestWithBody(http.MethodPost, "/api/developer/fund-price", string(body))
+		w := httptest.NewRecorder()
+
+		handler.UpdateFundPrice(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected 400, got %d", w.Code)
+		}
+	})
 }
 
 // ---- DeleteLogs ----
@@ -544,6 +826,29 @@ func TestDeveloperHandler_DeleteLogs(t *testing.T) {
 		}
 		if len(resp.Logs) != 1 {
 			t.Errorf("expected 1 audit log after delete, got %d", len(resp.Logs))
+		}
+	})
+
+	t.Run("X-Forwarded-For with multiple IPs stores only the first", func(t *testing.T) {
+		handler := newDeveloperHandler(t)
+
+		delReq := httptest.NewRequest(http.MethodDelete, "/api/developer/logs", nil)
+		delReq.Header.Set("X-Forwarded-For", "1.2.3.4, 10.0.0.1, 172.16.0.1")
+		handler.DeleteLogs(httptest.NewRecorder(), delReq)
+
+		getReq := httptest.NewRequest(http.MethodGet, "/api/developer/logs", nil)
+		getW := httptest.NewRecorder()
+		handler.GetLogs(getW, getReq)
+
+		var resp model.LogResponse
+		if err := json.NewDecoder(getW.Body).Decode(&resp); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if len(resp.Logs) == 0 {
+			t.Fatal("expected audit log entry")
+		}
+		if resp.Logs[0].IPAddress != "1.2.3.4" {
+			t.Errorf("expected IPAddress=1.2.3.4, got %q", resp.Logs[0].IPAddress)
 		}
 	})
 }
@@ -603,6 +908,24 @@ func TestDeveloperHandler_ImportFundPrices(t *testing.T) {
 		}
 	})
 
+	t.Run("no file in form returns 400", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		fund := testutil.NewFund().Build(t, db)
+		svc := testutil.NewTestDeveloperService(t, db)
+		handler := handlers.NewDeveloperHandler(svc)
+
+		// Pass empty filename so no file part is added to the multipart form
+		req := newMultipartRequest(t, http.MethodPost, "/api/developer/import-fund-prices",
+			map[string]string{"fundId": fund.ID}, "", "")
+		w := httptest.NewRecorder()
+
+		handler.ImportFundPrices(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected 400, got %d", w.Code)
+		}
+	})
+
 	t.Run("bad file extension returns 400", func(t *testing.T) {
 		db := testutil.SetupTestDB(t)
 		fund := testutil.NewFund().Build(t, db)
@@ -611,6 +934,23 @@ func TestDeveloperHandler_ImportFundPrices(t *testing.T) {
 
 		req := newMultipartRequest(t, http.MethodPost, "/api/developer/import-fund-prices",
 			map[string]string{"fundId": fund.ID}, "prices.txt", "date,price\n2024-01-01,100.00\n")
+		w := httptest.NewRecorder()
+
+		handler.ImportFundPrices(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected 400, got %d", w.Code)
+		}
+	})
+
+	t.Run("bad content-type returns 400", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		fund := testutil.NewFund().Build(t, db)
+		svc := testutil.NewTestDeveloperService(t, db)
+		handler := handlers.NewDeveloperHandler(svc)
+
+		req := newMultipartRequestWithFileContentType(t, http.MethodPost, "/api/developer/import-fund-prices",
+			map[string]string{"fundId": fund.ID}, "prices.csv", "text/html", "date,price\n2024-01-01,100.00\n")
 		w := httptest.NewRecorder()
 
 		handler.ImportFundPrices(w, req)
@@ -672,6 +1012,42 @@ func TestDeveloperHandler_ImportFundPrices(t *testing.T) {
 			t.Errorf("expected 400 for empty CSV, got %d", w.Code)
 		}
 	})
+
+	t.Run("invalid date row returns 500", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		fund := testutil.NewFund().Build(t, db)
+		svc := testutil.NewTestDeveloperService(t, db)
+		handler := handlers.NewDeveloperHandler(svc)
+
+		req := newMultipartRequest(t, http.MethodPost, "/api/developer/import-fund-prices",
+			map[string]string{"fundId": fund.ID}, "prices.csv",
+			"date,price\nnot-a-date,100.00\n")
+		w := httptest.NewRecorder()
+
+		handler.ImportFundPrices(w, req)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Errorf("expected 500, got %d", w.Code)
+		}
+	})
+
+	t.Run("negative price row returns 500", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		fund := testutil.NewFund().Build(t, db)
+		svc := testutil.NewTestDeveloperService(t, db)
+		handler := handlers.NewDeveloperHandler(svc)
+
+		req := newMultipartRequest(t, http.MethodPost, "/api/developer/import-fund-prices",
+			map[string]string{"fundId": fund.ID}, "prices.csv",
+			"date,price\n2024-01-01,-5.00\n")
+		w := httptest.NewRecorder()
+
+		handler.ImportFundPrices(w, req)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Errorf("expected 500, got %d", w.Code)
+		}
+	})
 }
 
 // ---- ImportTransactions ----
@@ -723,6 +1099,45 @@ func TestDeveloperHandler_ImportTransactions(t *testing.T) {
 		handler := newDeveloperHandler(t)
 		req := newMultipartRequest(t, http.MethodPost, "/api/developer/import-transactions",
 			map[string]string{"fundId": testutil.MakeID()}, "tx.csv",
+			"date,type,shares,cost_per_share\n2024-01-01,buy,10,100\n")
+		w := httptest.NewRecorder()
+
+		handler.ImportTransactions(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected 400, got %d", w.Code)
+		}
+	})
+
+	t.Run("no file in form returns 400", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		fund := testutil.NewFund().Build(t, db)
+		pf := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+		svc := testutil.NewTestDeveloperService(t, db)
+		handler := handlers.NewDeveloperHandler(svc)
+
+		req := newMultipartRequest(t, http.MethodPost, "/api/developer/import-transactions",
+			map[string]string{"fundId": pf.ID}, "", "")
+		w := httptest.NewRecorder()
+
+		handler.ImportTransactions(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected 400, got %d", w.Code)
+		}
+	})
+
+	t.Run("bad content-type returns 400", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		fund := testutil.NewFund().Build(t, db)
+		pf := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+		svc := testutil.NewTestDeveloperService(t, db)
+		handler := handlers.NewDeveloperHandler(svc)
+
+		req := newMultipartRequestWithFileContentType(t, http.MethodPost, "/api/developer/import-transactions",
+			map[string]string{"fundId": pf.ID}, "tx.csv", "text/html",
 			"date,type,shares,cost_per_share\n2024-01-01,buy,10,100\n")
 		w := httptest.NewRecorder()
 
@@ -809,6 +1224,73 @@ func TestDeveloperHandler_ImportTransactions(t *testing.T) {
 
 		if w.Code != http.StatusInternalServerError {
 			t.Errorf("expected 500, got %d", w.Code)
+		}
+	})
+
+	t.Run("empty CSV returns 400", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		fund := testutil.NewFund().Build(t, db)
+		pf := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+		svc := testutil.NewTestDeveloperService(t, db)
+		handler := handlers.NewDeveloperHandler(svc)
+
+		req := newMultipartRequest(t, http.MethodPost, "/api/developer/import-transactions",
+			map[string]string{"fundId": pf.ID}, "tx.csv", "")
+		w := httptest.NewRecorder()
+
+		handler.ImportTransactions(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected 400, got %d", w.Code)
+		}
+	})
+
+	t.Run("BOM-prefixed CSV is handled correctly", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		fund := testutil.NewFund().Build(t, db)
+		pf := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+		svc := testutil.NewTestDeveloperService(t, db)
+		handler := handlers.NewDeveloperHandler(svc)
+
+		bom := "\xEF\xBB\xBF"
+		req := newMultipartRequest(t, http.MethodPost, "/api/developer/import-transactions",
+			map[string]string{"fundId": pf.ID}, "tx.csv",
+			bom+"date,type,shares,cost_per_share\n2024-01-01,buy,10,100\n")
+		w := httptest.NewRecorder()
+
+		handler.ImportTransactions(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("dividend and fee transaction types are accepted", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		fund := testutil.NewFund().Build(t, db)
+		pf := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+		svc := testutil.NewTestDeveloperService(t, db)
+		handler := handlers.NewDeveloperHandler(svc)
+
+		req := newMultipartRequest(t, http.MethodPost, "/api/developer/import-transactions",
+			map[string]string{"fundId": pf.ID}, "tx.csv",
+			"date,type,shares,cost_per_share\n2024-01-01,dividend,5,50\n2024-01-02,fee,1,10\n")
+		w := httptest.NewRecorder()
+
+		handler.ImportTransactions(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var result map[string]int
+		if err := json.NewDecoder(w.Body).Decode(&result); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if result["imported"] != 2 {
+			t.Errorf("expected 2 imported rows, got %d", result["imported"])
 		}
 	})
 }
