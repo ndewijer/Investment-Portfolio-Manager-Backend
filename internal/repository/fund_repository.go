@@ -23,6 +23,7 @@ func NewFundRepository(db *sql.DB) *FundRepository {
 	return &FundRepository{db: db}
 }
 
+// WithTx returns a new FundRepository scoped to the provided transaction.
 func (r *FundRepository) WithTx(tx *sql.Tx) *FundRepository {
 	return &FundRepository{
 		db: r.db,
@@ -30,6 +31,7 @@ func (r *FundRepository) WithTx(tx *sql.Tx) *FundRepository {
 	}
 }
 
+// getQuerier returns the active transaction if one is set, otherwise the database connection.
 func (r *FundRepository) getQuerier() interface {
 	Query(query string, args ...any) (*sql.Rows, error)
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
@@ -582,6 +584,32 @@ func (r *FundRepository) InsertFundPrices(ctx context.Context, fundPrices []mode
 		if err != nil {
 			return fmt.Errorf("failed to insert fund price for %s on %s: %w", fp.FundID, fp.Date.Format("2006-01-02"), err)
 		}
+	}
+
+	return nil
+}
+
+// UpdateFundPrice upserts a fund price record.
+// On conflict (same fund_id, date), updates the price field.
+func (r *FundRepository) UpdateFundPrice(ctx context.Context, fp model.FundPrice) error {
+
+	query := `
+		INSERT INTO fund_price (id, fund_id, date, price)
+		VALUES (?, ?, ?, ?)
+        ON CONFLICT(fund_id, date) DO UPDATE SET
+            price = ?
+    `
+
+	_, err := r.getQuerier().ExecContext(ctx, query,
+		fp.ID,
+		fp.FundID,
+		fp.Date.Format("2006-01-02"),
+		fp.Price,
+		fp.Price,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to upsert fund price: %w", err)
 	}
 
 	return nil

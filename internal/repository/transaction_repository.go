@@ -23,6 +23,7 @@ func NewTransactionRepository(db *sql.DB) *TransactionRepository {
 	return &TransactionRepository{db: db}
 }
 
+// WithTx returns a new TransactionRepository scoped to the provided transaction.
 func (r *TransactionRepository) WithTx(tx *sql.Tx) *TransactionRepository {
 	return &TransactionRepository{
 		db: r.db,
@@ -30,6 +31,7 @@ func (r *TransactionRepository) WithTx(tx *sql.Tx) *TransactionRepository {
 	}
 }
 
+// getQuerier returns the active transaction if one is set, otherwise the database connection.
 func (r *TransactionRepository) getQuerier() interface {
 	Query(query string, args ...any) (*sql.Rows, error)
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
@@ -381,7 +383,7 @@ func (r *TransactionRepository) InsertTransaction(ctx context.Context, t *model.
 		t.Type,
 		t.Shares,
 		t.CostPerShare,
-		t.CreatedAt.Format("2006-01-02 01:02:01"),
+		t.CreatedAt.Format("2006-01-02 15:04:05"),
 	)
 
 	if err != nil {
@@ -409,7 +411,7 @@ func (r *TransactionRepository) UpdateTransaction(ctx context.Context, t *model.
 		t.Type,
 		t.Shares,
 		t.CostPerShare,
-		t.CreatedAt.Format("2006-01-02 01:02:01"),
+		t.CreatedAt.Format("2006-01-02 15:04:05"),
 		t.ID,
 	)
 

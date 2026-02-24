@@ -32,18 +32,20 @@ func ValidateCreateDividend(req request.CreateDividendRequest) error {
 
 	if strings.TrimSpace(req.RecordDate) == "" {
 		errors["recordDate"] = "date is required"
-	}
-	_, err := time.Parse("2006-01-02", req.RecordDate)
-	if err != nil {
-		errors["recordDate"] = err.Error()
+	} else {
+		_, err := time.Parse("2006-01-02", req.RecordDate)
+		if err != nil {
+			errors["recordDate"] = err.Error()
+		}
 	}
 
 	if strings.TrimSpace(req.ExDividendDate) == "" {
 		errors["exDividendDate"] = "date is required"
-	}
-	_, err = time.Parse("2006-01-02", req.ExDividendDate)
-	if err != nil {
-		errors["exDividendDate"] = err.Error()
+	} else {
+		_, err := time.Parse("2006-01-02", req.ExDividendDate)
+		if err != nil {
+			errors["exDividendDate"] = err.Error()
+		}
 	}
 
 	if req.DividendPerShare <= 0.0 {
@@ -53,7 +55,7 @@ func ValidateCreateDividend(req request.CreateDividendRequest) error {
 	// optionals
 
 	if req.BuyOrderDate != "" {
-		_, err = time.Parse("2006-01-02", req.BuyOrderDate)
+		_, err := time.Parse("2006-01-02", req.BuyOrderDate)
 		if err != nil {
 			errors["buyOrderDate"] = err.Error()
 		}

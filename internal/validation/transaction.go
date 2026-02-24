@@ -6,12 +6,12 @@ import (
 	"time"
 
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/request"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 )
 
-// ValidTransactionType contains the allowed transaction type values.
-var ValidTransactionType = map[string]bool{
-	"buy": true, "sell": true, "dividend": true, "fee": true,
-}
+// ValidTransactionType is an alias for model.ValidTransactionTypes for use within validation functions.
+// The authoritative definition lives in model.ValidTransactionTypes.
+var ValidTransactionType = model.ValidTransactionTypes
 
 // ValidateCreateTransaction validates a transaction creation request.
 // Checks all required fields and validates their formats and constraints.
@@ -34,15 +34,16 @@ func ValidateCreateTransaction(req request.CreateTransactionRequest) error {
 
 	if strings.TrimSpace(req.Date) == "" {
 		errors["date"] = "date is required"
-	}
-	_, err := time.Parse("2006-01-02", req.Date)
-	if err != nil {
-		errors["date"] = err.Error()
+	} else {
+		_, err := time.Parse("2006-01-02", req.Date)
+		if err != nil {
+			errors["date"] = err.Error()
+		}
 	}
 
 	if strings.TrimSpace(req.Type) == "" {
 		errors["transactionType"] = "type is required"
-	} else if !ValidTransactionType[req.Type] {
+	} else if !ValidTransactionType[model.TransactionType(req.Type)] {
 		errors["transactionType"] = fmt.Sprintf("invalid type: %s", req.Type)
 	}
 
@@ -93,7 +94,7 @@ func ValidateUpdateTransaction(req request.UpdateTransactionRequest) error {
 	if req.Type != nil {
 		if strings.TrimSpace(*req.Type) == "" {
 			errors["transactionType"] = "type is required"
-		} else if !ValidTransactionType[*req.Type] {
+		} else if !ValidTransactionType[model.TransactionType(*req.Type)] {
 			errors["transactionType"] = fmt.Sprintf("invalid type: %s", *req.Type)
 		}
 	}

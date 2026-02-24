@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/request"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/apperrors"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 )
@@ -25,6 +24,7 @@ func NewDeveloperRepository(db *sql.DB) *DeveloperRepository {
 	return &DeveloperRepository{db: db}
 }
 
+// WithTx returns a new DeveloperRepository scoped to the provided transaction.
 func (r *DeveloperRepository) WithTx(tx *sql.Tx) *DeveloperRepository {
 	return &DeveloperRepository{
 		db: r.db,
@@ -32,6 +32,7 @@ func (r *DeveloperRepository) WithTx(tx *sql.Tx) *DeveloperRepository {
 	}
 }
 
+// getQuerier returns the active transaction if one is set, otherwise the database connection.
 func (r *DeveloperRepository) getQuerier() interface {
 	Query(query string, args ...any) (*sql.Rows, error)
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
@@ -60,7 +61,7 @@ func (r *DeveloperRepository) getQuerier() interface {
 // Returns one extra record beyond perPage to determine if more results exist.
 //
 //nolint:gocyclo,funlen // Complex filtering logic with dynamic WHERE clause requires length
-func (r *DeveloperRepository) GetLogs(filters *request.LogFilters) (*model.LogResponse, error) {
+func (r *DeveloperRepository) GetLogs(filters *model.LogFilters) (*model.LogResponse, error) {
 	// Build dynamic WHERE clause
 	var whereClauses []string
 	var args []any
@@ -151,7 +152,7 @@ func (r *DeveloperRepository) GetLogs(filters *request.LogFilters) (*model.LogRe
 	//nolint:gosec // G202: SQL concatenation is safe - whereSQL and orderSQL contain no user input, all user values are parameterized
 	query := `
 		SELECT id, timestamp, level, category, message, details, source,
-		       user_id, request_id, stack_trace, http_status, ip_address, user_agent
+		       request_id, stack_trace, http_status, ip_address, user_agent
 		FROM log
 		` + whereSQL + `
 		` + orderSQL + `
@@ -171,7 +172,7 @@ func (r *DeveloperRepository) GetLogs(filters *request.LogFilters) (*model.LogRe
 
 	for rows.Next() {
 		var timestampStr string
-		var detailsStr, userIDStr, RequestIDStr, stackTraceStr, HTTPStatusStr, IPAddressStr, UserAgentStr sql.NullString
+		var detailsStr, RequestIDStr, StackTraceStr, HTTPStatusStr, IPAddressStr, UserAgentStr sql.NullString
 		var l model.Log
 
 		err := rows.Scan(
@@ -182,9 +183,8 @@ func (r *DeveloperRepository) GetLogs(filters *request.LogFilters) (*model.LogRe
 			&l.Message,
 			&detailsStr,
 			&l.Source,
-			&userIDStr,
 			&RequestIDStr,
-			&stackTraceStr,
+			&StackTraceStr,
 			&HTTPStatusStr,
 			&IPAddressStr,
 			&UserAgentStr,
@@ -204,6 +204,9 @@ func (r *DeveloperRepository) GetLogs(filters *request.LogFilters) (*model.LogRe
 		}
 		if RequestIDStr.Valid {
 			l.RequestID = RequestIDStr.String
+		}
+		if StackTraceStr.Valid {
+			l.StackTrace = StackTraceStr.String
 		}
 		if HTTPStatusStr.Valid {
 			l.HTTPStatus = HTTPStatusStr.String
@@ -279,6 +282,30 @@ func (r *DeveloperRepository) GetLoggingConfig() (model.LoggingSetting, error) {
 	return conf, nil
 }
 
+func (r *DeveloperRepository) SetLoggingConfig(ctx context.Context, setting model.SystemSetting) error {
+	query := `
+        INSERT INTO system_setting (id, key, value, updated_at)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(key) DO UPDATE SET
+            value = ?,
+			updated_at = ?
+    `
+
+	_, err := r.getQuerier().ExecContext(ctx, query,
+		setting.ID,
+		setting.Key,
+		setting.Value,
+		setting.UpdatedAt.Format("2006-01-02 15:04:05"),
+		setting.Value,
+		setting.UpdatedAt.Format("2006-01-02 15:04:05"),
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to upsert system setting: %w", err)
+	}
+	return nil
+}
+
 // GetExchangeRate retrieves an exchange rate for a specific currency pair and date.
 // Queries the exchange_rate table for an exact match on from_currency, to_currency, and date.
 // Returns ErrExchangeRateNotFound if no matching rate exists.
@@ -311,4 +338,76 @@ func (r *DeveloperRepository) GetExchangeRate(fromCurrency, toCurrency string, d
 	}
 
 	return &rate, nil
+}
+
+// UpdateExchangeRate upserts an exchange rate record.
+// On conflict (same from_currency, to_currency, date), updates the rate and created_at fields.
+func (r *DeveloperRepository) UpdateExchangeRate(ctx context.Context, exRate model.ExchangeRate) error {
+
+	query := `
+        INSERT INTO exchange_rate (id, from_currency, to_currency, rate, date, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(from_currency, to_currency, date) DO UPDATE SET
+            rate = ?,
+			created_at = ?
+    `
+
+	_, err := r.getQuerier().ExecContext(ctx, query,
+		exRate.ID,
+		exRate.FromCurrency,
+		exRate.ToCurrency,
+		exRate.Rate,
+		exRate.Date.Format("2006-01-02"),
+		time.Now().UTC().Format("2006-01-02 15:04:05"),
+		exRate.Rate,
+		time.Now().UTC().Format("2006-01-02 15:04:05"),
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to upsert exchange rate: %w", err)
+	}
+
+	return nil
+}
+
+// AddLog inserts a single log entry into the log table.
+func (r *DeveloperRepository) AddLog(ctx context.Context, log model.Log) error {
+
+	query := `
+		INSERT INTO log (id, timestamp, level, category, message, details, source, request_id, stack_trace, http_status, ip_address, user_agent)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`
+
+	_, err := r.getQuerier().ExecContext(ctx, query,
+		log.ID,
+		log.Timestamp.Format("2006-01-02 15:04:05"),
+		log.Level,
+		log.Category,
+		log.Message,
+		log.Details,
+		log.Source,
+		log.RequestID,
+		log.StackTrace,
+		log.HTTPStatus,
+		log.IPAddress,
+		log.UserAgent,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to insert log: %w", err)
+	}
+
+	return nil
+}
+
+// DeleteLogs removes all entries from the log table.
+func (r *DeveloperRepository) DeleteLogs(ctx context.Context) error {
+	query := `DELETE FROM log`
+
+	_, err := r.getQuerier().ExecContext(ctx, query)
+	if err != nil {
+		return fmt.Errorf("failed to delete logs: %w", err)
+	}
+
+	return nil
 }

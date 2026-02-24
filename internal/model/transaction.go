@@ -2,6 +2,25 @@ package model
 
 import "time"
 
+// TransactionType represents an allowed transaction type value.
+type TransactionType string
+
+const (
+	TransactionTypeBuy      TransactionType = "buy"
+	TransactionTypeSell     TransactionType = "sell"
+	TransactionTypeDividend TransactionType = "dividend"
+	TransactionTypeFee      TransactionType = "fee"
+)
+
+// ValidTransactionTypes is the authoritative set of allowed transaction type values.
+// Use this for validation anywhere transaction types are accepted as input.
+var ValidTransactionTypes = map[TransactionType]bool{
+	TransactionTypeBuy:      true,
+	TransactionTypeSell:     true,
+	TransactionTypeDividend: true,
+	TransactionTypeFee:      true,
+}
+
 // Transaction represents a buy or sell transaction for a portfolio fund.
 // Used internally for calculations and data processing.
 type Transaction struct {

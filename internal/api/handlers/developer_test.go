@@ -1,871 +1,1296 @@
-package handlers
+package handlers_test
 
 import (
-	"database/sql"
+	"bytes"
 	"encoding/json"
+	"fmt"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/textproto"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/handlers"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/testutil"
 )
 
-//nolint:gocyclo // Test functions naturally have high complexity due to many test cases
-func TestDeveloperHandler_GetLogs(t *testing.T) {
-	setupHandler := func(t *testing.T) (*DeveloperHandler, *sql.DB) {
-		t.Helper()
-		db := testutil.SetupTestDB(t)
-		ds := testutil.NewTestDeveloperService(t, db)
-		return NewDeveloperHandler(ds), db
+// newMultipartRequestWithFileContentType is like newMultipartRequest but lets the caller
+// control the Content-Type header of the file part, to exercise validateCSVFile.
+func newMultipartRequestWithFileContentType(t *testing.T, method, path string, fields map[string]string, filename, fileContentType, csvContent string) *http.Request {
+	t.Helper()
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	for k, v := range fields {
+		if err := w.WriteField(k, v); err != nil {
+			t.Fatalf("WriteField %s: %v", k, err)
+		}
 	}
+	h := make(textproto.MIMEHeader)
+	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="file"; filename="%s"`, filename))
+	h.Set("Content-Type", fileContentType)
+	fw, err := w.CreatePart(h)
+	if err != nil {
+		t.Fatalf("CreatePart: %v", err)
+	}
+	if _, err := fw.Write([]byte(csvContent)); err != nil {
+		t.Fatalf("Write csv: %v", err)
+	}
+	w.Close()
+	req := httptest.NewRequest(method, path, &buf)
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	return req
+}
 
-	t.Run("returns logs with default parameters", func(t *testing.T) {
-		handler, _ := setupHandler(t)
+// newMultipartRequest builds a multipart/form-data request with an optional CSV file attachment.
+func newMultipartRequest(t *testing.T, method, path string, fields map[string]string, filename, csvContent string) *http.Request {
+	t.Helper()
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	for k, v := range fields {
+		if err := w.WriteField(k, v); err != nil {
+			t.Fatalf("WriteField %s: %v", k, err)
+		}
+	}
+	if filename != "" {
+		fw, err := w.CreateFormFile("file", filename)
+		if err != nil {
+			t.Fatalf("CreateFormFile: %v", err)
+		}
+		if _, err := fw.Write([]byte(csvContent)); err != nil {
+			t.Fatalf("Write csv: %v", err)
+		}
+	}
+	w.Close()
+	req := httptest.NewRequest(method, path, &buf)
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	return req
+}
 
+func newDeveloperHandler(t *testing.T) *handlers.DeveloperHandler {
+	t.Helper()
+	db := testutil.SetupTestDB(t)
+	svc := testutil.NewTestDeveloperService(t, db)
+	return handlers.NewDeveloperHandler(svc)
+}
+
+// ---- GetLogs ----
+
+func TestDeveloperHandler_GetLogs(t *testing.T) {
+	t.Run("returns empty logs list", func(t *testing.T) {
+		handler := newDeveloperHandler(t)
 		req := httptest.NewRequest(http.MethodGet, "/api/developer/logs", nil)
 		w := httptest.NewRecorder()
 
 		handler.GetLogs(w, req)
 
 		if w.Code != http.StatusOK {
-			t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
+			t.Errorf("expected 200, got %d", w.Code)
 		}
 
-		var response model.LogResponse
-		if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
-			t.Fatalf("Failed to decode response: %v", err)
+		var resp model.LogResponse
+		if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+			t.Fatalf("decode: %v", err)
 		}
-
-		if response.Logs == nil {
-			t.Error("Expected logs array to be initialized")
+		if resp.Logs == nil {
+			t.Error("expected non-nil logs slice")
+		}
+		if len(resp.Logs) != 0 {
+			t.Errorf("expected 0 logs, got %d", len(resp.Logs))
 		}
 	})
 
-	t.Run("filters by level parameter", func(t *testing.T) {
-		handler, _ := setupHandler(t)
-
-		req := httptest.NewRequest(http.MethodGet, "/api/developer/logs?level=error", nil)
+	t.Run("invalid perPage returns 400", func(t *testing.T) {
+		handler := newDeveloperHandler(t)
+		req := testutil.NewRequestWithQueryParams(http.MethodGet, "/api/developer/logs",
+			map[string]string{"perPage": "notanumber"})
 		w := httptest.NewRecorder()
 
 		handler.GetLogs(w, req)
 
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected 400, got %d", w.Code)
+		}
+	})
+
+	t.Run("invalid startDate returns 400", func(t *testing.T) {
+		handler := newDeveloperHandler(t)
+		req := testutil.NewRequestWithQueryParams(http.MethodGet, "/api/developer/logs",
+			map[string]string{"startDate": "not-a-date"})
+		w := httptest.NewRecorder()
+
+		handler.GetLogs(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected 400, got %d", w.Code)
+		}
+	})
+
+	t.Run("returns logs after delete seeds audit entry", func(t *testing.T) {
+		handler := newDeveloperHandler(t)
+
+		delReq := httptest.NewRequest(http.MethodDelete, "/api/developer/logs", nil)
+		handler.DeleteLogs(httptest.NewRecorder(), delReq)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/developer/logs", nil)
+		w := httptest.NewRecorder()
+		handler.GetLogs(w, req)
+
 		if w.Code != http.StatusOK {
-			t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
+			t.Errorf("expected 200, got %d", w.Code)
 		}
-
-		var response model.LogResponse
-		if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
-			t.Fatalf("Failed to decode response: %v", err)
+		var resp model.LogResponse
+		if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+			t.Fatalf("decode: %v", err)
 		}
+		if len(resp.Logs) == 0 {
+			t.Error("expected at least one log entry after delete")
+		}
+	})
 
-		// If there are logs returned, verify they match the filter
-		for _, log := range response.Logs {
-			if log.Level != "ERROR" {
-				t.Errorf("Expected level ERROR, got %s", log.Level)
+	t.Run("level filter returns only matching logs", func(t *testing.T) {
+		handler := newDeveloperHandler(t)
+
+		// seed an INFO audit log via DeleteLogs
+		handler.DeleteLogs(httptest.NewRecorder(), httptest.NewRequest(http.MethodDelete, "/api/developer/logs", nil))
+
+		req := testutil.NewRequestWithQueryParams(http.MethodGet, "/api/developer/logs",
+			map[string]string{"level": "INFO"})
+		w := httptest.NewRecorder()
+		handler.GetLogs(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("expected 200, got %d", w.Code)
+		}
+		var resp model.LogResponse
+		if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		for _, l := range resp.Logs {
+			if l.Level != "INFO" {
+				t.Errorf("expected only INFO logs, got %s", l.Level)
 			}
-		}
-	})
-
-	t.Run("filters by multiple levels", func(t *testing.T) {
-		handler, _ := setupHandler(t)
-
-		req := httptest.NewRequest(http.MethodGet, "/api/developer/logs?level=error,critical", nil)
-		w := httptest.NewRecorder()
-
-		handler.GetLogs(w, req)
-
-		if w.Code != http.StatusOK {
-			t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
-		}
-
-		var response model.LogResponse
-		if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
-			t.Fatalf("Failed to decode response: %v", err)
-		}
-
-		// Verify returned logs match one of the requested levels
-		validLevels := map[string]bool{"ERROR": true, "CRITICAL": true}
-		for _, log := range response.Logs {
-			if !validLevels[log.Level] {
-				t.Errorf("Expected level ERROR or CRITICAL, got %s", log.Level)
-			}
-		}
-	})
-
-	t.Run("filters by category parameter", func(t *testing.T) {
-		handler, _ := setupHandler(t)
-
-		req := httptest.NewRequest(http.MethodGet, "/api/developer/logs?category=system", nil)
-		w := httptest.NewRecorder()
-
-		handler.GetLogs(w, req)
-
-		if w.Code != http.StatusOK {
-			t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
-		}
-	})
-
-	t.Run("filters by source parameter", func(t *testing.T) {
-		handler, _ := setupHandler(t)
-
-		req := httptest.NewRequest(http.MethodGet, "/api/developer/logs?source=Handler", nil)
-		w := httptest.NewRecorder()
-
-		handler.GetLogs(w, req)
-
-		if w.Code != http.StatusOK {
-			t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
-		}
-	})
-
-	t.Run("filters by message parameter", func(t *testing.T) {
-		handler, _ := setupHandler(t)
-
-		req := httptest.NewRequest(http.MethodGet, "/api/developer/logs?message=failed", nil)
-		w := httptest.NewRecorder()
-
-		handler.GetLogs(w, req)
-
-		if w.Code != http.StatusOK {
-			t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
-		}
-	})
-
-	t.Run("filters by date range", func(t *testing.T) {
-		handler, _ := setupHandler(t)
-
-		req := httptest.NewRequest(http.MethodGet, "/api/developer/logs?startDate=2024-01-01&endDate=2024-12-31", nil)
-		w := httptest.NewRecorder()
-
-		handler.GetLogs(w, req)
-
-		if w.Code != http.StatusOK {
-			t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
-		}
-	})
-
-	t.Run("respects perPage parameter", func(t *testing.T) {
-		handler, _ := setupHandler(t)
-
-		req := httptest.NewRequest(http.MethodGet, "/api/developer/logs?perPage=5", nil)
-		w := httptest.NewRecorder()
-
-		handler.GetLogs(w, req)
-
-		if w.Code != http.StatusOK {
-			t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
-		}
-
-		var response model.LogResponse
-		if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
-			t.Fatalf("Failed to decode response: %v", err)
-		}
-
-		if len(response.Logs) > 5 {
-			t.Errorf("Expected at most 5 logs, got %d", len(response.Logs))
-		}
-	})
-
-	t.Run("respects sortDir parameter", func(t *testing.T) {
-		handler, _ := setupHandler(t)
-
-		req := httptest.NewRequest(http.MethodGet, "/api/developer/logs?sortDir=asc", nil)
-		w := httptest.NewRecorder()
-
-		handler.GetLogs(w, req)
-
-		if w.Code != http.StatusOK {
-			t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
-		}
-	})
-
-	t.Run("handles combined filters", func(t *testing.T) {
-		handler, _ := setupHandler(t)
-
-		req := httptest.NewRequest(http.MethodGet, "/api/developer/logs?level=error&category=system&sortDir=desc&perPage=10", nil)
-		w := httptest.NewRecorder()
-
-		handler.GetLogs(w, req)
-
-		if w.Code != http.StatusOK {
-			t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
-		}
-	})
-
-	t.Run("returns 400 for invalid level", func(t *testing.T) {
-		handler, _ := setupHandler(t)
-
-		req := httptest.NewRequest(http.MethodGet, "/api/developer/logs?level=invalid", nil)
-		w := httptest.NewRecorder()
-
-		handler.GetLogs(w, req)
-
-		if w.Code != http.StatusBadRequest {
-			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
-		}
-	})
-
-	t.Run("returns 400 for invalid category", func(t *testing.T) {
-		handler, _ := setupHandler(t)
-
-		req := httptest.NewRequest(http.MethodGet, "/api/developer/logs?category=invalid", nil)
-		w := httptest.NewRecorder()
-
-		handler.GetLogs(w, req)
-
-		if w.Code != http.StatusBadRequest {
-			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
-		}
-	})
-
-	t.Run("returns 400 for invalid sortDir", func(t *testing.T) {
-		handler, _ := setupHandler(t)
-
-		req := httptest.NewRequest(http.MethodGet, "/api/developer/logs?sortDir=invalid", nil)
-		w := httptest.NewRecorder()
-
-		handler.GetLogs(w, req)
-
-		if w.Code != http.StatusBadRequest {
-			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
-		}
-	})
-
-	t.Run("returns 400 for invalid perPage", func(t *testing.T) {
-		handler, _ := setupHandler(t)
-
-		req := httptest.NewRequest(http.MethodGet, "/api/developer/logs?perPage=0", nil)
-		w := httptest.NewRecorder()
-
-		handler.GetLogs(w, req)
-
-		if w.Code != http.StatusBadRequest {
-			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
-		}
-	})
-
-	t.Run("returns 400 for perPage above maximum", func(t *testing.T) {
-		handler, _ := setupHandler(t)
-
-		req := httptest.NewRequest(http.MethodGet, "/api/developer/logs?perPage=101", nil)
-		w := httptest.NewRecorder()
-
-		handler.GetLogs(w, req)
-
-		if w.Code != http.StatusBadRequest {
-			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
-		}
-	})
-
-	t.Run("returns 400 for invalid date format", func(t *testing.T) {
-		handler, _ := setupHandler(t)
-
-		req := httptest.NewRequest(http.MethodGet, "/api/developer/logs?startDate=invalid-date", nil)
-		w := httptest.NewRecorder()
-
-		handler.GetLogs(w, req)
-
-		if w.Code != http.StatusBadRequest {
-			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
-		}
-	})
-
-	t.Run("accepts case-insensitive level values", func(t *testing.T) {
-		handler, _ := setupHandler(t)
-
-		req := httptest.NewRequest(http.MethodGet, "/api/developer/logs?level=ERROR", nil)
-		w := httptest.NewRecorder()
-
-		handler.GetLogs(w, req)
-
-		if w.Code != http.StatusOK {
-			t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
-		}
-	})
-
-	t.Run("accepts case-insensitive category values", func(t *testing.T) {
-		handler, _ := setupHandler(t)
-
-		req := httptest.NewRequest(http.MethodGet, "/api/developer/logs?category=SYSTEM", nil)
-		w := httptest.NewRecorder()
-
-		handler.GetLogs(w, req)
-
-		if w.Code != http.StatusOK {
-			t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
 		}
 	})
 }
+
+// ---- GetLoggingConfig ----
 
 func TestDeveloperHandler_GetLoggingConfig(t *testing.T) {
-
-	setupHandler := func(t *testing.T) (*DeveloperHandler, *sql.DB) {
-		t.Helper()
-		db := testutil.SetupTestDB(t)
-		ds := testutil.NewTestDeveloperService(t, db)
-		return NewDeveloperHandler(ds), db
-	}
-
-	t.Run("returns default logging config", func(t *testing.T) {
-		handler, _ := setupHandler(t)
-
+	t.Run("returns default config", func(t *testing.T) {
+		handler := newDeveloperHandler(t)
 		req := httptest.NewRequest(http.MethodGet, "/api/developer/system-settings/logging", nil)
 		w := httptest.NewRecorder()
 
 		handler.GetLoggingConfig(w, req)
 
 		if w.Code != http.StatusOK {
-			t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
+			t.Errorf("expected 200, got %d", w.Code)
 		}
 
-		var response model.LoggingSetting
-		if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
-			t.Fatalf("Failed to decode response: %v", err)
-		}
-
-		if response.Enabled != true {
-			t.Errorf("Expected logging to be enabled. value is: '%v'", response.Enabled)
-		}
-
-		if response.Level != "info" {
-			t.Errorf("Expected logging level to be set to 'info', set to '%s'", response.Level)
+		var setting model.LoggingSetting
+		if err := json.NewDecoder(w.Body).Decode(&setting); err != nil {
+			t.Fatalf("decode: %v", err)
 		}
 	})
 
-	t.Run("returns set config.", func(t *testing.T) {
-		handler, db := setupHandler(t)
+	t.Run("reflects values set by SetLoggingConfig", func(t *testing.T) {
+		handler := newDeveloperHandler(t)
 
-		testutil.NewLoggingEnabled(false).Build(t, db)
-		testutil.NewLoggingLevel("warning").Build(t, db)
+		setReq := testutil.NewRequestWithBody(http.MethodPut, "/api/developer/system-settings/logging",
+			`{"enabled": false, "level": "error"}`)
+		handler.SetLoggingConfig(httptest.NewRecorder(), setReq)
 
 		req := httptest.NewRequest(http.MethodGet, "/api/developer/system-settings/logging", nil)
 		w := httptest.NewRecorder()
-
 		handler.GetLoggingConfig(w, req)
 
 		if w.Code != http.StatusOK {
-			t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
+			t.Errorf("expected 200, got %d", w.Code)
 		}
-
-		var response model.LoggingSetting
-		if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
-			t.Fatalf("Failed to decode response: %v", err)
+		var setting model.LoggingSetting
+		if err := json.NewDecoder(w.Body).Decode(&setting); err != nil {
+			t.Fatalf("decode: %v", err)
 		}
-
-		if response.Enabled != false {
-			t.Errorf("Expected logging to be disabled. value is: '%v'", response.Enabled)
+		if setting.Enabled != false {
+			t.Errorf("expected Enabled=false, got %v", setting.Enabled)
 		}
-
-		if response.Level != "warning" {
-			t.Errorf("Expected logging level to be set to 'warning', set to '%s'", response.Level)
+		if setting.Level != "error" {
+			t.Errorf("expected Level=error, got %s", setting.Level)
 		}
 	})
-
-	t.Run("returns 500 on database error", func(t *testing.T) {
-		handler, db := setupHandler(t)
-		db.Close()
-
-		req := httptest.NewRequest(http.MethodGet, "/api/developer/system-settings/logging", nil)
-		w := httptest.NewRecorder()
-
-		handler.GetLoggingConfig(w, req)
-
-		if w.Code != http.StatusInternalServerError {
-			t.Errorf("Expected 500, got %d: %s", w.Code, w.Body.String())
-		}
-	})
-
 }
+
+// ---- SetLoggingConfig ----
+
+func TestDeveloperHandler_SetLoggingConfig(t *testing.T) {
+	t.Run("valid enabled and level", func(t *testing.T) {
+		handler := newDeveloperHandler(t)
+		req := testutil.NewRequestWithBody(http.MethodPut,
+			"/api/developer/system-settings/logging",
+			`{"enabled": true, "level": "info"}`)
+		w := httptest.NewRecorder()
+
+		handler.SetLoggingConfig(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("missing enabled returns 400", func(t *testing.T) {
+		handler := newDeveloperHandler(t)
+		req := testutil.NewRequestWithBody(http.MethodPut,
+			"/api/developer/system-settings/logging",
+			`{"level": "info"}`)
+		w := httptest.NewRecorder()
+
+		handler.SetLoggingConfig(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected 400, got %d", w.Code)
+		}
+	})
+
+	t.Run("invalid level returns 400", func(t *testing.T) {
+		handler := newDeveloperHandler(t)
+		req := testutil.NewRequestWithBody(http.MethodPut,
+			"/api/developer/system-settings/logging",
+			`{"enabled": true, "level": "verbose"}`)
+		w := httptest.NewRecorder()
+
+		handler.SetLoggingConfig(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected 400, got %d", w.Code)
+		}
+	})
+
+	t.Run("invalid body returns 400", func(t *testing.T) {
+		handler := newDeveloperHandler(t)
+		req := testutil.NewRequestWithBody(http.MethodPut,
+			"/api/developer/system-settings/logging",
+			`not json`)
+		w := httptest.NewRecorder()
+
+		handler.SetLoggingConfig(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected 400, got %d", w.Code)
+		}
+	})
+
+	t.Run("response body contains the values that were set", func(t *testing.T) {
+		handler := newDeveloperHandler(t)
+		req := testutil.NewRequestWithBody(http.MethodPut,
+			"/api/developer/system-settings/logging",
+			`{"enabled": true, "level": "warning"}`)
+		w := httptest.NewRecorder()
+
+		handler.SetLoggingConfig(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var setting model.LoggingSetting
+		if err := json.NewDecoder(w.Body).Decode(&setting); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if setting.Enabled != true {
+			t.Errorf("expected Enabled=true, got %v", setting.Enabled)
+		}
+		if setting.Level != "warning" {
+			t.Errorf("expected Level=warning, got %s", setting.Level)
+		}
+	})
+}
+
+// ---- GetFundPriceCSVTemplate ----
 
 func TestDeveloperHandler_GetFundPriceCSVTemplate(t *testing.T) {
-	setupHandler := func(t *testing.T) (*DeveloperHandler, *sql.DB) {
-		t.Helper()
-		db := testutil.SetupTestDB(t)
-		ds := testutil.NewTestDeveloperService(t, db)
-		return NewDeveloperHandler(ds), db
-	}
+	t.Run("returns expected headers", func(t *testing.T) {
+		handler := newDeveloperHandler(t)
+		req := httptest.NewRequest(http.MethodGet, "/api/developer/csv/fund-prices/template", nil)
+		w := httptest.NewRecorder()
 
-	handler, _ := setupHandler(t)
+		handler.GetFundPriceCSVTemplate(w, req)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/developer/csv/fund-prices/template", nil)
-	w := httptest.NewRecorder()
+		if w.Code != http.StatusOK {
+			t.Errorf("expected 200, got %d", w.Code)
+		}
 
-	handler.GetFundPriceCSVTemplate(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
-	}
-
-	var response model.TemplateModel
-	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
-		t.Fatalf("Failed to decode response: %v", err)
-	}
-
-	if response.Headers[0] != "date" {
-		t.Errorf("Expected Header to be date. value is: '%v'", response.Headers[0])
-	}
+		var tmpl model.TemplateModel
+		if err := json.NewDecoder(w.Body).Decode(&tmpl); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if len(tmpl.Headers) != 2 {
+			t.Errorf("expected 2 headers, got %d", len(tmpl.Headers))
+		}
+	})
 }
+
+// ---- GetTransactionCSVTemplate ----
 
 func TestDeveloperHandler_GetTransactionCSVTemplate(t *testing.T) {
-	setupHandler := func(t *testing.T) (*DeveloperHandler, *sql.DB) {
-		t.Helper()
-		db := testutil.SetupTestDB(t)
-		ds := testutil.NewTestDeveloperService(t, db)
-		return NewDeveloperHandler(ds), db
-	}
+	t.Run("returns expected headers", func(t *testing.T) {
+		handler := newDeveloperHandler(t)
+		req := httptest.NewRequest(http.MethodGet, "/api/developer/csv/transactions/template", nil)
+		w := httptest.NewRecorder()
 
-	handler, _ := setupHandler(t)
+		handler.GetTransactionCSVTemplate(w, req)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/developer/csv/transactions/template", nil)
-	w := httptest.NewRecorder()
+		if w.Code != http.StatusOK {
+			t.Errorf("expected 200, got %d", w.Code)
+		}
 
-	handler.GetTransactionCSVTemplate(w, req)
+		var tmpl model.TemplateModel
+		if err := json.NewDecoder(w.Body).Decode(&tmpl); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if len(tmpl.Headers) != 4 {
+			t.Errorf("expected 4 headers, got %d", len(tmpl.Headers))
+		}
+	})
 
-	if w.Code != http.StatusOK {
-		t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
-	}
+	t.Run("description lists all four transaction types", func(t *testing.T) {
+		handler := newDeveloperHandler(t)
+		req := httptest.NewRequest(http.MethodGet, "/api/developer/csv/transactions/template", nil)
+		w := httptest.NewRecorder()
 
-	var response model.TemplateModel
-	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
-		t.Fatalf("Failed to decode response: %v", err)
-	}
+		handler.GetTransactionCSVTemplate(w, req)
 
-	if response.Headers[3] != "cost_per_share" {
-		t.Errorf("Expected Header to be cost_per_share. value is: '%v'", response.Headers[3])
-	}
+		var tmpl model.TemplateModel
+		if err := json.NewDecoder(w.Body).Decode(&tmpl); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		for _, typ := range []string{"buy", "sell", "dividend", "fee"} {
+			if !strings.Contains(tmpl.Description, typ) {
+				t.Errorf("expected description to mention %q", typ)
+			}
+		}
+	})
 }
 
-//nolint:gocyclo // Test functions naturally have high complexity due to many test cases
+// ---- GetExchangeRate ----
+
 func TestDeveloperHandler_GetExchangeRate(t *testing.T) {
-	setupHandler := func(t *testing.T) (*DeveloperHandler, *sql.DB) {
-		t.Helper()
+	t.Run("found returns rate", func(t *testing.T) {
 		db := testutil.SetupTestDB(t)
-		ds := testutil.NewTestDeveloperService(t, db)
-		return NewDeveloperHandler(ds), db
-	}
+		testutil.NewExchangeRate("USD", "EUR", "2024-01-15", 0.92).Build(t, db)
+		svc := testutil.NewTestDeveloperService(t, db)
+		handler := handlers.NewDeveloperHandler(svc)
 
-	t.Run("returns 200 with rate when exchange rate exists", func(t *testing.T) {
-		handler, db := setupHandler(t)
-
-		// Insert test exchange rate
-		testutil.NewExchangeRate("USD", "EUR", "2024-01-01", 0.85).Build(t, db)
-
-		req := httptest.NewRequest(http.MethodGet, "/api/developer/exchange-rate?fromCurrency=USD&toCurrency=EUR&date=2024-01-01", nil)
+		req := testutil.NewRequestWithQueryParams(http.MethodGet, "/api/developer/exchange-rate",
+			map[string]string{
+				"fromCurrency": "USD",
+				"toCurrency":   "EUR",
+				"date":         "2024-01-15",
+			})
 		w := httptest.NewRecorder()
 
 		handler.GetExchangeRate(w, req)
 
 		if w.Code != http.StatusOK {
-			t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
+			t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
 		}
 
-		var response model.ExchangeRateWrapper
-		if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
-			t.Fatalf("Failed to decode response: %v", err)
+		var resp model.ExchangeRateWrapper
+		if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+			t.Fatalf("decode: %v", err)
 		}
-
-		if response.FromCurrency != "USD" {
-			t.Errorf("Expected fromCurrency to be USD, got %s", response.FromCurrency)
-		}
-
-		if response.ToCurrency != "EUR" {
-			t.Errorf("Expected toCurrency to be EUR, got %s", response.ToCurrency)
-		}
-
-		if response.Date != "2024-01-01" {
-			t.Errorf("Expected date to be 2024-01-01, got %s", response.Date)
-		}
-
-		if response.Rate == nil {
-			t.Error("Expected rate to be set, got nil")
-		} else if response.Rate.Rate != 0.85 {
-			t.Errorf("Expected rate to be 0.85, got %f", response.Rate.Rate)
+		if resp.Rate == nil {
+			t.Fatal("expected rate, got nil")
 		}
 	})
 
-	t.Run("returns 200 with nil rate when exchange rate not found", func(t *testing.T) {
-		handler, _ := setupHandler(t)
-
-		req := httptest.NewRequest(http.MethodGet, "/api/developer/exchange-rate?fromCurrency=USD&toCurrency=EUR&date=2024-01-01", nil)
+	t.Run("not found returns null rate with 200", func(t *testing.T) {
+		handler := newDeveloperHandler(t)
+		req := testutil.NewRequestWithQueryParams(http.MethodGet, "/api/developer/exchange-rate",
+			map[string]string{
+				"fromCurrency": "USD",
+				"toCurrency":   "EUR",
+				"date":         "2024-01-15",
+			})
 		w := httptest.NewRecorder()
 
 		handler.GetExchangeRate(w, req)
 
 		if w.Code != http.StatusOK {
-			t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
+			t.Errorf("expected 200, got %d", w.Code)
 		}
 
-		var response model.ExchangeRateWrapper
-		if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
-			t.Fatalf("Failed to decode response: %v", err)
+		var resp model.ExchangeRateWrapper
+		if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+			t.Fatalf("decode: %v", err)
 		}
-
-		if response.FromCurrency != "USD" {
-			t.Errorf("Expected fromCurrency to be USD, got %s", response.FromCurrency)
-		}
-
-		if response.ToCurrency != "EUR" {
-			t.Errorf("Expected toCurrency to be EUR, got %s", response.ToCurrency)
-		}
-
-		if response.Date != "2024-01-01" {
-			t.Errorf("Expected date to be 2024-01-01, got %s", response.Date)
-		}
-
-		if response.Rate != nil {
-			t.Errorf("Expected rate to be nil when not found, got %v", response.Rate)
+		if resp.Rate != nil {
+			t.Errorf("expected nil rate, got %v", resp.Rate)
 		}
 	})
 
-	t.Run("returns 400 when fromCurrency is missing", func(t *testing.T) {
-		handler, _ := setupHandler(t)
-
-		req := httptest.NewRequest(http.MethodGet, "/api/developer/exchange-rate?toCurrency=EUR&date=2024-01-01", nil)
+	t.Run("missing fromCurrency returns 400", func(t *testing.T) {
+		handler := newDeveloperHandler(t)
+		req := testutil.NewRequestWithQueryParams(http.MethodGet, "/api/developer/exchange-rate",
+			map[string]string{"toCurrency": "EUR", "date": "2024-01-15"})
 		w := httptest.NewRecorder()
 
 		handler.GetExchangeRate(w, req)
 
 		if w.Code != http.StatusBadRequest {
-			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
+			t.Errorf("expected 400, got %d", w.Code)
 		}
 	})
 
-	t.Run("returns 400 when toCurrency is missing", func(t *testing.T) {
-		handler, _ := setupHandler(t)
-
-		req := httptest.NewRequest(http.MethodGet, "/api/developer/exchange-rate?fromCurrency=USD&date=2024-01-01", nil)
+	t.Run("bad date returns 400", func(t *testing.T) {
+		handler := newDeveloperHandler(t)
+		req := testutil.NewRequestWithQueryParams(http.MethodGet, "/api/developer/exchange-rate",
+			map[string]string{
+				"fromCurrency": "USD",
+				"toCurrency":   "EUR",
+				"date":         "not-a-date",
+			})
 		w := httptest.NewRecorder()
 
 		handler.GetExchangeRate(w, req)
 
 		if w.Code != http.StatusBadRequest {
-			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
+			t.Errorf("expected 400, got %d", w.Code)
 		}
 	})
 
-	t.Run("returns 400 when date is missing", func(t *testing.T) {
-		handler, _ := setupHandler(t)
-
-		req := httptest.NewRequest(http.MethodGet, "/api/developer/exchange-rate?fromCurrency=USD&toCurrency=EUR", nil)
+	t.Run("missing toCurrency returns 400", func(t *testing.T) {
+		handler := newDeveloperHandler(t)
+		req := testutil.NewRequestWithQueryParams(http.MethodGet, "/api/developer/exchange-rate",
+			map[string]string{"fromCurrency": "USD", "date": "2024-01-15"})
 		w := httptest.NewRecorder()
 
 		handler.GetExchangeRate(w, req)
 
 		if w.Code != http.StatusBadRequest {
-			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
+			t.Errorf("expected 400, got %d", w.Code)
 		}
 	})
 
-	t.Run("returns 400 when all parameters are missing", func(t *testing.T) {
-		handler, _ := setupHandler(t)
-
-		req := httptest.NewRequest(http.MethodGet, "/api/developer/exchange-rate", nil)
+	t.Run("missing date returns 400", func(t *testing.T) {
+		handler := newDeveloperHandler(t)
+		req := testutil.NewRequestWithQueryParams(http.MethodGet, "/api/developer/exchange-rate",
+			map[string]string{"fromCurrency": "USD", "toCurrency": "EUR"})
 		w := httptest.NewRecorder()
 
 		handler.GetExchangeRate(w, req)
 
 		if w.Code != http.StatusBadRequest {
-			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
-		}
-	})
-
-	t.Run("returns 400 on invalid date format", func(t *testing.T) {
-		handler, _ := setupHandler(t)
-
-		req := httptest.NewRequest(http.MethodGet, "/api/developer/exchange-rate?fromCurrency=USD&toCurrency=EUR&date=invalid-date", nil)
-		w := httptest.NewRecorder()
-
-		handler.GetExchangeRate(w, req)
-
-		if w.Code != http.StatusBadRequest {
-			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
-		}
-	})
-
-	t.Run("returns 500 on database error", func(t *testing.T) {
-		handler, db := setupHandler(t)
-		db.Close()
-
-		req := httptest.NewRequest(http.MethodGet, "/api/developer/exchange-rate?fromCurrency=USD&toCurrency=EUR&date=2024-01-01", nil)
-		w := httptest.NewRecorder()
-
-		handler.GetExchangeRate(w, req)
-
-		if w.Code != http.StatusInternalServerError {
-			t.Errorf("Expected 500, got %d: %s", w.Code, w.Body.String())
-		}
-	})
-
-	t.Run("handles different currency pairs", func(t *testing.T) {
-		handler, db := setupHandler(t)
-
-		testutil.NewExchangeRate("GBP", "USD", "2024-06-15", 1.27).Build(t, db)
-
-		req := httptest.NewRequest(http.MethodGet, "/api/developer/exchange-rate?fromCurrency=GBP&toCurrency=USD&date=2024-06-15", nil)
-		w := httptest.NewRecorder()
-
-		handler.GetExchangeRate(w, req)
-
-		if w.Code != http.StatusOK {
-			t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
-		}
-
-		var response model.ExchangeRateWrapper
-		if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
-			t.Fatalf("Failed to decode response: %v", err)
-		}
-
-		if response.Rate == nil {
-			t.Error("Expected rate to be set, got nil")
-		} else if response.Rate.Rate != 1.27 {
-			t.Errorf("Expected rate to be 1.27, got %f", response.Rate.Rate)
-		}
-	})
-
-	t.Run("handles valid date formats", func(t *testing.T) {
-		handler, _ := setupHandler(t)
-
-		req := httptest.NewRequest(http.MethodGet, "/api/developer/exchange-rate?fromCurrency=USD&toCurrency=EUR&date=2024-12-31", nil)
-		w := httptest.NewRecorder()
-
-		handler.GetExchangeRate(w, req)
-
-		if w.Code != http.StatusOK {
-			t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
-		}
-
-		var response model.ExchangeRateWrapper
-		if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
-			t.Fatalf("Failed to decode response: %v", err)
-		}
-
-		if response.Date != "2024-12-31" {
-			t.Errorf("Expected date to be 2024-12-31, got %s", response.Date)
+			t.Errorf("expected 400, got %d", w.Code)
 		}
 	})
 }
 
-//nolint:gocyclo // Test functions naturally have high complexity due to many test cases
-func TestDeveloperHandler_GetFundPrice(t *testing.T) {
-	setupHandler := func(t *testing.T) (*DeveloperHandler, *sql.DB) {
-		t.Helper()
+// ---- UpdateExchangeRate ----
+
+func TestDeveloperHandler_UpdateExchangeRate(t *testing.T) {
+	t.Run("upsert new rate", func(t *testing.T) {
+		handler := newDeveloperHandler(t)
+		req := testutil.NewRequestWithBody(http.MethodPost, "/api/developer/exchange-rate",
+			`{"date":"2024-03-01","fromCurrency":"USD","toCurrency":"EUR","rate":"0.91"}`)
+		w := httptest.NewRecorder()
+
+		handler.UpdateExchangeRate(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("upsert existing rate", func(t *testing.T) {
 		db := testutil.SetupTestDB(t)
-		ds := testutil.NewTestDeveloperService(t, db)
-		return NewDeveloperHandler(ds), db
-	}
+		testutil.NewExchangeRate("USD", "EUR", "2024-03-01", 0.90).Build(t, db)
+		svc := testutil.NewTestDeveloperService(t, db)
+		handler := handlers.NewDeveloperHandler(svc)
 
-	t.Run("returns 200 with fund price when it exists", func(t *testing.T) {
-		handler, db := setupHandler(t)
+		req := testutil.NewRequestWithBody(http.MethodPost, "/api/developer/exchange-rate",
+			`{"date":"2024-03-01","fromCurrency":"USD","toCurrency":"EUR","rate":"0.91"}`)
+		w := httptest.NewRecorder()
 
-		// Create test data
-		fund := testutil.NewFund().WithSymbol("AAPL").Build(t, db)
-		priceDate := time.Date(2024, 1, 15, 0, 0, 0, 0, time.UTC)
+		handler.UpdateExchangeRate(w, req)
 
-		testutil.NewFundPrice(fund.ID).
-			WithDate(priceDate).
-			WithPrice(150.75).
-			Build(t, db)
+		if w.Code != http.StatusOK {
+			t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+	})
 
-		req := httptest.NewRequest(http.MethodGet, "/api/developer/fund-price?fundId="+fund.ID+"&date=2024-01-15", nil)
+	t.Run("invalid rate returns 400", func(t *testing.T) {
+		handler := newDeveloperHandler(t)
+		req := testutil.NewRequestWithBody(http.MethodPost, "/api/developer/exchange-rate",
+			`{"date":"2024-03-01","fromCurrency":"USD","toCurrency":"EUR","rate":"notanumber"}`)
+		w := httptest.NewRecorder()
+
+		handler.UpdateExchangeRate(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected 400, got %d", w.Code)
+		}
+	})
+
+	t.Run("invalid body returns 400", func(t *testing.T) {
+		handler := newDeveloperHandler(t)
+		req := testutil.NewRequestWithBody(http.MethodPost, "/api/developer/exchange-rate", `not json`)
+		w := httptest.NewRecorder()
+
+		handler.UpdateExchangeRate(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected 400, got %d", w.Code)
+		}
+	})
+
+	t.Run("negative rate returns 400", func(t *testing.T) {
+		handler := newDeveloperHandler(t)
+		req := testutil.NewRequestWithBody(http.MethodPost, "/api/developer/exchange-rate",
+			`{"date":"2024-03-01","fromCurrency":"USD","toCurrency":"EUR","rate":"-0.5"}`)
+		w := httptest.NewRecorder()
+
+		handler.UpdateExchangeRate(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected 400, got %d", w.Code)
+		}
+	})
+
+	t.Run("zero rate returns 400", func(t *testing.T) {
+		handler := newDeveloperHandler(t)
+		req := testutil.NewRequestWithBody(http.MethodPost, "/api/developer/exchange-rate",
+			`{"date":"2024-03-01","fromCurrency":"USD","toCurrency":"EUR","rate":"0"}`)
+		w := httptest.NewRecorder()
+
+		handler.UpdateExchangeRate(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected 400, got %d", w.Code)
+		}
+	})
+
+	t.Run("missing date returns 400", func(t *testing.T) {
+		handler := newDeveloperHandler(t)
+		req := testutil.NewRequestWithBody(http.MethodPost, "/api/developer/exchange-rate",
+			`{"fromCurrency":"USD","toCurrency":"EUR","rate":"0.91"}`)
+		w := httptest.NewRecorder()
+
+		handler.UpdateExchangeRate(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected 400, got %d", w.Code)
+		}
+	})
+}
+
+// ---- GetFundPrice ----
+
+func TestDeveloperHandler_GetFundPrice(t *testing.T) {
+	t.Run("found returns price", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		fund := testutil.NewFund().Build(t, db)
+		priceDate, err := time.Parse("2006-01-02", "2024-06-01")
+		if err != nil {
+			t.Fatalf("parse date: %v", err)
+		}
+		testutil.NewFundPrice(fund.ID).WithDate(priceDate).WithPrice(100.0).Build(t, db)
+		svc := testutil.NewTestDeveloperService(t, db)
+		handler := handlers.NewDeveloperHandler(svc)
+
+		req := testutil.NewRequestWithQueryParams(http.MethodGet, "/api/developer/fund-price",
+			map[string]string{"fundId": fund.ID, "date": "2024-06-01"})
 		w := httptest.NewRecorder()
 
 		handler.GetFundPrice(w, req)
 
 		if w.Code != http.StatusOK {
-			t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
-		}
-
-		var response model.FundPrice
-		if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
-			t.Fatalf("Failed to decode response: %v", err)
-		}
-
-		if response.FundID != fund.ID {
-			t.Errorf("Expected fundID %s, got %s", fund.ID, response.FundID)
-		}
-
-		if response.Price != 150.75 {
-			t.Errorf("Expected price 150.75, got %f", response.Price)
+			t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
 		}
 	})
 
-	t.Run("returns 404 when fund price not found", func(t *testing.T) {
-		handler, db := setupHandler(t)
+	t.Run("not found returns 404", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		fund := testutil.NewFund().Build(t, db)
+		svc := testutil.NewTestDeveloperService(t, db)
+		handler := handlers.NewDeveloperHandler(svc)
 
-		// Create fund but no price for the requested date
-		fund := testutil.NewFund().WithSymbol("MSFT").Build(t, db)
-
-		req := httptest.NewRequest(http.MethodGet, "/api/developer/fund-price?fundId="+fund.ID+"&date=2024-01-15", nil)
+		req := testutil.NewRequestWithQueryParams(http.MethodGet, "/api/developer/fund-price",
+			map[string]string{"fundId": fund.ID, "date": "2024-06-01"})
 		w := httptest.NewRecorder()
 
 		handler.GetFundPrice(w, req)
 
 		if w.Code != http.StatusNotFound {
-			t.Errorf("Expected 404, got %d: %s", w.Code, w.Body.String())
+			t.Errorf("expected 404, got %d", w.Code)
 		}
 	})
 
-	t.Run("returns 404 when fund does not exist", func(t *testing.T) {
-		handler, _ := setupHandler(t)
-
-		req := httptest.NewRequest(http.MethodGet, "/api/developer/fund-price?fundId=non-existent-id&date=2024-01-15", nil)
-		w := httptest.NewRecorder()
-
-		handler.GetFundPrice(w, req)
-
-		if w.Code != http.StatusNotFound {
-			t.Errorf("Expected 404, got %d: %s", w.Code, w.Body.String())
-		}
-	})
-
-	t.Run("returns 400 when fundId is missing", func(t *testing.T) {
-		handler, _ := setupHandler(t)
-
-		req := httptest.NewRequest(http.MethodGet, "/api/developer/fund-price?date=2024-01-15", nil)
+	t.Run("missing fundId returns 400", func(t *testing.T) {
+		handler := newDeveloperHandler(t)
+		req := testutil.NewRequestWithQueryParams(http.MethodGet, "/api/developer/fund-price",
+			map[string]string{"date": "2024-06-01"})
 		w := httptest.NewRecorder()
 
 		handler.GetFundPrice(w, req)
 
 		if w.Code != http.StatusBadRequest {
-			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
+			t.Errorf("expected 400, got %d", w.Code)
 		}
 	})
 
-	t.Run("returns 400 when date is missing", func(t *testing.T) {
-		handler, db := setupHandler(t)
+	t.Run("bad date returns 400", func(t *testing.T) {
+		handler := newDeveloperHandler(t)
+		req := testutil.NewRequestWithQueryParams(http.MethodGet, "/api/developer/fund-price",
+			map[string]string{"fundId": testutil.MakeID(), "date": "not-a-date"})
+		w := httptest.NewRecorder()
 
+		handler.GetFundPrice(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected 400, got %d", w.Code)
+		}
+	})
+}
+
+// ---- UpdateFundPrice ----
+
+func TestDeveloperHandler_UpdateFundPrice(t *testing.T) {
+	t.Run("upsert new price", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
 		fund := testutil.NewFund().Build(t, db)
+		svc := testutil.NewTestDeveloperService(t, db)
+		handler := handlers.NewDeveloperHandler(svc)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/developer/fund-price?fundId="+fund.ID, nil)
+		body, err := json.Marshal(map[string]string{
+			"date":   "2024-03-01",
+			"fundId": fund.ID,
+			"price":  "123.45",
+		})
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		req := testutil.NewRequestWithBody(http.MethodPost, "/api/developer/fund-price", string(body))
 		w := httptest.NewRecorder()
 
-		handler.GetFundPrice(w, req)
+		handler.UpdateFundPrice(w, req)
 
-		if w.Code != http.StatusBadRequest {
-			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		if w.Code != http.StatusOK {
+			t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
 		}
 	})
 
-	t.Run("returns 400 when all parameters are missing", func(t *testing.T) {
-		handler, _ := setupHandler(t)
-
-		req := httptest.NewRequest(http.MethodGet, "/api/developer/fund-price", nil)
-		w := httptest.NewRecorder()
-
-		handler.GetFundPrice(w, req)
-
-		if w.Code != http.StatusBadRequest {
-			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
-		}
-	})
-
-	t.Run("returns 400 on invalid date format", func(t *testing.T) {
-		handler, db := setupHandler(t)
-
+	t.Run("invalid price returns 400", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
 		fund := testutil.NewFund().Build(t, db)
+		svc := testutil.NewTestDeveloperService(t, db)
+		handler := handlers.NewDeveloperHandler(svc)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/developer/fund-price?fundId="+fund.ID+"&date=invalid-date", nil)
+		body, err := json.Marshal(map[string]string{
+			"date":   "2024-03-01",
+			"fundId": fund.ID,
+			"price":  "notanumber",
+		})
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		req := testutil.NewRequestWithBody(http.MethodPost, "/api/developer/fund-price", string(body))
 		w := httptest.NewRecorder()
 
-		handler.GetFundPrice(w, req)
+		handler.UpdateFundPrice(w, req)
 
 		if w.Code != http.StatusBadRequest {
-			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
+			t.Errorf("expected 400, got %d", w.Code)
 		}
 	})
 
-	t.Run("returns 500 on database error", func(t *testing.T) {
-		handler, db := setupHandler(t)
-
-		fund := testutil.NewFund().Build(t, db)
-		db.Close()
-
-		req := httptest.NewRequest(http.MethodGet, "/api/developer/fund-price?fundId="+fund.ID+"&date=2024-01-15", nil)
+	t.Run("invalid body returns 400", func(t *testing.T) {
+		handler := newDeveloperHandler(t)
+		req := testutil.NewRequestWithBody(http.MethodPost, "/api/developer/fund-price", `not json`)
 		w := httptest.NewRecorder()
 
-		handler.GetFundPrice(w, req)
+		handler.UpdateFundPrice(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected 400, got %d", w.Code)
+		}
+	})
+
+	t.Run("upsert existing price", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		fund := testutil.NewFund().Build(t, db)
+		testutil.NewFundPrice(fund.ID).WithDate(time.Date(2024, 3, 1, 0, 0, 0, 0, time.UTC)).WithPrice(100.0).Build(t, db)
+		svc := testutil.NewTestDeveloperService(t, db)
+		handler := handlers.NewDeveloperHandler(svc)
+
+		body, err := json.Marshal(map[string]string{
+			"date":   "2024-03-01",
+			"fundId": fund.ID,
+			"price":  "150.00",
+		})
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		req := testutil.NewRequestWithBody(http.MethodPost, "/api/developer/fund-price", string(body))
+		w := httptest.NewRecorder()
+
+		handler.UpdateFundPrice(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("negative price returns 400", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		fund := testutil.NewFund().Build(t, db)
+		svc := testutil.NewTestDeveloperService(t, db)
+		handler := handlers.NewDeveloperHandler(svc)
+
+		body, err := json.Marshal(map[string]string{
+			"date":   "2024-03-01",
+			"fundId": fund.ID,
+			"price":  "-10.00",
+		})
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		req := testutil.NewRequestWithBody(http.MethodPost, "/api/developer/fund-price", string(body))
+		w := httptest.NewRecorder()
+
+		handler.UpdateFundPrice(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected 400, got %d", w.Code)
+		}
+	})
+
+	t.Run("missing date returns 400", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		fund := testutil.NewFund().Build(t, db)
+		svc := testutil.NewTestDeveloperService(t, db)
+		handler := handlers.NewDeveloperHandler(svc)
+
+		body, err := json.Marshal(map[string]string{
+			"fundId": fund.ID,
+			"price":  "100.00",
+		})
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		req := testutil.NewRequestWithBody(http.MethodPost, "/api/developer/fund-price", string(body))
+		w := httptest.NewRecorder()
+
+		handler.UpdateFundPrice(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected 400, got %d", w.Code)
+		}
+	})
+}
+
+// ---- DeleteLogs ----
+
+func TestDeveloperHandler_DeleteLogs(t *testing.T) {
+	t.Run("returns 204 no content", func(t *testing.T) {
+		handler := newDeveloperHandler(t)
+		req := httptest.NewRequest(http.MethodDelete, "/api/developer/logs", nil)
+		w := httptest.NewRecorder()
+
+		handler.DeleteLogs(w, req)
+
+		if w.Code != http.StatusNoContent {
+			t.Errorf("expected 204, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("logs cleared - only audit entry remains", func(t *testing.T) {
+		handler := newDeveloperHandler(t)
+
+		delReq := httptest.NewRequest(http.MethodDelete, "/api/developer/logs", nil)
+		delW := httptest.NewRecorder()
+		handler.DeleteLogs(delW, delReq)
+
+		if delW.Code != http.StatusNoContent {
+			t.Fatalf("delete failed: %d", delW.Code)
+		}
+
+		getReq := httptest.NewRequest(http.MethodGet, "/api/developer/logs", nil)
+		getW := httptest.NewRecorder()
+		handler.GetLogs(getW, getReq)
+
+		var resp model.LogResponse
+		if err := json.NewDecoder(getW.Body).Decode(&resp); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if len(resp.Logs) != 1 {
+			t.Errorf("expected 1 audit log after delete, got %d", len(resp.Logs))
+		}
+	})
+
+	t.Run("X-Forwarded-For with multiple IPs stores only the first", func(t *testing.T) {
+		handler := newDeveloperHandler(t)
+
+		delReq := httptest.NewRequest(http.MethodDelete, "/api/developer/logs", nil)
+		delReq.Header.Set("X-Forwarded-For", "1.2.3.4, 10.0.0.1, 172.16.0.1")
+		handler.DeleteLogs(httptest.NewRecorder(), delReq)
+
+		getReq := httptest.NewRequest(http.MethodGet, "/api/developer/logs", nil)
+		getW := httptest.NewRecorder()
+		handler.GetLogs(getW, getReq)
+
+		var resp model.LogResponse
+		if err := json.NewDecoder(getW.Body).Decode(&resp); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if len(resp.Logs) == 0 {
+			t.Fatal("expected audit log entry")
+		}
+		if resp.Logs[0].IPAddress != "1.2.3.4" {
+			t.Errorf("expected IPAddress=1.2.3.4, got %q", resp.Logs[0].IPAddress)
+		}
+	})
+}
+
+// ---- ImportFundPrices ----
+
+func TestDeveloperHandler_ImportFundPrices(t *testing.T) {
+	t.Run("valid CSV imports rows", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		fund := testutil.NewFund().Build(t, db)
+		svc := testutil.NewTestDeveloperService(t, db)
+		handler := handlers.NewDeveloperHandler(svc)
+
+		csv := "date,price\n2024-01-01,100.00\n2024-01-02,101.50\n"
+		req := newMultipartRequest(t, http.MethodPost, "/api/developer/import-fund-prices",
+			map[string]string{"fundId": fund.ID}, "prices.csv", csv)
+		w := httptest.NewRecorder()
+
+		handler.ImportFundPrices(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var result map[string]int
+		if err := json.NewDecoder(w.Body).Decode(&result); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if result["imported"] != 2 {
+			t.Errorf("expected 2 imported, got %d", result["imported"])
+		}
+	})
+
+	t.Run("missing fundId returns 400", func(t *testing.T) {
+		handler := newDeveloperHandler(t)
+		req := newMultipartRequest(t, http.MethodPost, "/api/developer/import-fund-prices",
+			nil, "prices.csv", "date,price\n2024-01-01,100.00\n")
+		w := httptest.NewRecorder()
+
+		handler.ImportFundPrices(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected 400, got %d", w.Code)
+		}
+	})
+
+	t.Run("fund not found returns 400", func(t *testing.T) {
+		handler := newDeveloperHandler(t)
+		req := newMultipartRequest(t, http.MethodPost, "/api/developer/import-fund-prices",
+			map[string]string{"fundId": testutil.MakeID()}, "prices.csv", "date,price\n2024-01-01,100.00\n")
+		w := httptest.NewRecorder()
+
+		handler.ImportFundPrices(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected 400, got %d", w.Code)
+		}
+	})
+
+	t.Run("no file in form returns 400", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		fund := testutil.NewFund().Build(t, db)
+		svc := testutil.NewTestDeveloperService(t, db)
+		handler := handlers.NewDeveloperHandler(svc)
+
+		// Pass empty filename so no file part is added to the multipart form
+		req := newMultipartRequest(t, http.MethodPost, "/api/developer/import-fund-prices",
+			map[string]string{"fundId": fund.ID}, "", "")
+		w := httptest.NewRecorder()
+
+		handler.ImportFundPrices(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected 400, got %d", w.Code)
+		}
+	})
+
+	t.Run("bad file extension returns 400", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		fund := testutil.NewFund().Build(t, db)
+		svc := testutil.NewTestDeveloperService(t, db)
+		handler := handlers.NewDeveloperHandler(svc)
+
+		req := newMultipartRequest(t, http.MethodPost, "/api/developer/import-fund-prices",
+			map[string]string{"fundId": fund.ID}, "prices.txt", "date,price\n2024-01-01,100.00\n")
+		w := httptest.NewRecorder()
+
+		handler.ImportFundPrices(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected 400, got %d", w.Code)
+		}
+	})
+
+	t.Run("bad content-type returns 400", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		fund := testutil.NewFund().Build(t, db)
+		svc := testutil.NewTestDeveloperService(t, db)
+		handler := handlers.NewDeveloperHandler(svc)
+
+		req := newMultipartRequestWithFileContentType(t, http.MethodPost, "/api/developer/import-fund-prices",
+			map[string]string{"fundId": fund.ID}, "prices.csv", "text/html", "date,price\n2024-01-01,100.00\n")
+		w := httptest.NewRecorder()
+
+		handler.ImportFundPrices(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected 400, got %d", w.Code)
+		}
+	})
+
+	t.Run("bad headers returns 400", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		fund := testutil.NewFund().Build(t, db)
+		svc := testutil.NewTestDeveloperService(t, db)
+		handler := handlers.NewDeveloperHandler(svc)
+
+		req := newMultipartRequest(t, http.MethodPost, "/api/developer/import-fund-prices",
+			map[string]string{"fundId": fund.ID}, "prices.csv", "wrong,headers\n2024-01-01,100.00\n")
+		w := httptest.NewRecorder()
+
+		handler.ImportFundPrices(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected 400, got %d", w.Code)
+		}
+	})
+
+	t.Run("BOM-prefixed CSV is handled correctly", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		fund := testutil.NewFund().Build(t, db)
+		svc := testutil.NewTestDeveloperService(t, db)
+		handler := handlers.NewDeveloperHandler(svc)
+
+		bom := string([]byte{0xEF, 0xBB, 0xBF})
+		csv := bom + "date,price\n2024-01-01,100.00\n"
+		req := newMultipartRequest(t, http.MethodPost, "/api/developer/import-fund-prices",
+			map[string]string{"fundId": fund.ID}, "prices.csv", csv)
+		w := httptest.NewRecorder()
+
+		handler.ImportFundPrices(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("expected 200 for BOM CSV, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("empty CSV returns 400", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		fund := testutil.NewFund().Build(t, db)
+		svc := testutil.NewTestDeveloperService(t, db)
+		handler := handlers.NewDeveloperHandler(svc)
+
+		req := newMultipartRequest(t, http.MethodPost, "/api/developer/import-fund-prices",
+			map[string]string{"fundId": fund.ID}, "prices.csv", "")
+		w := httptest.NewRecorder()
+
+		handler.ImportFundPrices(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected 400 for empty CSV, got %d", w.Code)
+		}
+	})
+
+	t.Run("invalid date row returns 500", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		fund := testutil.NewFund().Build(t, db)
+		svc := testutil.NewTestDeveloperService(t, db)
+		handler := handlers.NewDeveloperHandler(svc)
+
+		req := newMultipartRequest(t, http.MethodPost, "/api/developer/import-fund-prices",
+			map[string]string{"fundId": fund.ID}, "prices.csv",
+			"date,price\nnot-a-date,100.00\n")
+		w := httptest.NewRecorder()
+
+		handler.ImportFundPrices(w, req)
 
 		if w.Code != http.StatusInternalServerError {
-			t.Errorf("Expected 500, got %d: %s", w.Code, w.Body.String())
+			t.Errorf("expected 500, got %d", w.Code)
 		}
 	})
 
-	t.Run("handles different funds correctly", func(t *testing.T) {
-		handler, db := setupHandler(t)
+	t.Run("negative price row returns 500", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		fund := testutil.NewFund().Build(t, db)
+		svc := testutil.NewTestDeveloperService(t, db)
+		handler := handlers.NewDeveloperHandler(svc)
 
-		// Create two funds with prices
-		fund1 := testutil.NewFund().WithSymbol("AAPL").Build(t, db)
-		fund2 := testutil.NewFund().WithSymbol("GOOGL").Build(t, db)
-
-		priceDate := time.Date(2024, 1, 15, 0, 0, 0, 0, time.UTC)
-
-		testutil.NewFundPrice(fund1.ID).
-			WithDate(priceDate).
-			WithPrice(150.00).
-			Build(t, db)
-
-		testutil.NewFundPrice(fund2.ID).
-			WithDate(priceDate).
-			WithPrice(2800.00).
-			Build(t, db)
-
-		// Request fund1
-		req := httptest.NewRequest(http.MethodGet, "/api/developer/fund-price?fundId="+fund1.ID+"&date=2024-01-15", nil)
+		req := newMultipartRequest(t, http.MethodPost, "/api/developer/import-fund-prices",
+			map[string]string{"fundId": fund.ID}, "prices.csv",
+			"date,price\n2024-01-01,-5.00\n")
 		w := httptest.NewRecorder()
 
-		handler.GetFundPrice(w, req)
+		handler.ImportFundPrices(w, req)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Errorf("expected 500, got %d", w.Code)
+		}
+	})
+}
+
+// ---- ImportTransactions ----
+
+//nolint:gocyclo // Comprehensive integration test with multiple subtests
+func TestDeveloperHandler_ImportTransactions(t *testing.T) {
+	t.Run("valid CSV imports rows", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		fund := testutil.NewFund().Build(t, db)
+		pf := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+		svc := testutil.NewTestDeveloperService(t, db)
+		handler := handlers.NewDeveloperHandler(svc)
+
+		csv := "date,type,shares,cost_per_share\n2024-01-01,buy,10.0,100.00\n2024-01-02,sell,5.0,110.00\n"
+		req := newMultipartRequest(t, http.MethodPost, "/api/developer/import-transactions",
+			map[string]string{"fundId": pf.ID}, "transactions.csv", csv)
+		w := httptest.NewRecorder()
+
+		handler.ImportTransactions(w, req)
 
 		if w.Code != http.StatusOK {
-			t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
+			t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
 		}
 
-		var response model.FundPrice
-		if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
-			t.Fatalf("Failed to decode response: %v", err)
+		var result map[string]int
+		if err := json.NewDecoder(w.Body).Decode(&result); err != nil {
+			t.Fatalf("decode: %v", err)
 		}
-
-		if response.FundID != fund1.ID {
-			t.Errorf("Expected fundID %s, got %s", fund1.ID, response.FundID)
-		}
-
-		if response.Price != 150.00 {
-			t.Errorf("Expected price 150.00, got %f", response.Price)
+		if result["imported"] != 2 {
+			t.Errorf("expected 2 imported, got %d", result["imported"])
 		}
 	})
 
-	t.Run("handles different dates correctly", func(t *testing.T) {
-		handler, db := setupHandler(t)
-
-		fund := testutil.NewFund().WithSymbol("TSLA").Build(t, db)
-
-		// Create prices for different dates
-		date1 := time.Date(2024, 1, 10, 0, 0, 0, 0, time.UTC)
-		date2 := time.Date(2024, 1, 15, 0, 0, 0, 0, time.UTC)
-		date3 := time.Date(2024, 1, 20, 0, 0, 0, 0, time.UTC)
-
-		testutil.NewFundPrice(fund.ID).WithDate(date1).WithPrice(100.00).Build(t, db)
-		testutil.NewFundPrice(fund.ID).WithDate(date2).WithPrice(105.50).Build(t, db)
-		testutil.NewFundPrice(fund.ID).WithDate(date3).WithPrice(110.00).Build(t, db)
-
-		// Request middle date
-		req := httptest.NewRequest(http.MethodGet, "/api/developer/fund-price?fundId="+fund.ID+"&date=2024-01-15", nil)
+	t.Run("missing fundId returns 400", func(t *testing.T) {
+		handler := newDeveloperHandler(t)
+		req := newMultipartRequest(t, http.MethodPost, "/api/developer/import-transactions",
+			nil, "tx.csv", "date,type,shares,cost_per_share\n2024-01-01,buy,10,100\n")
 		w := httptest.NewRecorder()
 
-		handler.GetFundPrice(w, req)
+		handler.ImportTransactions(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected 400, got %d", w.Code)
+		}
+	})
+
+	t.Run("portfolio-fund not found returns 400", func(t *testing.T) {
+		handler := newDeveloperHandler(t)
+		req := newMultipartRequest(t, http.MethodPost, "/api/developer/import-transactions",
+			map[string]string{"fundId": testutil.MakeID()}, "tx.csv",
+			"date,type,shares,cost_per_share\n2024-01-01,buy,10,100\n")
+		w := httptest.NewRecorder()
+
+		handler.ImportTransactions(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected 400, got %d", w.Code)
+		}
+	})
+
+	t.Run("no file in form returns 400", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		fund := testutil.NewFund().Build(t, db)
+		pf := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+		svc := testutil.NewTestDeveloperService(t, db)
+		handler := handlers.NewDeveloperHandler(svc)
+
+		req := newMultipartRequest(t, http.MethodPost, "/api/developer/import-transactions",
+			map[string]string{"fundId": pf.ID}, "", "")
+		w := httptest.NewRecorder()
+
+		handler.ImportTransactions(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected 400, got %d", w.Code)
+		}
+	})
+
+	t.Run("bad content-type returns 400", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		fund := testutil.NewFund().Build(t, db)
+		pf := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+		svc := testutil.NewTestDeveloperService(t, db)
+		handler := handlers.NewDeveloperHandler(svc)
+
+		req := newMultipartRequestWithFileContentType(t, http.MethodPost, "/api/developer/import-transactions",
+			map[string]string{"fundId": pf.ID}, "tx.csv", "text/html",
+			"date,type,shares,cost_per_share\n2024-01-01,buy,10,100\n")
+		w := httptest.NewRecorder()
+
+		handler.ImportTransactions(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected 400, got %d", w.Code)
+		}
+	})
+
+	t.Run("bad headers returns 400", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		fund := testutil.NewFund().Build(t, db)
+		pf := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+		svc := testutil.NewTestDeveloperService(t, db)
+		handler := handlers.NewDeveloperHandler(svc)
+
+		req := newMultipartRequest(t, http.MethodPost, "/api/developer/import-transactions",
+			map[string]string{"fundId": pf.ID}, "tx.csv", "wrong,headers\n2024-01-01,buy\n")
+		w := httptest.NewRecorder()
+
+		handler.ImportTransactions(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected 400, got %d", w.Code)
+		}
+	})
+
+	t.Run("bad date row returns 500", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		fund := testutil.NewFund().Build(t, db)
+		pf := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+		svc := testutil.NewTestDeveloperService(t, db)
+		handler := handlers.NewDeveloperHandler(svc)
+
+		req := newMultipartRequest(t, http.MethodPost, "/api/developer/import-transactions",
+			map[string]string{"fundId": pf.ID}, "tx.csv",
+			"date,type,shares,cost_per_share\nnot-a-date,buy,10,100\n")
+		w := httptest.NewRecorder()
+
+		handler.ImportTransactions(w, req)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Errorf("expected 500, got %d", w.Code)
+		}
+	})
+
+	t.Run("bad shares row returns 500", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		fund := testutil.NewFund().Build(t, db)
+		pf := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+		svc := testutil.NewTestDeveloperService(t, db)
+		handler := handlers.NewDeveloperHandler(svc)
+
+		req := newMultipartRequest(t, http.MethodPost, "/api/developer/import-transactions",
+			map[string]string{"fundId": pf.ID}, "tx.csv",
+			"date,type,shares,cost_per_share\n2024-01-01,buy,notanumber,100\n")
+		w := httptest.NewRecorder()
+
+		handler.ImportTransactions(w, req)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Errorf("expected 500, got %d", w.Code)
+		}
+	})
+
+	t.Run("invalid type returns 500", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		fund := testutil.NewFund().Build(t, db)
+		pf := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+		svc := testutil.NewTestDeveloperService(t, db)
+		handler := handlers.NewDeveloperHandler(svc)
+
+		req := newMultipartRequest(t, http.MethodPost, "/api/developer/import-transactions",
+			map[string]string{"fundId": pf.ID}, "tx.csv",
+			"date,type,shares,cost_per_share\n2024-01-01,transfer,10,100\n")
+		w := httptest.NewRecorder()
+
+		handler.ImportTransactions(w, req)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Errorf("expected 500, got %d", w.Code)
+		}
+	})
+
+	t.Run("empty CSV returns 400", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		fund := testutil.NewFund().Build(t, db)
+		pf := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+		svc := testutil.NewTestDeveloperService(t, db)
+		handler := handlers.NewDeveloperHandler(svc)
+
+		req := newMultipartRequest(t, http.MethodPost, "/api/developer/import-transactions",
+			map[string]string{"fundId": pf.ID}, "tx.csv", "")
+		w := httptest.NewRecorder()
+
+		handler.ImportTransactions(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected 400, got %d", w.Code)
+		}
+	})
+
+	t.Run("BOM-prefixed CSV is handled correctly", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		fund := testutil.NewFund().Build(t, db)
+		pf := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+		svc := testutil.NewTestDeveloperService(t, db)
+		handler := handlers.NewDeveloperHandler(svc)
+
+		bom := "\xEF\xBB\xBF"
+		req := newMultipartRequest(t, http.MethodPost, "/api/developer/import-transactions",
+			map[string]string{"fundId": pf.ID}, "tx.csv",
+			bom+"date,type,shares,cost_per_share\n2024-01-01,buy,10,100\n")
+		w := httptest.NewRecorder()
+
+		handler.ImportTransactions(w, req)
 
 		if w.Code != http.StatusOK {
-			t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
+			t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
 		}
+	})
 
-		var response model.FundPrice
-		if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
-			t.Fatalf("Failed to decode response: %v", err)
+	t.Run("dividend and fee transaction types are accepted", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		fund := testutil.NewFund().Build(t, db)
+		pf := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+		svc := testutil.NewTestDeveloperService(t, db)
+		handler := handlers.NewDeveloperHandler(svc)
+
+		req := newMultipartRequest(t, http.MethodPost, "/api/developer/import-transactions",
+			map[string]string{"fundId": pf.ID}, "tx.csv",
+			"date,type,shares,cost_per_share\n2024-01-01,dividend,5,50\n2024-01-02,fee,1,10\n")
+		w := httptest.NewRecorder()
+
+		handler.ImportTransactions(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
 		}
-
-		if response.Price != 105.50 {
-			t.Errorf("Expected price 105.50, got %f", response.Price)
+		var result map[string]int
+		if err := json.NewDecoder(w.Body).Decode(&result); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if result["imported"] != 2 {
+			t.Errorf("expected 2 imported rows, got %d", result["imported"])
 		}
 	})
 }

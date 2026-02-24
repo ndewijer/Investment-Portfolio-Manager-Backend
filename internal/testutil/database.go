@@ -136,7 +136,8 @@ func createTestSchema(db *sql.DB) error {
 			fund_id VARCHAR(36) NOT NULL,
 			date DATE NOT NULL,
 			price FLOAT NOT NULL,
-			FOREIGN KEY(fund_id) REFERENCES fund(id)
+			FOREIGN KEY(fund_id) REFERENCES fund(id),
+			CONSTRAINT unique_fund_price UNIQUE (fund_id, date)
 		);
 
 		-- Realized Gain/Loss table

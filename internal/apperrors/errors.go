@@ -115,6 +115,13 @@ var (
 	ErrFailedToRetrieveLoggingConfig = errors.New("failed to retrieve logging configuration")
 	ErrFailedToRetrieveExchangeRate  = errors.New("failed to retrieve exchange rate")
 	ErrFailedToRetrieveFundPrice     = errors.New("failed to retrieve fund price")
+	ErrFailedToSetLoggingConfig      = errors.New("failed to set logging configuration")
+	ErrFailedToUpdateExchangeRate    = errors.New("failed to update exchange rate")
+	ErrFailedToUpdateFundPrice       = errors.New("failed to update fund price")
+	ErrFailedToDeleteLogs            = errors.New("failed to delete logs")
+	ErrFailedToImportFundPrices      = errors.New("failed to import fund prices")
+	ErrFailedToImportTransactions    = errors.New("failed to import transactions")
+	ErrInvalidCSVHeaders             = errors.New("invalid CSV headers")
 )
 
 // Data integrity errors represent inconsistencies or corruption in the data.
