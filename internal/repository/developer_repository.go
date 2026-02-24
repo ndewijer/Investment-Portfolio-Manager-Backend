@@ -152,7 +152,7 @@ func (r *DeveloperRepository) GetLogs(filters *model.LogFilters) (*model.LogResp
 	//nolint:gosec // G202: SQL concatenation is safe - whereSQL and orderSQL contain no user input, all user values are parameterized
 	query := `
 		SELECT id, timestamp, level, category, message, details, source,
-		       user_id, request_id, stack_trace, http_status, ip_address, user_agent
+		       request_id, stack_trace, http_status, ip_address, user_agent
 		FROM log
 		` + whereSQL + `
 		` + orderSQL + `
@@ -172,7 +172,7 @@ func (r *DeveloperRepository) GetLogs(filters *model.LogFilters) (*model.LogResp
 
 	for rows.Next() {
 		var timestampStr string
-		var detailsStr, userIDStr, RequestIDStr, stackTraceStr, HTTPStatusStr, IPAddressStr, UserAgentStr sql.NullString
+		var detailsStr, RequestIDStr, StackTraceStr, HTTPStatusStr, IPAddressStr, UserAgentStr sql.NullString
 		var l model.Log
 
 		err := rows.Scan(
@@ -183,9 +183,8 @@ func (r *DeveloperRepository) GetLogs(filters *model.LogFilters) (*model.LogResp
 			&l.Message,
 			&detailsStr,
 			&l.Source,
-			&userIDStr,
 			&RequestIDStr,
-			&stackTraceStr,
+			&StackTraceStr,
 			&HTTPStatusStr,
 			&IPAddressStr,
 			&UserAgentStr,
@@ -205,6 +204,9 @@ func (r *DeveloperRepository) GetLogs(filters *model.LogFilters) (*model.LogResp
 		}
 		if RequestIDStr.Valid {
 			l.RequestID = RequestIDStr.String
+		}
+		if StackTraceStr.Valid {
+			l.StackTrace = StackTraceStr.String
 		}
 		if HTTPStatusStr.Valid {
 			l.HTTPStatus = HTTPStatusStr.String
@@ -285,7 +287,8 @@ func (r *DeveloperRepository) SetLoggingConfig(ctx context.Context, setting mode
         INSERT INTO system_setting (id, key, value, updated_at)
         VALUES (?, ?, ?, ?)
         ON CONFLICT(key) DO UPDATE SET
-            value = ?
+            value = ?,
+			updated_at = ?
     `
 
 	_, err := r.getQuerier().ExecContext(ctx, query,
@@ -294,6 +297,7 @@ func (r *DeveloperRepository) SetLoggingConfig(ctx context.Context, setting mode
 		setting.Value,
 		setting.UpdatedAt.Format("2006-01-02 15:04:05"),
 		setting.Value,
+		setting.UpdatedAt.Format("2006-01-02 15:04:05"),
 	)
 
 	if err != nil {

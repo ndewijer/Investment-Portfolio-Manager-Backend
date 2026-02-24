@@ -23,7 +23,7 @@ func NewIbkrRepository(db *sql.DB) *IbkrRepository {
 	return &IbkrRepository{db: db}
 }
 
-// WithTx returns a new DeveloperRepository scoped to the provided transaction.
+// WithTx returns a new IbkrRepository scoped to the provided transaction.
 func (r *IbkrRepository) WithTx(tx *sql.Tx) *IbkrRepository {
 	return &IbkrRepository{
 		db: r.db,

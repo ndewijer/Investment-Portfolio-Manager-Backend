@@ -3,6 +3,7 @@ package handlers
 import (
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"strings"
@@ -116,7 +117,7 @@ func (h *DeveloperHandler) SetLoggingConfig(w http.ResponseWriter, r *http.Reque
 
 	logSetting, err := h.DeveloperService.SetLoggingConfig(r.Context(), req)
 	if err != nil {
-		response.RespondError(w, http.StatusInternalServerError, "failed to set logging config", err.Error())
+		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToSetLoggingConfig.Error(), err.Error())
 		return
 	}
 
@@ -158,13 +159,13 @@ func (h *DeveloperHandler) GetTransactionCSVTemplate(w http.ResponseWriter, _ *h
 	headers := []string{"date", "type", "shares", "cost_per_share"}
 	example := map[string]string{
 		"date":           "2024-03-21",
-		"type":           "buy/sell",
+		"type":           "buy",
 		"shares":         "10.5",
 		"cost_per_share": "150.75",
 	}
 	description := `CSV file should contain the following columns:
 - date: Transaction date in YYYY-MM-DD format
-- type: Transaction type, either "buy" or "sell"
+- type: Transaction type; one of "buy", "sell", "dividend", or "fee"
 - shares: Number of shares (decimal numbers allowed)
 - cost_per_share: Cost per share in the fund's currency`
 
@@ -262,7 +263,7 @@ func (h *DeveloperHandler) UpdateExchangeRate(w http.ResponseWriter, r *http.Req
 	exRate, err := h.DeveloperService.UpdateExchangeRate(r.Context(), req)
 	if err != nil {
 
-		response.RespondError(w, http.StatusInternalServerError, "failed to update exchange rate", err.Error())
+		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToUpdateExchangeRate.Error(), err.Error())
 		return
 	}
 
@@ -334,14 +335,14 @@ func (h *DeveloperHandler) UpdateFundPrice(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	exRate, err := h.DeveloperService.UpdateFundPrice(r.Context(), req)
+	fundPrice, err := h.DeveloperService.UpdateFundPrice(r.Context(), req)
 	if err != nil {
 
-		response.RespondError(w, http.StatusInternalServerError, "failed to update fund price", err.Error())
+		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToUpdateFundPrice.Error(), err.Error())
 		return
 	}
 
-	response.RespondJSON(w, http.StatusOK, exRate)
+	response.RespondJSON(w, http.StatusOK, fundPrice)
 }
 
 // DeleteLogs handles DELETE requests to clear all logs from the database.
@@ -356,7 +357,7 @@ func (h *DeveloperHandler) DeleteLogs(w http.ResponseWriter, r *http.Request) {
 
 	err := h.DeveloperService.DeleteLogs(r.Context(), ipAddress, r.Header.Get("User-Agent"))
 	if err != nil {
-		response.RespondError(w, http.StatusInternalServerError, "failed to delete logs", err.Error())
+		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToDeleteLogs.Error(), err.Error())
 		return
 	}
 
@@ -366,18 +367,23 @@ func (h *DeveloperHandler) DeleteLogs(w http.ResponseWriter, r *http.Request) {
 // getClientIP extracts the client IP address from a request.
 // Checks X-Forwarded-For and X-Real-IP headers before falling back to RemoteAddr.
 // Returns nil if the IP cannot be determined.
-func getClientIP(r *http.Request) any {
+func getClientIP(r *http.Request) *string {
 	if ip := r.Header.Get("X-Forwarded-For"); ip != "" {
-		return ip
+		// X-Forwarded-For can be "client, proxy1, proxy2" — take the leftmost entry
+		if i := strings.IndexByte(ip, ','); i != -1 {
+			ip = ip[:i]
+		}
+		lastIP := strings.TrimSpace(ip)
+		return &lastIP
 	}
 	if ip := r.Header.Get("X-Real-IP"); ip != "" {
-		return ip
+		return &ip
 	}
 	ip, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return nil
 	}
-	return ip
+	return &ip
 }
 
 // ImportFundPrices handles POST requests to import fund prices from a CSV file.
@@ -412,8 +418,8 @@ func (h *DeveloperHandler) ImportFundPrices(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	content := make([]byte, header.Size)
-	if _, err := file.Read(content); err != nil {
+	content, err := io.ReadAll(file)
+	if err != nil {
 		response.RespondError(w, http.StatusBadRequest, "failed to read file", err.Error())
 		return
 	}
@@ -424,7 +430,11 @@ func (h *DeveloperHandler) ImportFundPrices(w http.ResponseWriter, r *http.Reque
 			response.RespondError(w, http.StatusBadRequest, "fund not found", err.Error())
 			return
 		}
-		response.RespondError(w, http.StatusInternalServerError, "failed to import fund prices", err.Error())
+		if errors.Is(err, apperrors.ErrInvalidCSVHeaders) {
+			response.RespondError(w, http.StatusBadRequest, apperrors.ErrInvalidCSVHeaders.Error(), err.Error())
+			return
+		}
+		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToImportFundPrices.Error(), err.Error())
 		return
 	}
 
@@ -463,8 +473,8 @@ func (h *DeveloperHandler) ImportTransactions(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	content := make([]byte, header.Size)
-	if _, err := file.Read(content); err != nil {
+	content, err := io.ReadAll(file)
+	if err != nil {
 		response.RespondError(w, http.StatusBadRequest, "failed to read file", err.Error())
 		return
 	}
@@ -475,7 +485,11 @@ func (h *DeveloperHandler) ImportTransactions(w http.ResponseWriter, r *http.Req
 			response.RespondError(w, http.StatusBadRequest, "portfolio-fund not found", err.Error())
 			return
 		}
-		response.RespondError(w, http.StatusInternalServerError, "failed to import transactions", err.Error())
+		if errors.Is(err, apperrors.ErrInvalidCSVHeaders) {
+			response.RespondError(w, http.StatusBadRequest, apperrors.ErrInvalidCSVHeaders.Error(), err.Error())
+			return
+		}
+		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToImportTransactions.Error(), err.Error())
 		return
 	}
 

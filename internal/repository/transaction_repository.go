@@ -23,7 +23,7 @@ func NewTransactionRepository(db *sql.DB) *TransactionRepository {
 	return &TransactionRepository{db: db}
 }
 
-// WithTx returns a new DeveloperRepository scoped to the provided transaction.
+// WithTx returns a new TransactionRepository scoped to the provided transaction.
 func (r *TransactionRepository) WithTx(tx *sql.Tx) *TransactionRepository {
 	return &TransactionRepository{
 		db: r.db,

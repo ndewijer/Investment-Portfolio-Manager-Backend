@@ -620,7 +620,7 @@ func TestDeveloperHandler_ImportFundPrices(t *testing.T) {
 		}
 	})
 
-	t.Run("bad headers returns 500", func(t *testing.T) {
+	t.Run("bad headers returns 400", func(t *testing.T) {
 		db := testutil.SetupTestDB(t)
 		fund := testutil.NewFund().Build(t, db)
 		svc := testutil.NewTestDeveloperService(t, db)
@@ -632,8 +632,8 @@ func TestDeveloperHandler_ImportFundPrices(t *testing.T) {
 
 		handler.ImportFundPrices(w, req)
 
-		if w.Code != http.StatusInternalServerError {
-			t.Errorf("expected 500, got %d", w.Code)
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected 400, got %d", w.Code)
 		}
 	})
 
@@ -733,7 +733,7 @@ func TestDeveloperHandler_ImportTransactions(t *testing.T) {
 		}
 	})
 
-	t.Run("bad headers returns 500", func(t *testing.T) {
+	t.Run("bad headers returns 400", func(t *testing.T) {
 		db := testutil.SetupTestDB(t)
 		portfolio := testutil.NewPortfolio().Build(t, db)
 		fund := testutil.NewFund().Build(t, db)
@@ -747,8 +747,8 @@ func TestDeveloperHandler_ImportTransactions(t *testing.T) {
 
 		handler.ImportTransactions(w, req)
 
-		if w.Code != http.StatusInternalServerError {
-			t.Errorf("expected 500, got %d", w.Code)
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected 400, got %d", w.Code)
 		}
 	})
 

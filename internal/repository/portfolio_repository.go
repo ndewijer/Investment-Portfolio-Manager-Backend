@@ -21,7 +21,7 @@ func NewPortfolioRepository(db *sql.DB) *PortfolioRepository {
 	return &PortfolioRepository{db: db}
 }
 
-// WithTx returns a new DeveloperRepository scoped to the provided transaction.
+// WithTx returns a new PortfolioRepository scoped to the provided transaction.
 func (r *PortfolioRepository) WithTx(tx *sql.Tx) *PortfolioRepository {
 	return &PortfolioRepository{
 		db: r.db,

@@ -23,7 +23,7 @@ func NewDividendRepository(db *sql.DB) *DividendRepository {
 	return &DividendRepository{db: db}
 }
 
-// WithTx returns a new DeveloperRepository scoped to the provided transaction.
+// WithTx returns a new DividendRepository scoped to the provided transaction.
 func (r *DividendRepository) WithTx(tx *sql.Tx) *DividendRepository {
 	return &DividendRepository{
 		db: r.db,

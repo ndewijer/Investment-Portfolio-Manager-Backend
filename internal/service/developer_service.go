@@ -66,46 +66,48 @@ func (s *DeveloperService) GetLoggingConfig() (model.LoggingSetting, error) {
 // Only updates fields that are present in the request.
 func (s *DeveloperService) SetLoggingConfig(ctx context.Context, req request.SetLoggingConfig) (model.LoggingSetting, error) {
 
-	var logSetting model.LoggingSetting
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return model.LoggingSetting{}, fmt.Errorf("begin transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }() //nolint:errcheck // Rollback is a no-op after Commit; error is intentionally ignored.
-	time := time.Now().UTC()
+	updateTime := time.Now().UTC()
 	if req.Enabled != nil {
 		settingEnabled := model.SystemSetting{
 			ID:        uuid.New().String(),
 			Key:       "LOGGING_ENABLED",
 			Value:     req.Enabled,
-			UpdatedAt: &time,
+			UpdatedAt: &updateTime,
 		}
 
 		if err := s.developerRepo.WithTx(tx).SetLoggingConfig(ctx, settingEnabled); err != nil {
 			return model.LoggingSetting{}, fmt.Errorf("failed to update LOGGING_ENABLED: %w", err)
 		}
 
-		logSetting.Enabled = *req.Enabled
 	}
 	if req.Level != "" {
 		settingLevel := model.SystemSetting{
 			ID:        uuid.New().String(),
 			Key:       "LOGGING_LEVEL",
 			Value:     req.Level,
-			UpdatedAt: &time,
+			UpdatedAt: &updateTime,
 		}
 		if err := s.developerRepo.WithTx(tx).SetLoggingConfig(ctx, settingLevel); err != nil {
 			return model.LoggingSetting{}, fmt.Errorf("failed to update LOGGING_LEVEL: %w", err)
 		}
 
-		logSetting.Level = req.Level
 	}
 
 	if err = tx.Commit(); err != nil {
 		return model.LoggingSetting{}, fmt.Errorf("commit transaction: %w", err)
 	}
 
-	return logSetting, nil
+	config, err := s.GetLoggingConfig()
+	if err != nil {
+		return model.LoggingSetting{}, fmt.Errorf("cannot retrieve new log settings: %w", err)
+	}
+
+	return config, nil
 }
 
 // GetExchangeRate retrieves the exchange rate for a specific currency pair and date.
@@ -217,7 +219,7 @@ func (s *DeveloperService) UpdateFundPrice(
 
 // DeleteLogs clears all log entries and records a single "logs cleared" audit entry.
 // Both the deletion and the new audit log are performed within a single transaction.
-func (s *DeveloperService) DeleteLogs(ctx context.Context, ipAddress any, userAgent string) error {
+func (s *DeveloperService) DeleteLogs(ctx context.Context, ipAddress *string, userAgent string) error {
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -238,8 +240,8 @@ func (s *DeveloperService) DeleteLogs(ctx context.Context, ipAddress any, userAg
 		UserAgent: userAgent,
 	}
 
-	if ip, ok := ipAddress.(string); ok {
-		resetLog.IPAddress = ip
+	if ipAddress != nil {
+		resetLog.IPAddress = *ipAddress
 	}
 	if err := s.developerRepo.WithTx(tx).AddLog(ctx, resetLog); err != nil {
 		return fmt.Errorf("failed to add log: %w", err)
@@ -437,7 +439,7 @@ func parseCSV(content []byte) ([]string, [][]string, error) {
 		return nil, nil, fmt.Errorf("invalid CSV format: %w", err)
 	}
 	if len(records) == 0 {
-		return nil, nil, fmt.Errorf("CSV file is empty")
+		return nil, nil, fmt.Errorf("%w: CSV file is empty", apperrors.ErrInvalidCSVHeaders)
 	}
 
 	headers := make([]string, len(records[0]))
@@ -461,7 +463,7 @@ func validateCSVHeaders(headers []string, required []string) error {
 		}
 	}
 	if len(missing) > 0 {
-		return fmt.Errorf("missing required CSV columns: %s", strings.Join(missing, ", "))
+		return fmt.Errorf("%w: missing required CSV columns: %s", apperrors.ErrInvalidCSVHeaders, strings.Join(missing, ", "))
 	}
 	return nil
 }

@@ -34,10 +34,11 @@ func ValidateCreateTransaction(req request.CreateTransactionRequest) error {
 
 	if strings.TrimSpace(req.Date) == "" {
 		errors["date"] = "date is required"
-	}
-	_, err := time.Parse("2006-01-02", req.Date)
-	if err != nil {
-		errors["date"] = err.Error()
+	} else {
+		_, err := time.Parse("2006-01-02", req.Date)
+		if err != nil {
+			errors["date"] = err.Error()
+		}
 	}
 
 	if strings.TrimSpace(req.Type) == "" {

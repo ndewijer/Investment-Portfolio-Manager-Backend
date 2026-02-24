@@ -21,10 +21,11 @@ func ValidateUpdateExchangeRate(req request.SetExchangeRateRequest) error {
 
 	if strings.TrimSpace(req.Date) == "" {
 		errors["date"] = "date is required"
-	}
-	_, err := time.Parse("2006-01-02", req.Date)
-	if err != nil {
-		errors["date"] = err.Error()
+	} else {
+		_, err := time.Parse("2006-01-02", req.Date)
+		if err != nil {
+			errors["date"] = err.Error()
+		}
 	}
 
 	if strings.TrimSpace(req.ToCurrency) == "" {
@@ -37,9 +38,13 @@ func ValidateUpdateExchangeRate(req request.SetExchangeRateRequest) error {
 
 	if strings.TrimSpace(req.Rate) == "" {
 		errors["rate"] = "rate is required"
-	}
-	if _, err := strconv.ParseFloat(strings.TrimSpace(req.Rate), 64); err != nil {
-		errors["rate"] = "rate not a valid number"
+	} else {
+		rateFloat, err := strconv.ParseFloat(strings.TrimSpace(req.Rate), 64)
+		if err != nil {
+			errors["rate"] = "rate not a valid number"
+		} else if rateFloat <= 0 {
+			errors["rate"] = "rate must be positive"
+		}
 	}
 
 	if len(errors) > 0 {
@@ -57,10 +62,11 @@ func ValidateUpdateFundPrice(req request.SetFundPriceRequest) error {
 
 	if strings.TrimSpace(req.Date) == "" {
 		errors["date"] = "date is required"
-	}
-	_, err := time.Parse("2006-01-02", req.Date)
-	if err != nil {
-		errors["date"] = err.Error()
+	} else {
+		_, err := time.Parse("2006-01-02", req.Date)
+		if err != nil {
+			errors["date"] = err.Error()
+		}
 	}
 
 	if strings.TrimSpace(req.FundID) == "" {
@@ -69,9 +75,13 @@ func ValidateUpdateFundPrice(req request.SetFundPriceRequest) error {
 
 	if strings.TrimSpace(req.Price) == "" {
 		errors["price"] = "price is required"
-	}
-	if _, err := strconv.ParseFloat(strings.TrimSpace(req.Price), 64); err != nil {
-		errors["price"] = "price not a valid number"
+	} else {
+		priceFloat, err := strconv.ParseFloat(strings.TrimSpace(req.Price), 64)
+		if err != nil {
+			errors["price"] = "price not a valid number"
+		} else if priceFloat <= 0 {
+			errors["price"] = "price must be positive"
+		}
 	}
 
 	if len(errors) > 0 {
