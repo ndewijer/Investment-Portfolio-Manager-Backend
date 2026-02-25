@@ -35,6 +35,10 @@ func NewFinanceClient() *FinanceClient {
 
 func (c *FinanceClient) RequestIBKRFlexReport(ctx context.Context, token string, queryID int) (FlexQueryResponse, []byte, error) {
 
+	if token == "" || queryID == 0 {
+		return FlexQueryResponse{}, nil, fmt.Errorf("Missing variables")
+	}
+
 	request, err := c.requestIBKRFlexReport(token, queryID)
 	if err != nil {
 		return FlexQueryResponse{}, nil, err
@@ -90,17 +94,18 @@ func (c *FinanceClient) retrieveIBKRFlexReport(ctx context.Context, token string
 	var errResponse FlexRequestResponse
 	var data []byte
 
-	queryURL := fmt.Sprintf("%s?t=%s&q=%d&v=3", url.PathEscape(request.URL), url.PathEscape(token), request.ReferenceCode)
+	queryURL := fmt.Sprintf("%s?t=%s&q=%d&v=3", request.URL, token, request.ReferenceCode)
 	req, err := http.NewRequest("GET", queryURL, nil)
 	if err != nil {
 		return FlexQueryResponse{}, nil, err
 	}
 
-	backoff := time.Second // start at 1s
+	backoff := 2 * time.Second // start at 2s
 	maxBackoff := 30 * time.Second
 	maxAttempts := 10
 
 	for attempt := 0; attempt < maxAttempts; attempt++ {
+		fmt.Printf("attempt: %d\n", attempt)
 		if attempt > 0 {
 			select {
 			case <-ctx.Done():
@@ -117,22 +122,30 @@ func (c *FinanceClient) retrieveIBKRFlexReport(ctx context.Context, token string
 		if err != nil {
 			return FlexQueryResponse{}, nil, err
 		}
-		defer resp.Body.Close()
 
-		data, err := io.ReadAll(resp.Body)
+		data, err = io.ReadAll(resp.Body) // = not :=, assigns to outer data
+		resp.Body.Close()                 // explicit close, not defer
 		if err != nil {
 			return FlexQueryResponse{}, nil, err
 		}
 
+		errResponse = FlexRequestResponse{} // reset between attempts
 		if err := xml.Unmarshal(data, &response); err != nil {
 			if err := xml.Unmarshal(data, &errResponse); err != nil {
 				return FlexQueryResponse{}, nil, err
 			}
 		}
 
-		if errResponse.ErrorCode != nil && errResponse.ErrorMessage != nil && (*errResponse.ErrorCode != 1018 && *errResponse.ErrorCode != 1019 && *errResponse.ErrorCode != 1021) {
+		if errResponse.ErrorCode != nil &&
+			(*errResponse.ErrorCode == 1018 || *errResponse.ErrorCode == 1019 || *errResponse.ErrorCode == 1021) {
+			continue // not ready yet, retry
+		}
+
+		if errResponse.ErrorCode != nil {
 			return FlexQueryResponse{}, nil, fmt.Errorf("ibkr error %d: %s", *errResponse.ErrorCode, *errResponse.ErrorMessage)
 		}
+
+		break // success
 	}
 	response.ImportedAt = time.Now().UTC()
 	response.QueryID = request.ReferenceCode

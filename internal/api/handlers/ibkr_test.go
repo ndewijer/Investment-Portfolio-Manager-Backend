@@ -51,8 +51,8 @@ func TestIbkrHandler_GetConfig(t *testing.T) {
 			t.Error("Expected configured to be true")
 		}
 
-		if response.FlexQueryID != "123456" {
-			t.Errorf("Expected flex query ID '123456', got '%s'", response.FlexQueryID)
+		if response.FlexQueryID != 123456 {
+			t.Errorf("Expected flex query ID '123456', got '%d'", response.FlexQueryID)
 		}
 	})
 

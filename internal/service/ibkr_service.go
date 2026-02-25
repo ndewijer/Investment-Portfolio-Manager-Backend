@@ -7,8 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"os"
 	"time"
 
+	"github.com/fernet/fernet-go"
 	"github.com/google/uuid"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/apperrors"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/ibkr"
@@ -229,39 +231,44 @@ func (s *IbkrService) GetEligiblePortfolios(transactionID string) (model.IBKREli
 	}, nil
 }
 
-func (s *IbkrService) ImportFlexReport(ctx context.Context) {
-	token := "107967375486713903783541"
-	queryID := 1325603
+func (s *IbkrService) ImportFlexReport(ctx context.Context) (int, int, error) {
 
-	request, body, err := s.ibkrClient.RequestIBKRFlexReport(ctx, token, queryID)
+	config, err := s.GetIbkrConfig()
 	if err != nil {
-		//return nil, err
+		return 0, 0, err
+	}
+	token, err := s.decryptToken(config.FlexToken)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	request, body, err := s.ibkrClient.RequestIBKRFlexReport(ctx, token, config.FlexQueryID)
+	if err != nil {
+		return 0, 0, err
 	}
 	report, rates, err := s.parseIBKRFlexReport(request)
 	if err != nil {
-		//return nil, err
+		return 0, 0, err
 	}
 
 	missingTransactions := []model.IBKRTransaction{}
 
 	for _, v := range report {
-		_, err := s.ibkrRepo.GetIbkrTransaction(v.ID)
-		if err != nil {
-			if errors.Is(err, apperrors.ErrIBKRTransactionNotFound) {
-				missingTransactions = append(missingTransactions, v)
-			}
+		if !s.ibkrRepo.CompareIbkrTransaction(v) {
+			fmt.Println(v.IBKRTransactionID)
+			missingTransactions = append(missingTransactions, v)
 		}
 	}
 
 	if len(missingTransactions) > 0 {
-		if err := s.AddIBKRTransactions(ctx, missingTransactions); err != nil {
-			//return err
+		if err := s.AddIbkrTransactions(ctx, missingTransactions); err != nil {
+			return 0, 0, err
 		}
 	}
 
 	if len(rates) > 0 {
 		if err := s.addExchangeRates(ctx, rates); err != nil {
-			//return err
+			return 0, 0, err
 		}
 	}
 
@@ -275,11 +282,47 @@ func (s *IbkrService) ImportFlexReport(ctx context.Context) {
 			CreatedAt: now,
 			ExpiresAt: now.Add(time.Hour),
 		}
-		if err := s.ibkrRepo.WriteImportCache(ctx, importCache); err != nil {
-			//return err
+		if err := s.writeImportCache(ctx, importCache); err != nil {
+			return 0, 0, err
 		}
 	}
+	return len(missingTransactions), len(report) - len(missingTransactions), nil
+}
 
+func (s *IbkrService) decryptToken(token string) (string, error) {
+
+	enckey := os.Getenv("IBKR_ENCRYPTION_KEY")
+	if enckey == "" {
+		return "", fmt.Errorf("IBKR_ENCRYPTION_KEY not set")
+	}
+	key, err := fernet.DecodeKey(enckey)
+	if err != nil {
+		return "", fmt.Errorf("invalid encryption key: %w", err)
+	}
+	decryptedToken := fernet.VerifyAndDecrypt([]byte(token), 0, []*fernet.Key{key})
+	if decryptedToken == nil {
+		return "", fmt.Errorf("decryption failed")
+	}
+
+	return string(decryptedToken), nil
+}
+
+func (s *IbkrService) writeImportCache(ctx context.Context, importCache model.IBKRImportCache) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }() //nolint:errcheck
+
+	if err := s.ibkrRepo.WriteImportCache(ctx, importCache); err != nil {
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit transaction: %w", err)
+	}
+
+	return nil
 }
 
 func (s *IbkrService) addExchangeRates(ctx context.Context, rates []model.ExchangeRate) error {
@@ -303,14 +346,14 @@ func (s *IbkrService) addExchangeRates(ctx context.Context, rates []model.Exchan
 	return nil
 }
 
-func (s *IbkrService) AddIBKRTransactions(ctx context.Context, transactions []model.IBKRTransaction) error {
+func (s *IbkrService) AddIbkrTransactions(ctx context.Context, transactions []model.IBKRTransaction) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }() //nolint:errcheck
 
-	if err = s.ibkrRepo.AddIBKRTransactions(ctx, transactions); err != nil {
+	if err = s.ibkrRepo.AddIbkrTransactions(ctx, transactions); err != nil {
 		return err
 	}
 
@@ -323,10 +366,10 @@ func (s *IbkrService) AddIBKRTransactions(ctx context.Context, transactions []mo
 
 func (s *IbkrService) parseIBKRFlexReport(report ibkr.FlexQueryResponse) ([]model.IBKRTransaction, []model.ExchangeRate, error) {
 
-	ibkrTransactions := make([]model.IBKRTransaction, 0, len(report.FlexStatements.FlexStatement.Trades.Trade))
-	ibkrExchangeRate := make([]model.ExchangeRate, 0, len(report.FlexStatements.FlexStatement.ConversionRates.ConversionRate))
+	ibkrTransactions := make([]model.IBKRTransaction, len(report.FlexStatements.FlexStatement.Trades.Trade))
+	ibkrExchangeRate := make([]model.ExchangeRate, len(report.FlexStatements.FlexStatement.ConversionRates.ConversionRate))
 	for i, v := range report.FlexStatements.FlexStatement.Trades.Trade {
-		transactionDate, err := time.Parse("2006-01-02", v.TradeDate)
+		transactionDate, err := time.Parse("20060102", v.TradeDate)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -365,7 +408,7 @@ func (s *IbkrService) parseIBKRFlexReport(report ibkr.FlexQueryResponse) ([]mode
 	}
 
 	for i, v := range report.FlexStatements.FlexStatement.ConversionRates.ConversionRate {
-		reportDate, err := time.Parse("2006-01-02", v.ReportDate)
+		reportDate, err := time.Parse("20060102", v.ReportDate)
 		if err != nil {
 			return nil, nil, err
 		}

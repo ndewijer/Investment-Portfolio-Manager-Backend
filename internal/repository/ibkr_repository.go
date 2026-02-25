@@ -53,13 +53,14 @@ func (r *IbkrRepository) getQuerier() interface {
 func (r *IbkrRepository) GetIbkrConfig() (*model.IbkrConfig, error) {
 
 	query := `
-        SELECT flex_query_id, token_expires_at, last_import_date, auto_import_enabled, created_at, updated_at, enabled, default_allocation_enabled, default_allocations
+        SELECT flex_token, flex_query_id, token_expires_at, last_import_date, auto_import_enabled, created_at, updated_at, enabled, default_allocation_enabled, default_allocations
 		FROM ibkr_config
       `
 
 	var ic model.IbkrConfig
 	var tokenExpiresStr, lastImportStr, defaultAllocationStr sql.NullString
 	err := r.getQuerier().QueryRow(query).Scan(
+		&ic.FlexToken,
 		&ic.FlexQueryID,
 		&tokenExpiresStr,
 		&lastImportStr,
@@ -344,6 +345,33 @@ func (r *IbkrRepository) GetIbkrTransaction(transactionID string) (model.IBKRTra
 	return t, err
 }
 
+func (r *IbkrRepository) CompareIbkrTransaction(t model.IBKRTransaction) bool {
+
+	query := `
+        SELECT count(*)
+		FROM ibkr_transaction
+		WHERE ibkr_transaction_id = ?
+		AND transaction_date = ?
+		AND quantity = ?
+		AND price = ?
+      `
+
+	var count int
+	err := r.getQuerier().QueryRow(query,
+		t.IBKRTransactionID,
+		t.TransactionDate.Format("2006-01-02"),
+		t.Quantity,
+		t.Price,
+	).Scan(&count)
+
+	if err != nil {
+		fmt.Println(err)
+		return false
+	}
+
+	return count > 0
+}
+
 // GetIbkrTransactionAllocations retrieves all allocation records for a specific IBKR transaction.
 // Joins with portfolio and transaction tables to include portfolio names and transaction types.
 // Returns allocations for both the main transaction and any associated fee transactions.
@@ -414,13 +442,13 @@ func (r *IbkrRepository) GetIbkrTransactionAllocations(IBKRtransactionID string)
 
 }
 
-func (r *IbkrRepository) AddIBKRTransactions(ctx context.Context, transactions []model.IBKRTransaction) error {
+func (r *IbkrRepository) AddIbkrTransactions(ctx context.Context, transactions []model.IBKRTransaction) error {
 	if len(transactions) == 0 {
 		return nil
 	}
 
 	stmt, err := r.getQuerier().PrepareContext(ctx, `
-        INSERT INTO id, ibkr_transaction_id, transaction_date, symbol, isin, description, transaction_type, quantity, price, total_amount, currency, fees, status, imported_at, processed_at, raw_data
+        INSERT INTO ibkr_transaction (id, ibkr_transaction_id, transaction_date, symbol, isin, description, transaction_type, quantity, price, total_amount, currency, fees, status, imported_at, processed_at, raw_data)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
 	if err != nil {
@@ -429,6 +457,12 @@ func (r *IbkrRepository) AddIBKRTransactions(ctx context.Context, transactions [
 	defer stmt.Close()
 
 	for _, t := range transactions {
+
+		var processedAt sql.NullTime
+		if t.ProcessedAt != nil {
+			processedAt.Time = *t.ProcessedAt
+			processedAt.Valid = true
+		}
 		_, err := stmt.ExecContext(ctx,
 			t.ID,
 			t.IBKRTransactionID,
@@ -444,7 +478,7 @@ func (r *IbkrRepository) AddIBKRTransactions(ctx context.Context, transactions [
 			t.Fees,
 			t.Status,
 			t.ImportedAt.Format("2006-01-02 15:04:05"),
-			t.ProcessedAt.Format("2006-01-02 15:04:05.000"),
+			processedAt,
 			t.RawData,
 		)
 		if err != nil {
@@ -454,7 +488,32 @@ func (r *IbkrRepository) AddIBKRTransactions(ctx context.Context, transactions [
 	return nil
 }
 
-func (r *IbkrRepository) WriteImportCache(ctx context.Context, transactions model.IBKRImportCache) error {
+func (r *IbkrRepository) WriteImportCache(ctx context.Context, t model.IBKRImportCache) error {
+
+	clearQuery := `
+		DELETE FROM ibkr_import_cache
+	`
+	_, err := r.getQuerier().ExecContext(ctx, clearQuery)
+	if err != nil {
+		return fmt.Errorf("failed to clear ibkr_import_cache: %w", err)
+	}
+
+	query := `
+	 INSERT INTO ibkr_import_cache (id, cache_key, data, created_at, expires_at)
+        VALUES (?, ?, ?, ?, ?)
+    `
+
+	_, err = r.getQuerier().ExecContext(ctx, query,
+		t.ID,
+		t.CacheKey,
+		t.Data,
+		t.CreatedAt,
+		t.ExpiresAt,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to set ibkr_import_cache: %w", err)
+	}
 
 	return nil
 }

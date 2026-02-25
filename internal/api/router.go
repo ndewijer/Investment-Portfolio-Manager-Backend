@@ -152,6 +152,7 @@ func NewRouter(
 			r.Get("/dividend/pending", ibkrHandler.GetPendingDividends)
 			r.Get("/inbox", ibkrHandler.GetInbox)
 			r.Get("/inbox/count", ibkrHandler.GetInboxCount)
+			r.Post("/import", ibkrHandler.ImportFlexReport)
 
 			r.Route("/inbox/{uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", func(r chi.Router) {
 				r.Use(custommiddleware.ValidateUUIDMiddleware)
