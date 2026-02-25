@@ -85,6 +85,7 @@ func (c *FinanceClient) requestIBKRFlexReport(token string, queryID int) (FlexRe
 	return response, nil
 }
 
+//nolint:gocyclo // retry mechanism needs room to breath
 func (c *FinanceClient) retrieveIBKRFlexReport(ctx context.Context, token string, request FlexRequestResponse) (FlexQueryResponse, []byte, error) {
 	if request.Status == "fail" {
 		return FlexQueryResponse{}, nil, fmt.Errorf("failed request submitted")
@@ -123,8 +124,8 @@ func (c *FinanceClient) retrieveIBKRFlexReport(ctx context.Context, token string
 			return FlexQueryResponse{}, nil, err
 		}
 
-		data, err = io.ReadAll(resp.Body) // = not :=, assigns to outer data
-		resp.Body.Close()                 // explicit close, not defer
+		data, err = io.ReadAll(resp.Body)
+		resp.Body.Close()
 		if err != nil {
 			return FlexQueryResponse{}, nil, err
 		}
