@@ -5,8 +5,7 @@ A personal learning project rebuilding the Investment Portfolio Manager backend 
 **Important:** This backend is being built **manually by me, not AI-generated**. Every line of code is written to understand Go fundamentals, patterns, and best practices. The implementation follows a phased approach starting with raw `database/sql` to learn the foundations before migrating to modern tools like `sqlc` and Atlas.
 
 ## Project Status
-
-🚧 **In Active Development** - 75% complete (54/72 endpoints implemented)
+🚧 **In Active Development** - 83% complete (60/72 endpoints implemented)
 
 This is a ground-up rewrite of the [Investment Portfolio Manager backend](https://github.com/ndewijer/Investment-Portfolio-Manager) from Python/Flask to Go. The goal is to achieve feature parity while learning Go idioms, patterns, and ecosystem.
 

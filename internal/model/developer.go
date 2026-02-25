@@ -115,15 +115,6 @@ type ExchangeRateWrapper struct {
 	Date         string        `json:"date"`         // Date for the query in YYYY-MM-DD format
 }
 
-// ExchangeRate represents a currency exchange rate for a specific date.
-type ExchangeRate struct {
-	ID           string    `json:"id"`           // Unique identifier for the rate
-	FromCurrency string    `json:"fromCurrency"` // Source currency code
-	ToCurrency   string    `json:"toCurrency"`   // Target currency code
-	Rate         float64   `json:"rate"`         // Exchange rate value
-	Date         time.Time `json:"date"`         // Date the rate applies to
-}
-
 // TemplateModel represents a CSV import template structure.
 // Provides the expected headers, an example row, and format description.
 type TemplateModel struct {

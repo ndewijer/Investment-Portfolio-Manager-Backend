@@ -413,3 +413,48 @@ func (r *IbkrRepository) GetIbkrTransactionAllocations(IBKRtransactionID string)
 	return allocations, nil
 
 }
+
+func (r *IbkrRepository) AddIBKRTransactions(ctx context.Context, transactions []model.IBKRTransaction) error {
+	if len(transactions) == 0 {
+		return nil
+	}
+
+	stmt, err := r.getQuerier().PrepareContext(ctx, `
+        INSERT INTO id, ibkr_transaction_id, transaction_date, symbol, isin, description, transaction_type, quantity, price, total_amount, currency, fees, status, imported_at, processed_at, raw_data
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `)
+	if err != nil {
+		return fmt.Errorf("failed to prepare statement: %w", err)
+	}
+	defer stmt.Close()
+
+	for _, t := range transactions {
+		_, err := stmt.ExecContext(ctx,
+			t.ID,
+			t.IBKRTransactionID,
+			t.TransactionDate.Format("2006-01-02"),
+			t.Symbol,
+			t.ISIN,
+			t.Description,
+			t.TransactionType,
+			t.Quantity,
+			t.Price,
+			t.TotalAmount,
+			t.Currency,
+			t.Fees,
+			t.Status,
+			t.ImportedAt.Format("2006-01-02 15:04:05"),
+			t.ProcessedAt.Format("2006-01-02 15:04:05.000"),
+			t.RawData,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to insert IBKR Transaction for %s on %s: %w", t.IBKRTransactionID, t.TransactionDate.Format("2006-01-02"), err)
+		}
+	}
+	return nil
+}
+
+func (r *IbkrRepository) WriteImportCache(ctx context.Context, transactions model.IBKRImportCache) error {
+
+	return nil
+}

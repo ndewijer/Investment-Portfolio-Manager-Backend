@@ -1,6 +1,8 @@
 package model
 
-import "time"
+import (
+	"time"
+)
 
 // Allocation represents a portfolio allocation percentage for IBKR imports.
 type Allocation struct {
@@ -42,6 +44,8 @@ type IBKRTransaction struct {
 	Fees              float64   `json:"fees"`
 	Status            string    `json:"status"`
 	ImportedAt        time.Time `json:"importedAt"`
+	ProcessedAt       time.Time `json:"-"`
+	RawData           []byte    `json:"-"`
 }
 
 // IBKRInboxCount represents the count of IBKR imported transactions.
@@ -105,4 +109,12 @@ type FundMatchInfo struct {
 	FundName   string `json:"fundName,omitempty"`   // The matched fund's name
 	FundSymbol string `json:"fundSymbol,omitempty"` // The matched fund's symbol
 	FundISIN   string `json:"fundIsin,omitempty"`   // The matched fund's ISIN
+}
+
+type IBKRImportCache struct {
+	ID        string
+	CacheKey  string
+	Data      []byte
+	CreatedAt time.Time
+	ExpiresAt time.Time
 }

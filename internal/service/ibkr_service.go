@@ -1,32 +1,44 @@
 package service
 
 import (
+	"context"
+	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/apperrors"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/ibkr"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/repository"
 )
 
 // IbkrService handles IBKR (Interactive Brokers) integration business logic operations.
 type IbkrService struct {
-	ibkrRepo           *repository.IbkrRepository
-	portfolioRepo      *repository.PortfolioRepository
-	transactionService *TransactionService
-	fundRepository     *repository.FundRepository
+	db                  *sql.DB
+	ibkrRepo            *repository.IbkrRepository
+	portfolioRepo       *repository.PortfolioRepository
+	transactionService  *TransactionService
+	fundRepository      *repository.FundRepository
+	developerRepository *repository.DeveloperRepository
+	ibkrClient          ibkr.Client
 }
 
 // NewIbkrService creates a new IbkrService with the provided repository dependencies.
 func NewIbkrService(
-	ibkrRepo *repository.IbkrRepository, portfolioRepo *repository.PortfolioRepository, transactionService *TransactionService, fundRepository *repository.FundRepository,
+	db *sql.DB, ibkrRepo *repository.IbkrRepository, portfolioRepo *repository.PortfolioRepository, transactionService *TransactionService, fundRepository *repository.FundRepository, developerRepository *repository.DeveloperRepository, ibkrClient ibkr.Client,
 ) *IbkrService {
 	return &IbkrService{
-		ibkrRepo:           ibkrRepo,
-		portfolioRepo:      portfolioRepo,
-		transactionService: transactionService,
-		fundRepository:     fundRepository,
+		db:                  db,
+		ibkrRepo:            ibkrRepo,
+		portfolioRepo:       portfolioRepo,
+		transactionService:  transactionService,
+		fundRepository:      fundRepository,
+		developerRepository: developerRepository,
+		ibkrClient:          ibkrClient,
 	}
 }
 
@@ -215,4 +227,158 @@ func (s *IbkrService) GetEligiblePortfolios(transactionID string) (model.IBKREli
 		Portfolios: portfolios,
 		Warning:    warning,
 	}, nil
+}
+
+func (s *IbkrService) ImportFlexReport(ctx context.Context) {
+	token := "107967375486713903783541"
+	queryID := 1325603
+
+	request, body, err := s.ibkrClient.RequestIBKRFlexReport(ctx, token, queryID)
+	if err != nil {
+		//return nil, err
+	}
+	report, rates, err := s.parseIBKRFlexReport(request)
+	if err != nil {
+		//return nil, err
+	}
+
+	missingTransactions := []model.IBKRTransaction{}
+
+	for _, v := range report {
+		_, err := s.ibkrRepo.GetIbkrTransaction(v.ID)
+		if err != nil {
+			if errors.Is(err, apperrors.ErrIBKRTransactionNotFound) {
+				missingTransactions = append(missingTransactions, v)
+			}
+		}
+	}
+
+	if len(missingTransactions) > 0 {
+		if err := s.AddIBKRTransactions(ctx, missingTransactions); err != nil {
+			//return err
+		}
+	}
+
+	if len(rates) > 0 {
+		if err := s.addExchangeRates(ctx, rates); err != nil {
+			//return err
+		}
+	}
+
+	if len(body) > 0 {
+		now := time.Now().UTC()
+		cacheKey := fmt.Sprintf("ibkr_flex_%d_%s", request.QueryID, now.Truncate(24*time.Hour).Format("2006-01-02"))
+		importCache := model.IBKRImportCache{
+			ID:        uuid.New().String(),
+			CacheKey:  cacheKey,
+			Data:      body,
+			CreatedAt: now,
+			ExpiresAt: now.Add(time.Hour),
+		}
+		if err := s.ibkrRepo.WriteImportCache(ctx, importCache); err != nil {
+			//return err
+		}
+	}
+
+}
+
+func (s *IbkrService) addExchangeRates(ctx context.Context, rates []model.ExchangeRate) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }() //nolint:errcheck
+
+	for _, v := range rates {
+
+		if err = s.developerRepository.UpdateExchangeRate(ctx, v); err != nil {
+			return err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit transaction: %w", err)
+	}
+
+	return nil
+}
+
+func (s *IbkrService) AddIBKRTransactions(ctx context.Context, transactions []model.IBKRTransaction) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }() //nolint:errcheck
+
+	if err = s.ibkrRepo.AddIBKRTransactions(ctx, transactions); err != nil {
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit transaction: %w", err)
+	}
+
+	return nil
+}
+
+func (s *IbkrService) parseIBKRFlexReport(report ibkr.FlexQueryResponse) ([]model.IBKRTransaction, []model.ExchangeRate, error) {
+
+	ibkrTransactions := make([]model.IBKRTransaction, 0, len(report.FlexStatements.FlexStatement.Trades.Trade))
+	ibkrExchangeRate := make([]model.ExchangeRate, 0, len(report.FlexStatements.FlexStatement.ConversionRates.ConversionRate))
+	for i, v := range report.FlexStatements.FlexStatement.Trades.Trade {
+		transactionDate, err := time.Parse("2006-01-02", v.TradeDate)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		var transactionType string
+		if v.Quantity < 0 {
+			transactionType = "buy"
+		} else {
+			transactionType = "sell"
+		}
+
+		rawBytes, err := json.Marshal(v)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to marshal raw transaction data: %w", err)
+		}
+
+		t := model.IBKRTransaction{
+			ID:                uuid.New().String(),
+			IBKRTransactionID: fmt.Sprintf("%d_%d", v.TransactionID, v.IbOrderID),
+			TransactionDate:   transactionDate,
+			Symbol:            v.Symbol,
+			ISIN:              v.Isin,
+			Description:       v.Description,
+			TransactionType:   transactionType,
+			Quantity:          v.Quantity,
+			Price:             v.TradePrice,
+			TotalAmount:       math.Abs(v.Quantity) * v.TradePrice,
+			Currency:          v.Currency,
+			Fees:              v.IbCommission,
+			Status:            "pending",
+			ImportedAt:        report.ImportedAt,
+			RawData:           rawBytes,
+		}
+
+		ibkrTransactions[i] = t
+	}
+
+	for i, v := range report.FlexStatements.FlexStatement.ConversionRates.ConversionRate {
+		reportDate, err := time.Parse("2006-01-02", v.ReportDate)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		rate := model.ExchangeRate{
+			ID:           uuid.New().String(),
+			Date:         reportDate,
+			FromCurrency: v.FromCurrency,
+			ToCurrency:   v.ToCurrency,
+			Rate:         v.Rate,
+		}
+		ibkrExchangeRate[i] = rate
+	}
+
+	return ibkrTransactions, ibkrExchangeRate, nil
 }

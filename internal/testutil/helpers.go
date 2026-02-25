@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/ibkr"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/repository"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/service"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/yahoo"
@@ -185,12 +186,17 @@ func NewTestIbkrService(t *testing.T, db *sql.DB) *service.IbkrService {
 	fundRepo := repository.NewFundRepository(db)
 	pfRepo := repository.NewPortfolioFundRepository(db)
 	transactionService := service.NewTransactionService(db, repository.NewTransactionRepository(db), pfRepo)
+	developerRepo := repository.NewDeveloperRepository(db)
+	ibkrClient := ibkr.NewFinanceClient()
 
 	return service.NewIbkrService(
+		db,
 		ibkrRepo,
 		repository.NewPortfolioRepository(db),
 		transactionService,
 		fundRepo,
+		developerRepo,
+		ibkrClient,
 	)
 }
 
