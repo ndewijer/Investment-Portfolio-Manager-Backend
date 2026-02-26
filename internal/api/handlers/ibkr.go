@@ -202,13 +202,6 @@ func (h *IbkrHandler) ImportFlexReport(w http.ResponseWriter, r *http.Request) {
 		Imported int  `json:"imported"`
 		Skipped  int  `json:"skipped"`
 	}
-	// 	{
-	//     "success": true,
-	//     "message": "Import completed",
-	//     "imported": 1,
-	//     "skipped": 16,
-	//     "errors": []
-	//  }
 
 	response.RespondJSON(w, http.StatusOK, respStruct{
 		Success: true, Imported: add, Skipped: skipped,
