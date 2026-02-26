@@ -39,7 +39,7 @@ func (c *FinanceClient) RequestIBKRFlexReport(ctx context.Context, token string,
 		return FlexQueryResponse{}, nil, fmt.Errorf("Missing variables")
 	}
 
-	request, err := c.requestIBKRFlexReport(token, queryID)
+	request, err := c.requestIBKRFlexReport(ctx, token, queryID)
 	if err != nil {
 		return FlexQueryResponse{}, nil, err
 	}
@@ -51,14 +51,14 @@ func (c *FinanceClient) RequestIBKRFlexReport(ctx context.Context, token string,
 	return report, data, nil
 }
 
-func (c *FinanceClient) requestIBKRFlexReport(token string, queryID int) (FlexRequestResponse, error) {
+func (c *FinanceClient) requestIBKRFlexReport(ctx context.Context, token string, queryID int) (FlexRequestResponse, error) {
 	if queryID == 0 || token == "" {
 		return FlexRequestResponse{}, fmt.Errorf("Not all parameters set")
 	}
 
 	queryURL := fmt.Sprintf("https://ndcdyn.interactivebrokers.com/AccountManagement/FlexWebService/SendRequest?t=%s&q=%d&v=3", url.PathEscape(token), queryID)
 
-	req, err := http.NewRequest("GET", queryURL, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", queryURL, nil)
 	if err != nil {
 		return FlexRequestResponse{}, err
 	}
@@ -96,7 +96,7 @@ func (c *FinanceClient) retrieveIBKRFlexReport(ctx context.Context, token string
 	var data []byte
 
 	queryURL := fmt.Sprintf("%s?t=%s&q=%d&v=3", request.URL, token, request.ReferenceCode)
-	req, err := http.NewRequest("GET", queryURL, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", queryURL, nil)
 	if err != nil {
 		return FlexQueryResponse{}, nil, err
 	}
@@ -106,7 +106,6 @@ func (c *FinanceClient) retrieveIBKRFlexReport(ctx context.Context, token string
 	maxAttempts := 10
 
 	for attempt := 0; attempt < maxAttempts; attempt++ {
-		fmt.Printf("attempt: %d\n", attempt)
 		if attempt > 0 {
 			select {
 			case <-ctx.Done():

@@ -193,7 +193,7 @@ func (h *IbkrHandler) ImportFlexReport(w http.ResponseWriter, r *http.Request) {
 
 	add, skipped, err := h.ibkrService.ImportFlexReport(r.Context())
 	if err != nil {
-		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToGetNewFlexRapport.Error(), err.Error())
+		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToGetNewFlexReport.Error(), err.Error())
 		return
 	}
 

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/fernet/fernet-go"
@@ -246,6 +247,22 @@ func (s *IbkrService) ImportFlexReport(ctx context.Context) (int, int, error) {
 	if err != nil {
 		return 0, 0, err
 	}
+
+	if len(body) > 0 {
+		now := time.Now().UTC()
+		cacheKey := fmt.Sprintf("ibkr_flex_%d_%s", request.QueryID, now.Truncate(24*time.Hour).Format("2006-01-02"))
+		importCache := model.IBKRImportCache{
+			ID:        uuid.New().String(),
+			CacheKey:  cacheKey,
+			Data:      body,
+			CreatedAt: now,
+			ExpiresAt: now.Add(time.Hour),
+		}
+		if err := s.writeImportCache(ctx, importCache); err != nil {
+			return 0, 0, err
+		}
+	}
+
 	report, rates, err := s.parseIBKRFlexReport(request)
 	if err != nil {
 		return 0, 0, err
@@ -255,7 +272,6 @@ func (s *IbkrService) ImportFlexReport(ctx context.Context) (int, int, error) {
 
 	for _, v := range report {
 		if !s.ibkrRepo.CompareIbkrTransaction(v) {
-			fmt.Println(v.IBKRTransactionID)
 			missingTransactions = append(missingTransactions, v)
 		}
 	}
@@ -272,20 +288,6 @@ func (s *IbkrService) ImportFlexReport(ctx context.Context) (int, int, error) {
 		}
 	}
 
-	if len(body) > 0 {
-		now := time.Now().UTC()
-		cacheKey := fmt.Sprintf("ibkr_flex_%d_%s", request.QueryID, now.Truncate(24*time.Hour).Format("2006-01-02"))
-		importCache := model.IBKRImportCache{
-			ID:        uuid.New().String(),
-			CacheKey:  cacheKey,
-			Data:      body,
-			CreatedAt: now,
-			ExpiresAt: now.Add(time.Hour),
-		}
-		if err := s.writeImportCache(ctx, importCache); err != nil {
-			return 0, 0, err
-		}
-	}
 	return len(missingTransactions), len(report) - len(missingTransactions), nil
 }
 
@@ -304,7 +306,7 @@ func (s *IbkrService) decryptToken(token string) (string, error) {
 		return "", fmt.Errorf("decryption failed")
 	}
 
-	return string(decryptedToken), nil
+	return strings.TrimSpace(string(decryptedToken)), nil
 }
 
 func (s *IbkrService) writeImportCache(ctx context.Context, importCache model.IBKRImportCache) error {
@@ -314,7 +316,7 @@ func (s *IbkrService) writeImportCache(ctx context.Context, importCache model.IB
 	}
 	defer func() { _ = tx.Rollback() }() //nolint:errcheck
 
-	if err := s.ibkrRepo.WriteImportCache(ctx, importCache); err != nil {
+	if err := s.ibkrRepo.WithTx(tx).WriteImportCache(ctx, importCache); err != nil {
 		return err
 	}
 
@@ -334,7 +336,7 @@ func (s *IbkrService) addExchangeRates(ctx context.Context, rates []model.Exchan
 
 	for _, v := range rates {
 
-		if err = s.developerRepository.UpdateExchangeRate(ctx, v); err != nil {
+		if err = s.developerRepository.WithTx(tx).UpdateExchangeRate(ctx, v); err != nil {
 			return err
 		}
 	}
@@ -353,7 +355,7 @@ func (s *IbkrService) AddIbkrTransactions(ctx context.Context, transactions []mo
 	}
 	defer func() { _ = tx.Rollback() }() //nolint:errcheck
 
-	if err = s.ibkrRepo.AddIbkrTransactions(ctx, transactions); err != nil {
+	if err = s.ibkrRepo.WithTx(tx).AddIbkrTransactions(ctx, transactions); err != nil {
 		return err
 	}
 
@@ -374,11 +376,9 @@ func (s *IbkrService) parseIBKRFlexReport(report ibkr.FlexQueryResponse) ([]mode
 			return nil, nil, err
 		}
 
-		var transactionType string
-		if v.Quantity < 0 {
-			transactionType = "buy"
-		} else {
-			transactionType = "sell"
+		reportDate, err := time.Parse("20060102", v.ReportDate)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to parse reportDate for transaction %d: %w", v.TransactionID, err)
 		}
 
 		rawBytes, err := json.Marshal(v)
@@ -393,15 +393,17 @@ func (s *IbkrService) parseIBKRFlexReport(report ibkr.FlexQueryResponse) ([]mode
 			Symbol:            v.Symbol,
 			ISIN:              v.Isin,
 			Description:       v.Description,
-			TransactionType:   transactionType,
+			TransactionType:   strings.ToLower(v.BuySell),
 			Quantity:          v.Quantity,
 			Price:             v.TradePrice,
-			TotalAmount:       math.Abs(v.Quantity) * v.TradePrice,
+			TotalAmount:       math.Abs(v.NetCash),
 			Currency:          v.Currency,
 			Fees:              v.IbCommission,
 			Status:            "pending",
 			ImportedAt:        report.ImportedAt,
 			RawData:           rawBytes,
+			Notes:             v.Notes,
+			ReportDate:        reportDate,
 		}
 
 		ibkrTransactions[i] = t

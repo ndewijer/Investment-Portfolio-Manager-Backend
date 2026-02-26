@@ -47,6 +47,8 @@ type IBKRTransaction struct {
 	ImportedAt        time.Time  `json:"importedAt"`
 	ProcessedAt       *time.Time `json:"-"`
 	RawData           []byte     `json:"-"`
+	Notes             string     `json:"notes"`
+	ReportDate        time.Time  `json:"reportDate"`
 }
 
 // IBKRInboxCount represents the count of IBKR imported transactions.

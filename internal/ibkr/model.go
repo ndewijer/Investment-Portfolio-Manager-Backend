@@ -46,6 +46,9 @@ type FlexQueryResponse struct {
 					IbOrderID     int64   `xml:"ibOrderID,attr"`
 					TransactionID int64   `xml:"transactionID,attr"`
 					TradeDate     string  `xml:"tradeDate,attr"`
+					Notes         string  `xml:"notes,attr"` // semicolon-separated; codes are case-sensitive ("Ri" != "RI")
+					BuySell       string  `xml:"buySell,attr"`
+					ReportDate    string  `xml:"reportDate,attr"`
 				} `xml:"Trade"`
 			} `xml:"Trades"`
 			CashTransactions struct {

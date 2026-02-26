@@ -210,7 +210,7 @@ func (r *IbkrRepository) GetInbox(status, transactionType string) ([]model.IBKRT
 	query = `
 	SELECT id, ibkr_transaction_id, transaction_date, symbol, isin, description,
          transaction_type, quantity, price, total_amount, currency, fees,
-         status, imported_at
+         status, imported_at, report_date, notes
 	FROM ibkr_transaction
 	WHERE status = ?
   `
@@ -238,7 +238,7 @@ func (r *IbkrRepository) GetInbox(status, transactionType string) ([]model.IBKRT
 	ibkrTransactions := []model.IBKRTransaction{}
 
 	for rows.Next() {
-		var transactionDateStr, importedAtStr string
+		var transactionDateStr, importedAtStr, reportDateStr string
 		t := model.IBKRTransaction{}
 		err := rows.Scan(
 			&t.ID,
@@ -255,6 +255,8 @@ func (r *IbkrRepository) GetInbox(status, transactionType string) ([]model.IBKRT
 			&t.Fees,
 			&t.Status,
 			&importedAtStr,
+			&reportDateStr,
+			&t.Notes,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan IBKR Transactions table results: %w", err)
@@ -267,6 +269,11 @@ func (r *IbkrRepository) GetInbox(status, transactionType string) ([]model.IBKRT
 
 		t.ImportedAt, err = ParseTime(importedAtStr)
 		if err != nil || t.ImportedAt.IsZero() {
+			return nil, fmt.Errorf("failed to parse date: %w", err)
+		}
+
+		t.ReportDate, err = ParseTime(reportDateStr)
+		if err != nil || t.ReportDate.IsZero() {
 			return nil, fmt.Errorf("failed to parse date: %w", err)
 		}
 
@@ -314,7 +321,7 @@ func (r *IbkrRepository) GetIbkrInboxCount() (model.IBKRInboxCount, error) {
 func (r *IbkrRepository) GetIbkrTransaction(transactionID string) (model.IBKRTransaction, error) {
 
 	query := `
-        SELECT id, ibkr_transaction_id, transaction_date, symbol, isin, description, transaction_type, quantity, price, total_amount, currency, fees, status, imported_at
+        SELECT id, ibkr_transaction_id, transaction_date, symbol, isin, description, transaction_type, quantity, price, total_amount, currency, fees, status, imported_at, report_date, notes
 		FROM ibkr_transaction
 		WHERE id = ?
       `
@@ -334,7 +341,9 @@ func (r *IbkrRepository) GetIbkrTransaction(transactionID string) (model.IBKRTra
 		&t.Currency,
 		&t.Fees,
 		&t.Status,
-		&t.ImportedAt)
+		&t.ImportedAt,
+		&t.ReportDate,
+		&t.Notes)
 	if err == sql.ErrNoRows {
 		return model.IBKRTransaction{}, apperrors.ErrIBKRTransactionNotFound
 	}
@@ -365,8 +374,8 @@ func (r *IbkrRepository) CompareIbkrTransaction(t model.IBKRTransaction) bool {
 	).Scan(&count)
 
 	if err != nil {
-		fmt.Println(err)
-		return false
+		log.Printf("CompareIbkrTransaction: query error for %s, treating as existing: %v", t.IBKRTransactionID, err)
+		return true
 	}
 
 	return count > 0
@@ -448,8 +457,8 @@ func (r *IbkrRepository) AddIbkrTransactions(ctx context.Context, transactions [
 	}
 
 	stmt, err := r.getQuerier().PrepareContext(ctx, `
-        INSERT INTO ibkr_transaction (id, ibkr_transaction_id, transaction_date, symbol, isin, description, transaction_type, quantity, price, total_amount, currency, fees, status, imported_at, processed_at, raw_data)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO ibkr_transaction (id, ibkr_transaction_id, transaction_date, symbol, isin, description, transaction_type, quantity, price, total_amount, currency, fees, status, imported_at, processed_at, raw_data, report_date, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
 	if err != nil {
 		return fmt.Errorf("failed to prepare statement: %w", err)
@@ -480,6 +489,8 @@ func (r *IbkrRepository) AddIbkrTransactions(ctx context.Context, transactions [
 			t.ImportedAt.Format("2006-01-02 15:04:05"),
 			processedAt,
 			t.RawData,
+			t.ReportDate.Format("2006-01-02"),
+			t.Notes,
 		)
 		if err != nil {
 			return fmt.Errorf("failed to insert IBKR Transaction for %s on %s: %w", t.IBKRTransactionID, t.TransactionDate.Format("2006-01-02"), err)

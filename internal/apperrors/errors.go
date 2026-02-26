@@ -106,7 +106,7 @@ var (
 	ErrFailedToRetrieveInboxTransactions = errors.New("failed to retrieve inbox transactions")
 	ErrFailedToGetTransactionAllocations = errors.New("failed to get transaction allocations")
 	ErrFailedToGetEligiblePortfolios     = errors.New("failed to get eligible portfolios")
-	ErrFailedToGetNewFlexRapport         = errors.New("failed to get new flex rapport")
+	ErrFailedToGetNewFlexReport          = errors.New("failed to get new flex report")
 
 	// System operation errors
 	ErrFailedToGetVersionInfo = errors.New("failed to get version information")
