@@ -40,7 +40,7 @@ func NewFinanceClient() *FinanceClient {
 func (c *FinanceClient) RequestIBKRFlexReport(ctx context.Context, token string, queryID int) (FlexQueryResponse, []byte, error) {
 
 	if token == "" || queryID == 0 {
-		return FlexQueryResponse{}, nil, fmt.Errorf("Missing variables")
+		return FlexQueryResponse{}, nil, fmt.Errorf("missing variables")
 	}
 
 	request, err := c.requestIBKRFlexReport(ctx, token, queryID)
@@ -57,7 +57,7 @@ func (c *FinanceClient) RequestIBKRFlexReport(ctx context.Context, token string,
 
 func (c *FinanceClient) requestIBKRFlexReport(ctx context.Context, token string, queryID int) (FlexRequestResponse, error) {
 	if queryID == 0 || token == "" {
-		return FlexRequestResponse{}, fmt.Errorf("Not all parameters set")
+		return FlexRequestResponse{}, fmt.Errorf("not all parameters set")
 	}
 
 	queryURL := fmt.Sprintf("https://ndcdyn.interactivebrokers.com/AccountManagement/FlexWebService/SendRequest?t=%s&q=%d&v=3", url.PathEscape(token), queryID)
@@ -66,6 +66,7 @@ func (c *FinanceClient) requestIBKRFlexReport(ctx context.Context, token string,
 	if err != nil {
 		return FlexRequestResponse{}, err
 	}
+	//nolint:gosec // G704: host is hardcoded; token and queryID are DB-sourced query params, not URL components.
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return FlexRequestResponse{}, err
@@ -121,7 +122,7 @@ func (c *FinanceClient) retrieveIBKRFlexReport(ctx context.Context, token string
 				backoff = maxBackoff
 			}
 		}
-
+		//nolint:gosec // G704: host is brought in from previous query; token and queryID are DB-sourced query params, not URL components.
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
 			return FlexQueryResponse{}, nil, err

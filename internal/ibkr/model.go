@@ -32,7 +32,7 @@ type FlexQueryResponse struct {
 		Count         string `xml:"count,attr"`
 		FlexStatement struct {
 			Text          string `xml:",chardata"`
-			AccountId     string `xml:"accountId,attr"`
+			AccountID     string `xml:"accountId,attr"`
 			FromDate      string `xml:"fromDate,attr"`
 			ToDate        string `xml:"toDate,attr"`
 			Period        string `xml:"period,attr"`

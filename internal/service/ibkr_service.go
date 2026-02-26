@@ -240,6 +240,8 @@ func (s *IbkrService) GetEligiblePortfolios(transactionID string) (model.IBKREli
 // New transactions are compared against existing records and only new ones are inserted.
 // Updates the last import date on the config after a successful run.
 // Returns the number of imported and skipped transactions, or an error if the import fails.
+//
+// nolint:gocyclo // Primary Flex Report Import orchestrator. Mostly filled with error handling.
 func (s *IbkrService) ImportFlexReport(ctx context.Context) (int, int, error) {
 
 	config, err := s.GetIbkrConfig()
