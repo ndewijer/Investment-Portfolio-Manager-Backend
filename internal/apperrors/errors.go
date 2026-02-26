@@ -34,6 +34,9 @@ var (
 	// ErrIbkrConfigNotFound indicates IBKR configuration has not been set up
 	ErrIbkrConfigNotFound = errors.New("ibkr configuration not found")
 
+	// ErrIbkrConfigNotFound indicates IBKR import cache is empty
+	ErrIbkrImportCacheNotFound = errors.New("ibkr import cache not found")
+
 	// ErrExchangeRateNotFound indicates no record for a specific currency and date combination
 	ErrExchangeRateNotFound = errors.New("exchange rate for currency/date not found")
 )

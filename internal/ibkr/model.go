@@ -34,21 +34,22 @@ type FlexQueryResponse struct {
 			Trades        struct {
 				Text  string `xml:",chardata"`
 				Trade []struct {
-					Text          string  `xml:",chardata"`
-					Currency      string  `xml:"currency,attr"`
-					Symbol        string  `xml:"symbol,attr"`
-					Description   string  `xml:"description,attr"`
-					Isin          string  `xml:"isin,attr"`
-					Quantity      float64 `xml:"quantity,attr"`
-					TradePrice    float64 `xml:"tradePrice,attr"`
-					IbCommission  float64 `xml:"ibCommission,attr"`
-					NetCash       float64 `xml:"netCash,attr"`
-					IbOrderID     int64   `xml:"ibOrderID,attr"`
-					TransactionID int64   `xml:"transactionID,attr"`
-					TradeDate     string  `xml:"tradeDate,attr"`
-					Notes         string  `xml:"notes,attr"` // semicolon-separated; codes are case-sensitive ("Ri" != "RI")
-					BuySell       string  `xml:"buySell,attr"`
-					ReportDate    string  `xml:"reportDate,attr"`
+					Text            string  `xml:",chardata"`
+					Currency        string  `xml:"currency,attr"`
+					CurrencyPrimary string  `xml:"currencyPrimary,attr"`
+					Symbol          string  `xml:"symbol,attr"`
+					Description     string  `xml:"description,attr"`
+					Isin            string  `xml:"isin,attr"`
+					Quantity        float64 `xml:"quantity,attr"`
+					TradePrice      float64 `xml:"tradePrice,attr"`
+					IbCommission    float64 `xml:"ibCommission,attr"`
+					NetCash         float64 `xml:"netCash,attr"`
+					IbOrderID       int64   `xml:"ibOrderID,attr"`
+					TransactionID   int64   `xml:"transactionID,attr"`
+					TradeDate       string  `xml:"tradeDate,attr"`
+					Notes           string  `xml:"notes,attr"` // semicolon-separated; codes are case-sensitive ("Ri" != "RI")
+					BuySell         string  `xml:"buySell,attr"`
+					ReportDate      string  `xml:"reportDate,attr"`
 				} `xml:"Trade"`
 			} `xml:"Trades"`
 			CashTransactions struct {

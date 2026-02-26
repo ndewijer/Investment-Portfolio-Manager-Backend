@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/apperrors"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
@@ -51,7 +52,6 @@ func (r *IbkrRepository) getQuerier() interface {
 // Returns a config with Configured=false if no configuration exists.
 // Parses nullable fields (token expiration, last import date, default allocations) safely.
 func (r *IbkrRepository) GetIbkrConfig() (*model.IbkrConfig, error) {
-
 	query := `
         SELECT flex_token, flex_query_id, token_expires_at, last_import_date, auto_import_enabled, created_at, updated_at, enabled, default_allocation_enabled, default_allocations
 		FROM ibkr_config
@@ -360,17 +360,11 @@ func (r *IbkrRepository) CompareIbkrTransaction(t model.IBKRTransaction) bool {
         SELECT count(*)
 		FROM ibkr_transaction
 		WHERE ibkr_transaction_id = ?
-		AND transaction_date = ?
-		AND quantity = ?
-		AND price = ?
       `
 
 	var count int
 	err := r.getQuerier().QueryRow(query,
 		t.IBKRTransactionID,
-		t.TransactionDate.Format("2006-01-02"),
-		t.Quantity,
-		t.Price,
 	).Scan(&count)
 
 	if err != nil {
@@ -499,22 +493,14 @@ func (r *IbkrRepository) AddIbkrTransactions(ctx context.Context, transactions [
 	return nil
 }
 
-func (r *IbkrRepository) WriteImportCache(ctx context.Context, t model.IBKRImportCache) error {
-
-	clearQuery := `
-		DELETE FROM ibkr_import_cache
-	`
-	_, err := r.getQuerier().ExecContext(ctx, clearQuery)
-	if err != nil {
-		return fmt.Errorf("failed to clear ibkr_import_cache: %w", err)
-	}
+func (r *IbkrRepository) WriteImportCache(ctx context.Context, t model.IbkrImportCache) error {
 
 	query := `
-	 INSERT INTO ibkr_import_cache (id, cache_key, data, created_at, expires_at)
-        VALUES (?, ?, ?, ?, ?)
-    `
+		INSERT OR REPLACE INTO ibkr_import_cache (id, cache_key, data, created_at, expires_at)
+		VALUES (?, ?, ?, ?, ?)
+	`
 
-	_, err = r.getQuerier().ExecContext(ctx, query,
+	_, err := r.getQuerier().ExecContext(ctx, query,
 		t.ID,
 		t.CacheKey,
 		t.Data,
@@ -527,4 +513,85 @@ func (r *IbkrRepository) WriteImportCache(ctx context.Context, t model.IBKRImpor
 	}
 
 	return nil
+}
+
+func (r *IbkrRepository) UpdateLastImportDate(ctx context.Context, queryID int, t time.Time) error {
+	query := `UPDATE ibkr_config SET last_import_date = ? WHERE flex_query_id = ?`
+	_, err := r.getQuerier().ExecContext(ctx, query, t.Format("2006-01-02 15:04:05"), queryID)
+	if err != nil {
+		return fmt.Errorf("failed to update last_import_date: %w", err)
+	}
+	return nil
+}
+
+func (r *IbkrRepository) UpdateIbkrConfig(ctx context.Context, flexToken int, c *model.IbkrConfig) error {
+	query := `
+        UPDATE ibkr_config
+		SET flex_token = ?, flex_query_id = ?, token_expires_at = ?, last_import_date = ?, auto_import_enabled = ?,
+		created_at = ?, updated_at = ?, enabled = ?, default_allocation_enabled = ?, default_allocations = ?
+		WHERE flex_query_id = ?
+    `
+
+	result, err := r.getQuerier().ExecContext(ctx, query,
+		c.FlexToken,
+		c.FlexQueryID,
+		c.TokenExpiresAt,
+		c.LastImportDate,
+		c.AutoImportEnabled,
+		c.CreatedAt,
+		c.UpdatedAt,
+		c.Enabled,
+		c.DefaultAllocationEnabled,
+		c.DefaultAllocations,
+		flexToken,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to update ibkr config: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return apperrors.ErrIbkrConfigNotFound
+	}
+
+	return nil
+}
+
+func (r *IbkrRepository) GetIbkrImportCache() (model.IbkrImportCache, error) {
+
+	query := `
+		SELECT id, cache_key, data, created_at, expires_at
+		FROM ibkr_import_cache
+		LIMIT 1
+	`
+
+	var c model.IbkrImportCache
+	var createdAtStr, expiresAtStr string
+	err := r.getQuerier().QueryRow(query).Scan(
+		&c.ID,
+		&c.CacheKey,
+		&c.Data,
+		&createdAtStr,
+		&expiresAtStr,
+	)
+	if err == sql.ErrNoRows {
+		return model.IbkrImportCache{}, apperrors.ErrIbkrImportCacheNotFound
+	}
+
+	c.CreatedAt, err = time.Parse("2006-01-02", createdAtStr)
+	if err != nil || c.CreatedAt.IsZero() {
+		return model.IbkrImportCache{}, fmt.Errorf("failed to parse date: %w", err)
+	}
+
+	c.ExpiresAt, err = time.Parse("2006-01-02", expiresAtStr)
+	if err != nil || c.ExpiresAt.IsZero() {
+		return model.IbkrImportCache{}, fmt.Errorf("failed to parse date: %w", err)
+	}
+
+	return c, nil
 }

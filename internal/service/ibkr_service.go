@@ -4,8 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"fmt"
+	"log"
 	"math"
 	"os"
 	"strings"
@@ -13,6 +15,7 @@ import (
 
 	"github.com/fernet/fernet-go"
 	"github.com/google/uuid"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/request"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/apperrors"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/ibkr"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
@@ -238,20 +241,41 @@ func (s *IbkrService) ImportFlexReport(ctx context.Context) (int, int, error) {
 	if err != nil {
 		return 0, 0, err
 	}
-	token, err := s.decryptToken(config.FlexToken)
+
+	cache, err := s.ibkrRepo.GetIbkrImportCache()
 	if err != nil {
-		return 0, 0, err
+		// No cache is fine, error on the rest.
+		if !errors.Is(err, apperrors.ErrIbkrImportCacheNotFound) {
+			return 0, 0, err
+		}
+	}
+	var req ibkr.FlexQueryResponse
+	var body []byte
+	var cacheSet bool
+
+	if cache.ExpiresAt.IsZero() || cache.ExpiresAt.Before(time.Now().UTC()) {
+		token, err := s.decryptToken(config.FlexToken)
+		if err != nil {
+			return 0, 0, err
+		}
+
+		req, body, err = s.ibkrClient.RequestIBKRFlexReport(ctx, token, config.FlexQueryID)
+		if err != nil {
+			return 0, 0, err
+		}
+	} else {
+		cacheSet = true
+		err := xml.Unmarshal(cache.Data, &req)
+		if err != nil {
+			return 0, 0, err
+		}
 	}
 
-	request, body, err := s.ibkrClient.RequestIBKRFlexReport(ctx, token, config.FlexQueryID)
-	if err != nil {
-		return 0, 0, err
-	}
+	now := time.Now().UTC()
 
-	if len(body) > 0 {
-		now := time.Now().UTC()
-		cacheKey := fmt.Sprintf("ibkr_flex_%d_%s", request.QueryID, now.Truncate(24*time.Hour).Format("2006-01-02"))
-		importCache := model.IBKRImportCache{
+	if len(body) > 0 && !cacheSet {
+		cacheKey := fmt.Sprintf("ibkr_flex_%d_%s", req.QueryID, now.Truncate(24*time.Hour).Format("2006-01-02"))
+		importCache := model.IbkrImportCache{
 			ID:        uuid.New().String(),
 			CacheKey:  cacheKey,
 			Data:      body,
@@ -263,7 +287,7 @@ func (s *IbkrService) ImportFlexReport(ctx context.Context) (int, int, error) {
 		}
 	}
 
-	report, rates, err := s.parseIBKRFlexReport(request)
+	report, rates, err := s.parseIBKRFlexReport(req)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -288,6 +312,10 @@ func (s *IbkrService) ImportFlexReport(ctx context.Context) (int, int, error) {
 		}
 	}
 
+	if err := s.ibkrRepo.UpdateLastImportDate(ctx, config.FlexQueryID, now); err != nil {
+		log.Printf("ImportFlexReport: failed to update last_import_date: %v", err)
+	}
+
 	return len(missingTransactions), len(report) - len(missingTransactions), nil
 }
 
@@ -309,7 +337,7 @@ func (s *IbkrService) decryptToken(token string) (string, error) {
 	return strings.TrimSpace(string(decryptedToken)), nil
 }
 
-func (s *IbkrService) writeImportCache(ctx context.Context, importCache model.IBKRImportCache) error {
+func (s *IbkrService) writeImportCache(ctx context.Context, importCache model.IbkrImportCache) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
@@ -386,6 +414,11 @@ func (s *IbkrService) parseIBKRFlexReport(report ibkr.FlexQueryResponse) ([]mode
 			return nil, nil, fmt.Errorf("failed to marshal raw transaction data: %w", err)
 		}
 
+		currency := v.CurrencyPrimary
+		if currency == "" {
+			currency = v.Currency
+		}
+
 		t := model.IBKRTransaction{
 			ID:                uuid.New().String(),
 			IBKRTransactionID: fmt.Sprintf("%d_%d", v.TransactionID, v.IbOrderID),
@@ -394,11 +427,11 @@ func (s *IbkrService) parseIBKRFlexReport(report ibkr.FlexQueryResponse) ([]mode
 			ISIN:              v.Isin,
 			Description:       v.Description,
 			TransactionType:   strings.ToLower(v.BuySell),
-			Quantity:          v.Quantity,
+			Quantity:          math.Abs(v.Quantity),
 			Price:             v.TradePrice,
 			TotalAmount:       math.Abs(v.NetCash),
-			Currency:          v.Currency,
-			Fees:              v.IbCommission,
+			Currency:          currency,
+			Fees:              math.Abs(v.IbCommission),
 			Status:            "pending",
 			ImportedAt:        report.ImportedAt,
 			RawData:           rawBytes,
@@ -426,4 +459,73 @@ func (s *IbkrService) parseIBKRFlexReport(report ibkr.FlexQueryResponse) ([]mode
 	}
 
 	return ibkrTransactions, ibkrExchangeRate, nil
+}
+
+// nolint:gocyclo // if req.X != nil pattern is intrinsic to patch-style updates in Go
+func (s *IbkrService) UpdateIbkrConfig(
+	ctx context.Context,
+	flexToken int,
+	req request.UpdateIbkrConfigRequest,
+) (*model.IbkrConfig, error) {
+
+	config := model.IbkrConfig{}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }() //nolint:errcheck // Rollback is a no-op after Commit; error is intentionally ignored.
+
+	// portfolio, err := s.portfolioRepo.WithTx(tx).GetPortfolioOnID(id)
+	// if err != nil {
+	// 	return nil, err
+	// }
+
+	if req.Configured != nil {
+		config.Configured = *req.Configured
+	}
+	if req.FlexToken != nil {
+		config.FlexToken = *req.FlexToken
+	}
+	if req.FlexQueryID != nil {
+		config.FlexQueryID = *req.FlexQueryID
+	}
+	if req.TokenExpiresAt != nil {
+		config.TokenExpiresAt = req.TokenExpiresAt
+	}
+	if req.LastImportDate != nil {
+		config.LastImportDate = req.LastImportDate
+	}
+	if req.AutoImportEnabled != nil {
+		config.AutoImportEnabled = *req.AutoImportEnabled
+	}
+	if req.Enabled != nil {
+		config.Enabled = *req.Enabled
+	}
+	if req.DefaultAllocationEnabled != nil {
+		config.DefaultAllocationEnabled = *req.DefaultAllocationEnabled
+	}
+	if req.DefaultAllocations != nil {
+		all := make([]model.Allocation, len(req.DefaultAllocations))
+		for i, v := range req.DefaultAllocations {
+			all[i].Percentage = *v.Percentage
+			all[i].PortfolioID = *v.PortfolioID
+		}
+		config.DefaultAllocations = all
+	}
+	if req.CreatedAt != nil {
+		config.CreatedAt = *req.CreatedAt
+	}
+	if req.UpdatedAt != nil {
+		config.UpdatedAt = *req.UpdatedAt
+	}
+
+	if err := s.ibkrRepo.WithTx(tx).UpdateIbkrConfig(ctx, flexToken, &config); err != nil {
+		return nil, fmt.Errorf("failed to update IBKR config: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit transaction: %w", err)
+	}
+
+	return &config, nil
 }

@@ -114,7 +114,7 @@ type FundMatchInfo struct {
 	FundISIN   string `json:"fundIsin,omitempty"`   // The matched fund's ISIN
 }
 
-type IBKRImportCache struct {
+type IbkrImportCache struct {
 	ID        string
 	CacheKey  string
 	Data      []byte

@@ -206,26 +206,26 @@ func createTestSchema(db *sql.DB) error {
 
 		-- IBKR transaction table
 		CREATE TABLE "ibkr_transaction" (
-			"id"	VARCHAR(36) NOT NULL,
-			"ibkr_transaction_id"	VARCHAR(100) NOT NULL,
-			"transaction_date"	DATE NOT NULL,
-			"symbol"	VARCHAR(10),
-			"isin"	VARCHAR(12),
-			"description"	TEXT,
-			"transaction_type"	VARCHAR(20) NOT NULL,
-			"quantity"	FLOAT,
-			"price"	FLOAT,
-			"total_amount"	FLOAT NOT NULL,
-			"currency"	VARCHAR(3) NOT NULL,
-			"fees"	FLOAT NOT NULL,
-			"status"	VARCHAR(20) NOT NULL,
-			"imported_at"	DATETIME DEFAULT (CURRENT_TIMESTAMP),
-			"processed_at"	DATETIME,
-			"raw_data"	TEXT,
-			"report_date"	DATE NOT NULL,
-			"notes"	VARCHAR(255) NOT NULL,
-			UNIQUE("ibkr_transaction_id"),
-			PRIMARY KEY("id")
+			id VARCHAR(36) NOT NULL,
+			ibkr_transaction_id VARCHAR(100) NOT NULL,
+			transaction_date DATE NOT NULL,
+			symbol VARCHAR(10),
+			isin VARCHAR(12),
+			description TEXT,
+			transaction_type VARCHAR(20) NOT NULL,
+			quantity FLOAT,
+			price FLOAT,
+			total_amount FLOAT NOT NULL,
+			currency VARCHAR(3) NOT NULL,
+			fees FLOAT NOT NULL,
+			status VARCHAR(20) NOT NULL,
+			imported_at DATETIME DEFAULT (CURRENT_TIMESTAMP),
+			processed_at DATETIME,
+			raw_data TEXT,
+			report_date DATE NOT NULL,
+			notes VARCHAR(255) NOT NULL,
+			PRIMARY KEY (id),
+			UNIQUE (ibkr_transaction_id)
 		);
 
 		-- IBKR transaction allocation table
