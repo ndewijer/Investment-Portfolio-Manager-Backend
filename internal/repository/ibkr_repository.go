@@ -354,6 +354,8 @@ func (r *IbkrRepository) GetIbkrTransaction(transactionID string) (model.IBKRTra
 	return t, err
 }
 
+// CompareIbkrTransaction checks whether a transaction already exists in the database by ibkr_transaction_id.
+// Returns true if the transaction exists or if a query error occurs (fail-safe: treat as existing to avoid duplicates).
 func (r *IbkrRepository) CompareIbkrTransaction(t model.IBKRTransaction) bool {
 
 	query := `
@@ -445,6 +447,9 @@ func (r *IbkrRepository) GetIbkrTransactionAllocations(IBKRtransactionID string)
 
 }
 
+// AddIbkrTransactions inserts a batch of IBKR transactions using a prepared statement.
+// Returns nil immediately if the slice is empty.
+// Returns an error if any individual insert fails.
 func (r *IbkrRepository) AddIbkrTransactions(ctx context.Context, transactions []model.IBKRTransaction) error {
 	if len(transactions) == 0 {
 		return nil
@@ -461,9 +466,9 @@ func (r *IbkrRepository) AddIbkrTransactions(ctx context.Context, transactions [
 
 	for _, t := range transactions {
 
-		var processedAt sql.NullTime
+		var processedAt sql.NullString
 		if t.ProcessedAt != nil {
-			processedAt.Time = *t.ProcessedAt
+			processedAt.String = t.ProcessedAt.Format("2006-01-02 15:04:05")
 			processedAt.Valid = true
 		}
 		_, err := stmt.ExecContext(ctx,
@@ -493,6 +498,9 @@ func (r *IbkrRepository) AddIbkrTransactions(ctx context.Context, transactions [
 	return nil
 }
 
+// WriteImportCache stores a Flex report XML payload in the import cache.
+// Uses INSERT OR REPLACE on the cache_key unique constraint, so repeated writes
+// for the same query and date are safe and do not affect other cache entries.
 func (r *IbkrRepository) WriteImportCache(ctx context.Context, t model.IbkrImportCache) error {
 
 	query := `
@@ -504,8 +512,8 @@ func (r *IbkrRepository) WriteImportCache(ctx context.Context, t model.IbkrImpor
 		t.ID,
 		t.CacheKey,
 		t.Data,
-		t.CreatedAt,
-		t.ExpiresAt,
+		t.CreatedAt.Format("2006-01-02 15:04:05"),
+		t.ExpiresAt.Format("2006-01-02 15:04:05"),
 	)
 
 	if err != nil {
@@ -515,6 +523,8 @@ func (r *IbkrRepository) WriteImportCache(ctx context.Context, t model.IbkrImpor
 	return nil
 }
 
+// UpdateLastImportDate sets the last_import_date on the config row identified by queryID.
+// Scoped to a specific flex_query_id to support multiple flex queries in the future.
 func (r *IbkrRepository) UpdateLastImportDate(ctx context.Context, queryID int, t time.Time) error {
 	query := `UPDATE ibkr_config SET last_import_date = ? WHERE flex_query_id = ?`
 	_, err := r.getQuerier().ExecContext(ctx, query, t.Format("2006-01-02 15:04:05"), queryID)
@@ -524,6 +534,9 @@ func (r *IbkrRepository) UpdateLastImportDate(ctx context.Context, queryID int, 
 	return nil
 }
 
+// UpdateIbkrConfig performs a full update of the IBKR config row identified by flexToken (flex_query_id).
+// All fields are overwritten; callers must ensure unset fields are populated before calling.
+// Returns ErrIbkrConfigNotFound if no config row matches the given flex_query_id.
 func (r *IbkrRepository) UpdateIbkrConfig(ctx context.Context, flexToken int, c *model.IbkrConfig) error {
 	query := `
         UPDATE ibkr_config
@@ -535,11 +548,11 @@ func (r *IbkrRepository) UpdateIbkrConfig(ctx context.Context, flexToken int, c 
 	result, err := r.getQuerier().ExecContext(ctx, query,
 		c.FlexToken,
 		c.FlexQueryID,
-		c.TokenExpiresAt,
-		c.LastImportDate,
+		c.TokenExpiresAt.Format("2006-01-02"),
+		c.LastImportDate.Format("2006-01-02 15:04:05"),
 		c.AutoImportEnabled,
-		c.CreatedAt,
-		c.UpdatedAt,
+		c.CreatedAt.Format("2006-01-02 15:04:05"),
+		c.UpdatedAt.Format("2006-01-02 15:04:05"),
 		c.Enabled,
 		c.DefaultAllocationEnabled,
 		c.DefaultAllocations,
@@ -562,6 +575,9 @@ func (r *IbkrRepository) UpdateIbkrConfig(ctx context.Context, flexToken int, c 
 	return nil
 }
 
+// GetIbkrImportCache retrieves the most recent cached Flex report from the database.
+// Returns ErrIbkrImportCacheNotFound if the cache is empty.
+// The caller should check ExpiresAt to determine whether the cached data is still valid.
 func (r *IbkrRepository) GetIbkrImportCache() (model.IbkrImportCache, error) {
 
 	query := `
@@ -583,12 +599,12 @@ func (r *IbkrRepository) GetIbkrImportCache() (model.IbkrImportCache, error) {
 		return model.IbkrImportCache{}, apperrors.ErrIbkrImportCacheNotFound
 	}
 
-	c.CreatedAt, err = time.Parse("2006-01-02", createdAtStr)
+	c.CreatedAt, err = ParseTime(createdAtStr)
 	if err != nil || c.CreatedAt.IsZero() {
 		return model.IbkrImportCache{}, fmt.Errorf("failed to parse date: %w", err)
 	}
 
-	c.ExpiresAt, err = time.Parse("2006-01-02", expiresAtStr)
+	c.ExpiresAt, err = ParseTime(expiresAtStr)
 	if err != nil || c.ExpiresAt.IsZero() {
 		return model.IbkrImportCache{}, fmt.Errorf("failed to parse date: %w", err)
 	}

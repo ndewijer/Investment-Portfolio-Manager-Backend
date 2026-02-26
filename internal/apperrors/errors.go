@@ -26,6 +26,7 @@ var (
 	// ErrPortfolioFundNotFound indicates that a portfolio-fund relationship does not exist.
 	ErrPortfolioFundNotFound = errors.New("portfolio-fund relationship not found")
 
+	// ErrIBKRTransactionNotFound indicates that the requested IBKR transaction does not exist.
 	ErrIBKRTransactionNotFound = errors.New("ibkr transaction not found")
 
 	// ErrSymbolNotFound indicates that a symbol lookup returned no results
@@ -34,7 +35,7 @@ var (
 	// ErrIbkrConfigNotFound indicates IBKR configuration has not been set up
 	ErrIbkrConfigNotFound = errors.New("ibkr configuration not found")
 
-	// ErrIbkrConfigNotFound indicates IBKR import cache is empty
+	// ErrIbkrImportCacheNotFound indicates the IBKR import cache is empty.
 	ErrIbkrImportCacheNotFound = errors.New("ibkr import cache not found")
 
 	// ErrExchangeRateNotFound indicates no record for a specific currency and date combination

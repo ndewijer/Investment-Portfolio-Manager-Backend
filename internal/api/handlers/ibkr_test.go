@@ -1006,3 +1006,90 @@ func TestIbkrHandler_GetEligiblePortfolios(t *testing.T) {
 		}
 	})
 }
+
+func TestIbkrHandler_ImportFlexReport(t *testing.T) {
+	setupHandler := func(t *testing.T) (*IbkrHandler, *sql.DB) {
+		t.Helper()
+		db := testutil.SetupTestDB(t)
+		is := testutil.NewTestIbkrService(t, db)
+		return NewIbkrHandler(is), db
+	}
+
+	// minimalFlexXML is a valid empty Flex report — no trades, no rates.
+	// Used to exercise the cache path without needing a real IBKR token or API call.
+	const minimalFlexXML = `<FlexQueryResponse queryName="test" type="AF">` +
+		`<FlexStatements count="1">` +
+		`<FlexStatement accountId="" fromDate="" toDate="" period="" whenGenerated="">` +
+		`<Trades></Trades>` +
+		`<CashTransactions></CashTransactions>` +
+		`<ConversionRates></ConversionRates>` +
+		`</FlexStatement>` +
+		`</FlexStatements>` +
+		`</FlexQueryResponse>`
+
+	t.Run("returns 200 with 0 imported when valid cache exists", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		// Config row is required by GetIbkrConfig (called at start of ImportFlexReport).
+		_, err := db.Exec(`
+			INSERT INTO ibkr_config (
+				id, flex_token, flex_query_id, auto_import_enabled, enabled,
+				default_allocation_enabled, created_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+		`, testutil.MakeID(), "dummy_token", 12345, false, true, false)
+		if err != nil {
+			t.Fatalf("Failed to insert config: %v", err)
+		}
+
+		// Insert a cache entry that expires in the future — service will use it
+		// instead of calling the IBKR API, so no token or encryption key needed.
+		_, err = db.Exec(`
+			INSERT INTO ibkr_import_cache (id, cache_key, data, created_at, expires_at)
+			VALUES (?, ?, ?, datetime('now'), datetime('now', '+1 hour'))
+		`, testutil.MakeID(), "ibkr_flex_12345_today", minimalFlexXML)
+		if err != nil {
+			t.Fatalf("Failed to insert cache entry: %v", err)
+		}
+
+		req := httptest.NewRequest(http.MethodPost, "/api/ibkr/import", nil)
+		w := httptest.NewRecorder()
+
+		handler.ImportFlexReport(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var response struct {
+			Success  bool `json:"success"`
+			Imported int  `json:"imported"`
+			Skipped  int  `json:"skipped"`
+		}
+		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if !response.Success {
+			t.Error("Expected success to be true")
+		}
+		if response.Imported != 0 {
+			t.Errorf("Expected 0 imported, got %d", response.Imported)
+		}
+		if response.Skipped != 0 {
+			t.Errorf("Expected 0 skipped, got %d", response.Skipped)
+		}
+	})
+
+	t.Run("returns 500 on database error", func(t *testing.T) {
+		handler, db := setupHandler(t)
+		db.Close()
+
+		req := httptest.NewRequest(http.MethodPost, "/api/ibkr/import", nil)
+		w := httptest.NewRecorder()
+
+		handler.ImportFlexReport(w, req)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Errorf("Expected 500, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+}

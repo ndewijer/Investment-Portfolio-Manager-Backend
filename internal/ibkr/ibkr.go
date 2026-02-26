@@ -33,6 +33,10 @@ func NewFinanceClient() *FinanceClient {
 	}
 }
 
+// RequestIBKRFlexReport fetches a Flex statement from the IBKR API.
+// It first submits a request with the provided token and query ID to obtain a reference code,
+// then polls until the statement is ready and returns the parsed response and raw XML bytes.
+// Returns an error if either the token or query ID is missing, or if the API call fails.
 func (c *FinanceClient) RequestIBKRFlexReport(ctx context.Context, token string, queryID int) (FlexQueryResponse, []byte, error) {
 
 	if token == "" || queryID == 0 {

@@ -5,6 +5,9 @@ import (
 	"time"
 )
 
+// FlexRequestResponse represents the initial response from the IBKR Flex Web Service
+// when requesting a new statement. Contains the reference code used to retrieve the
+// actual statement, or error details if the request failed.
 type FlexRequestResponse struct {
 	XMLName       xml.Name `xml:"FlexStatementResponse"`
 	Text          string   `xml:",chardata"`
@@ -16,6 +19,9 @@ type FlexRequestResponse struct {
 	ErrorMessage  *string  `xml:"ErrorMessage"`  // If error, the verbose message
 }
 
+// FlexQueryResponse represents the full Flex statement returned by IBKR after polling
+// with a reference code. Contains trades, cash transactions, and conversion rates
+// parsed from the XML response, plus metadata set after retrieval.
 type FlexQueryResponse struct {
 	XMLName        xml.Name `xml:"FlexQueryResponse"`
 	Text           string   `xml:",chardata"`

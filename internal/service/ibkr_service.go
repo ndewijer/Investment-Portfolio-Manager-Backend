@@ -60,7 +60,7 @@ func (s *IbkrService) GetIbkrConfig() (*model.IbkrConfig, error) {
 		return nil, fmt.Errorf("unexpected nil config")
 	}
 
-	if !config.TokenExpiresAt.IsZero() {
+	if config.TokenExpiresAt != nil && !config.TokenExpiresAt.IsZero() {
 		diff := time.Until(*config.TokenExpiresAt)
 		if diff.Hours() <= 720.0 {
 			config.TokenWarning = fmt.Sprintf("Token expires in %d days",
@@ -235,6 +235,11 @@ func (s *IbkrService) GetEligiblePortfolios(transactionID string) (model.IBKREli
 	}, nil
 }
 
+// ImportFlexReport fetches and processes an IBKR Flex statement.
+// Checks the local cache first and only calls the IBKR API if the cache is missing or expired.
+// New transactions are compared against existing records and only new ones are inserted.
+// Updates the last import date on the config after a successful run.
+// Returns the number of imported and skipped transactions, or an error if the import fails.
 func (s *IbkrService) ImportFlexReport(ctx context.Context) (int, int, error) {
 
 	config, err := s.GetIbkrConfig()
@@ -376,6 +381,8 @@ func (s *IbkrService) addExchangeRates(ctx context.Context, rates []model.Exchan
 	return nil
 }
 
+// AddIbkrTransactions persists a slice of IBKR transactions to the database within a single transaction.
+// Returns an error if the transaction cannot be started or if any insert fails.
 func (s *IbkrService) AddIbkrTransactions(ctx context.Context, transactions []model.IBKRTransaction) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -461,7 +468,11 @@ func (s *IbkrService) parseIBKRFlexReport(report ibkr.FlexQueryResponse) ([]mode
 	return ibkrTransactions, ibkrExchangeRate, nil
 }
 
-// nolint:gocyclo // if req.X != nil pattern is intrinsic to patch-style updates in Go
+// UpdateIbkrConfig applies a partial update to the IBKR configuration.
+// Only fields present in the request (non-nil pointers) are applied; unset fields are ignored.
+// The flexToken parameter is the flex_query_id used to identify the config row to update.
+//
+//nolint:gocyclo // if req.X != nil pattern is intrinsic to patch-style updates in Go
 func (s *IbkrService) UpdateIbkrConfig(
 	ctx context.Context,
 	flexToken int,
