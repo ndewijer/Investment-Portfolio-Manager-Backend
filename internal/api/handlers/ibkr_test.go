@@ -51,34 +51,33 @@ func TestIbkrHandler_GetConfig(t *testing.T) {
 			t.Error("Expected configured to be true")
 		}
 
-		if response.FlexQueryID != "123456" {
-			t.Errorf("Expected flex query ID '123456', got '%s'", response.FlexQueryID)
+		if response.FlexQueryID != 123456 {
+			t.Errorf("Expected flex query ID '123456', got '%d'", response.FlexQueryID)
 		}
 	})
 
-	// NOTE: This test is commented out due to a bug in ibkr_service.go line 45
 	// The service checks config.TokenExpiresAt.IsZero() without checking if TokenExpiresAt is nil first
 	// This causes a panic when the config is unconfigured (TokenExpiresAt is nil)
-	// t.Run("returns unconfigured status when no config exists", func(t *testing.T) {
-	// 	handler, _ := setupHandler(t)
+	t.Run("returns unconfigured status when no config exists", func(t *testing.T) {
+		handler, _ := setupHandler(t)
 
-	// 	req := httptest.NewRequest(http.MethodGet, "/api/ibkr/config", nil)
-	// 	w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/api/ibkr/config", nil)
+		w := httptest.NewRecorder()
 
-	// 	handler.GetConfig(w, req)
+		handler.GetConfig(w, req)
 
-	// 	if w.Code != http.StatusOK {
-	// 		t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
-	// 	}
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
 
-	// 	var response model.IbkrConfig
-	// 	//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
-	// 	json.NewDecoder(w.Body).Decode(&response)
+		var response model.IbkrConfig
+		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
+		json.NewDecoder(w.Body).Decode(&response)
 
-	// 	if response.Configured {
-	// 		t.Error("Expected configured to be false")
-	// 	}
-	// })
+		if response.Configured {
+			t.Error("Expected configured to be false")
+		}
+	})
 
 	t.Run("returns 500 on database error", func(t *testing.T) {
 		handler, db := setupHandler(t)
@@ -417,10 +416,10 @@ func TestIbkrHandler_GetInbox(t *testing.T) {
 			INSERT INTO ibkr_transaction (
 				id, ibkr_transaction_id, transaction_date, symbol, isin,
 				description, transaction_type, quantity, price, total_amount,
-				currency, fees, status, imported_at
+				currency, fees, status, imported_at, report_date, notes
 			) VALUES
-			(?, ?, datetime('now'), 'AAPL', 'US0378331005', 'Buy', 'trade', 10, 150.00, 1500.00, 'USD', 1.00, 'pending', datetime('now')),
-			(?, ?, datetime('now'), 'GOOGL', 'US02079K3059', 'Buy', 'trade', 5, 2800.00, 14000.00, 'USD', 2.00, 'pending', datetime('now'))
+			(?, ?, datetime('now'), 'AAPL', 'US0378331005', 'Buy', 'trade', 10, 150.00, 1500.00, 'USD', 1.00, 'pending', datetime('now'), date('now'), ''),
+			(?, ?, datetime('now'), 'GOOGL', 'US02079K3059', 'Buy', 'trade', 5, 2800.00, 14000.00, 'USD', 2.00, 'pending', datetime('now'), date('now'), '')
 		`, id1, "IBKR123", id2, "IBKR456")
 		if err != nil {
 			t.Fatalf("Failed to insert test transactions: %v", err)
@@ -452,10 +451,11 @@ func TestIbkrHandler_GetInbox(t *testing.T) {
 		_, err := db.Exec(`
 			INSERT INTO ibkr_transaction (
 				id, ibkr_transaction_id, transaction_date, symbol, isin, description,
-				transaction_type, quantity, price, total_amount, currency, fees, status, imported_at
+				transaction_type, quantity, price, total_amount, currency, fees, status, imported_at,
+				report_date, notes
 			) VALUES
-			(?, ?, datetime('now'), 'AAPL', 'US0378331005', 'Buy AAPL', 'trade', 10, 150.00, 1500.00, 'USD', 1.00, 'pending', datetime('now')),
-			(?, ?, datetime('now'), 'GOOGL', 'US02079K3059', 'Buy GOOGL', 'trade', 5, 400.00, 2000.00, 'USD', 2.00, 'allocated', datetime('now'))
+			(?, ?, datetime('now'), 'AAPL', 'US0378331005', 'Buy AAPL', 'trade', 10, 150.00, 1500.00, 'USD', 1.00, 'pending', datetime('now'), date('now'), ''),
+			(?, ?, datetime('now'), 'GOOGL', 'US02079K3059', 'Buy GOOGL', 'trade', 5, 400.00, 2000.00, 'USD', 2.00, 'allocated', datetime('now'), date('now'), '')
 		`, id1, "IBKR123", id2, "IBKR456")
 		if err != nil {
 			t.Fatalf("Failed to insert test transactions: %v", err)
@@ -495,10 +495,11 @@ func TestIbkrHandler_GetInbox(t *testing.T) {
 		_, err := db.Exec(`
 			INSERT INTO ibkr_transaction (
 				id, ibkr_transaction_id, transaction_date, symbol, isin, description,
-				transaction_type, quantity, price, total_amount, currency, fees, status, imported_at
+				transaction_type, quantity, price, total_amount, currency, fees, status, imported_at,
+				report_date, notes
 			) VALUES
-			(?, ?, datetime('now'), 'AAPL', 'US0378331005', 'Buy AAPL', 'trade', 10, 150.00, 1500.00, 'USD', 1.00, 'pending', datetime('now')),
-			(?, ?, datetime('now'), 'AAPL', 'US0378331005', 'Dividend AAPL', 'dividend', 0, 0, 50.00, 'USD', 0.00, 'pending', datetime('now'))
+			(?, ?, datetime('now'), 'AAPL', 'US0378331005', 'Buy AAPL', 'trade', 10, 150.00, 1500.00, 'USD', 1.00, 'pending', datetime('now'), date('now'), ''),
+			(?, ?, datetime('now'), 'AAPL', 'US0378331005', 'Dividend AAPL', 'dividend', 0, 0, 50.00, 'USD', 0.00, 'pending', datetime('now'), date('now'), '')
 		`, id1, "IBKR123", id2, "IBKR456")
 		if err != nil {
 			t.Fatalf("Failed to insert test transactions: %v", err)
@@ -584,11 +585,12 @@ func TestIbkrHandler_GetInboxCount(t *testing.T) {
 		_, err := db.Exec(`
 			INSERT INTO ibkr_transaction (
 				id, ibkr_transaction_id, transaction_date, symbol, isin, description,
-				transaction_type, quantity, price, total_amount, currency, fees, status, imported_at
+				transaction_type, quantity, price, total_amount, currency, fees, status, imported_at,
+				report_date, notes
 			) VALUES
-			(?, ?, datetime('now'), 'AAPL', 'US0378331005', 'Buy AAPL', 'trade', 10, 150.00, 1500.00, 'USD', 1.00, 'pending', datetime('now')),
-			(?, ?, datetime('now'), 'GOOGL', 'US02079K3059', 'Buy GOOGL', 'trade', 5, 400.00, 2000.00, 'USD', 2.00, 'pending', datetime('now')),
-			(?, ?, datetime('now'), 'AAPL', 'US0378331005', 'Dividend AAPL', 'dividend', 0, 0, 50.00, 'USD', 0.00, 'pending', datetime('now'))
+			(?, ?, datetime('now'), 'AAPL', 'US0378331005', 'Buy AAPL', 'trade', 10, 150.00, 1500.00, 'USD', 1.00, 'pending', datetime('now'), date('now'), ''),
+			(?, ?, datetime('now'), 'GOOGL', 'US02079K3059', 'Buy GOOGL', 'trade', 5, 400.00, 2000.00, 'USD', 2.00, 'pending', datetime('now'), date('now'), ''),
+			(?, ?, datetime('now'), 'AAPL', 'US0378331005', 'Dividend AAPL', 'dividend', 0, 0, 50.00, 'USD', 0.00, 'pending', datetime('now'), date('now'), '')
 		`, id1, "IBKR123", id2, "IBKR456", id3, "IBKR789")
 		if err != nil {
 			t.Fatalf("Failed to insert test transactions: %v", err)
@@ -643,8 +645,9 @@ func TestIbkrHandler_GetTransactionAllocations(t *testing.T) {
 		_, err := db.Exec(`
 			INSERT INTO ibkr_transaction (
 				id, ibkr_transaction_id, transaction_date, symbol, isin, description,
-				transaction_type, quantity, price, total_amount, currency, fees, status, imported_at
-			) VALUES (?, ?, datetime('now'), 'AAPL', 'US0378331005', 'Buy AAPL', 'trade', 10, 150.00, 1500.00, 'USD', 1.00, 'allocated', datetime('now'))
+				transaction_type, quantity, price, total_amount, currency, fees, status, imported_at,
+				report_date, notes
+			) VALUES (?, ?, datetime('now'), 'AAPL', 'US0378331005', 'Buy AAPL', 'trade', 10, 150.00, 1500.00, 'USD', 1.00, 'allocated', datetime('now'), date('now'), '')
 		`, transactionID, "IBKR123")
 		if err != nil {
 			t.Fatalf("Failed to insert test transaction: %v", err)
@@ -719,8 +722,9 @@ func TestIbkrHandler_GetTransactionAllocations(t *testing.T) {
 		_, err := db.Exec(`
 			INSERT INTO ibkr_transaction (
 				id, ibkr_transaction_id, transaction_date, symbol, isin, description,
-				transaction_type, quantity, price, total_amount, currency, fees, status, imported_at
-			) VALUES (?, ?, datetime('now'), 'AAPL', 'US0378331005', 'Buy AAPL', 'trade', 10, 150.00, 1500.00, 'USD', 1.00, 'allocated', datetime('now'))
+				transaction_type, quantity, price, total_amount, currency, fees, status, imported_at,
+				report_date, notes
+			) VALUES (?, ?, datetime('now'), 'AAPL', 'US0378331005', 'Buy AAPL', 'trade', 10, 150.00, 1500.00, 'USD', 1.00, 'allocated', datetime('now'), date('now'), '')
 		`, transactionID, "IBKR123")
 		if err != nil {
 			t.Fatalf("Failed to insert test transaction: %v", err)
@@ -767,8 +771,9 @@ func TestIbkrHandler_GetEligiblePortfolios(t *testing.T) {
 		_, err := db.Exec(`
 			INSERT INTO ibkr_transaction (
 				id, ibkr_transaction_id, transaction_date, symbol, isin, description,
-				transaction_type, quantity, price, total_amount, currency, fees, status, imported_at
-			) VALUES (?, ?, datetime('now'), 'AAPL', 'US0378331005', 'Buy AAPL', 'trade', 10, 150.00, 1500.00, 'USD', 1.00, 'pending', datetime('now'))
+				transaction_type, quantity, price, total_amount, currency, fees, status, imported_at,
+				report_date, notes
+			) VALUES (?, ?, datetime('now'), 'AAPL', 'US0378331005', 'Buy AAPL', 'trade', 10, 150.00, 1500.00, 'USD', 1.00, 'pending', datetime('now'), date('now'), '')
 		`, transactionID, "IBKR123")
 		if err != nil {
 			t.Fatalf("Failed to insert test transaction: %v", err)
@@ -817,8 +822,9 @@ func TestIbkrHandler_GetEligiblePortfolios(t *testing.T) {
 		_, err := db.Exec(`
 			INSERT INTO ibkr_transaction (
 				id, ibkr_transaction_id, transaction_date, symbol, isin, description,
-				transaction_type, quantity, price, total_amount, currency, fees, status, imported_at
-			) VALUES (?, ?, datetime('now'), 'GOOGL', 'DIFFERENT_ISIN', 'Buy GOOGL', 'trade', 7, 400.00, 2800.00, 'USD', 2.00, 'pending', datetime('now'))
+				transaction_type, quantity, price, total_amount, currency, fees, status, imported_at,
+				report_date, notes
+			) VALUES (?, ?, datetime('now'), 'GOOGL', 'DIFFERENT_ISIN', 'Buy GOOGL', 'trade', 7, 400.00, 2800.00, 'USD', 2.00, 'pending', datetime('now'), date('now'), '')
 		`, transactionID, "IBKR456")
 		if err != nil {
 			t.Fatalf("Failed to insert test transaction: %v", err)
@@ -862,8 +868,9 @@ func TestIbkrHandler_GetEligiblePortfolios(t *testing.T) {
 		_, err := db.Exec(`
 			INSERT INTO ibkr_transaction (
 				id, ibkr_transaction_id, transaction_date, symbol, isin, description,
-				transaction_type, quantity, price, total_amount, currency, fees, status, imported_at
-			) VALUES (?, ?, datetime('now'), 'UNKNOWN', 'UNKNOWN_ISIN', 'Buy UNKNOWN', 'trade', 10, 100.00, 1000.00, 'USD', 1.00, 'pending', datetime('now'))
+				transaction_type, quantity, price, total_amount, currency, fees, status, imported_at,
+				report_date, notes
+			) VALUES (?, ?, datetime('now'), 'UNKNOWN', 'UNKNOWN_ISIN', 'Buy UNKNOWN', 'trade', 10, 100.00, 1000.00, 'USD', 1.00, 'pending', datetime('now'), date('now'), '')
 		`, transactionID, "IBKR789")
 		if err != nil {
 			t.Fatalf("Failed to insert test transaction: %v", err)
@@ -910,8 +917,9 @@ func TestIbkrHandler_GetEligiblePortfolios(t *testing.T) {
 		_, err := db.Exec(`
 			INSERT INTO ibkr_transaction (
 				id, ibkr_transaction_id, transaction_date, symbol, isin, description,
-				transaction_type, quantity, price, total_amount, currency, fees, status, imported_at
-			) VALUES (?, ?, datetime('now'), ?, ?, 'Buy ' || ?, 'trade', 10, 300.00, 3000.00, 'USD', 3.00, 'pending', datetime('now'))
+				transaction_type, quantity, price, total_amount, currency, fees, status, imported_at,
+				report_date, notes
+			) VALUES (?, ?, datetime('now'), ?, ?, 'Buy ' || ?, 'trade', 10, 300.00, 3000.00, 'USD', 3.00, 'pending', datetime('now'), date('now'), '')
 		`, transactionID, "IBKR999", fund.Symbol, fund.Isin, fund.Symbol)
 		if err != nil {
 			t.Fatalf("Failed to insert test transaction: %v", err)
@@ -973,8 +981,9 @@ func TestIbkrHandler_GetEligiblePortfolios(t *testing.T) {
 		_, err := db.Exec(`
 			INSERT INTO ibkr_transaction (
 				id, ibkr_transaction_id, transaction_date, symbol, isin, description,
-				transaction_type, quantity, price, total_amount, currency, fees, status, imported_at
-			) VALUES (?, ?, datetime('now'), 'TEST', 'TEST_ISIN', 'Buy TEST', 'trade', 10, 100.00, 1000.00, 'USD', 1.00, 'pending', datetime('now'))
+				transaction_type, quantity, price, total_amount, currency, fees, status, imported_at,
+				report_date, notes
+			) VALUES (?, ?, datetime('now'), 'TEST', 'TEST_ISIN', 'Buy TEST', 'trade', 10, 100.00, 1000.00, 'USD', 1.00, 'pending', datetime('now'), date('now'), '')
 		`, transactionID, "IBKR999")
 		if err != nil {
 			t.Fatalf("Failed to insert test transaction: %v", err)
@@ -990,6 +999,93 @@ func TestIbkrHandler_GetEligiblePortfolios(t *testing.T) {
 		w := httptest.NewRecorder()
 
 		handler.GetEligiblePortfolios(w, req)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Errorf("Expected 500, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+}
+
+func TestIbkrHandler_ImportFlexReport(t *testing.T) {
+	setupHandler := func(t *testing.T) (*IbkrHandler, *sql.DB) {
+		t.Helper()
+		db := testutil.SetupTestDB(t)
+		is := testutil.NewTestIbkrService(t, db)
+		return NewIbkrHandler(is), db
+	}
+
+	// minimalFlexXML is a valid empty Flex report — no trades, no rates.
+	// Used to exercise the cache path without needing a real IBKR token or API call.
+	const minimalFlexXML = `<FlexQueryResponse queryName="test" type="AF">` +
+		`<FlexStatements count="1">` +
+		`<FlexStatement accountId="" fromDate="" toDate="" period="" whenGenerated="">` +
+		`<Trades></Trades>` +
+		`<CashTransactions></CashTransactions>` +
+		`<ConversionRates></ConversionRates>` +
+		`</FlexStatement>` +
+		`</FlexStatements>` +
+		`</FlexQueryResponse>`
+
+	t.Run("returns 200 with 0 imported when valid cache exists", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		// Config row is required by GetIbkrConfig (called at start of ImportFlexReport).
+		_, err := db.Exec(`
+			INSERT INTO ibkr_config (
+				id, flex_token, flex_query_id, auto_import_enabled, enabled,
+				default_allocation_enabled, created_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+		`, testutil.MakeID(), "dummy_token", 12345, false, true, false)
+		if err != nil {
+			t.Fatalf("Failed to insert config: %v", err)
+		}
+
+		// Insert a cache entry that expires in the future — service will use it
+		// instead of calling the IBKR API, so no token or encryption key needed.
+		_, err = db.Exec(`
+			INSERT INTO ibkr_import_cache (id, cache_key, data, created_at, expires_at)
+			VALUES (?, ?, ?, datetime('now'), datetime('now', '+1 hour'))
+		`, testutil.MakeID(), "ibkr_flex_12345_today", minimalFlexXML)
+		if err != nil {
+			t.Fatalf("Failed to insert cache entry: %v", err)
+		}
+
+		req := httptest.NewRequest(http.MethodPost, "/api/ibkr/import", nil)
+		w := httptest.NewRecorder()
+
+		handler.ImportFlexReport(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var response struct {
+			Success  bool `json:"success"`
+			Imported int  `json:"imported"`
+			Skipped  int  `json:"skipped"`
+		}
+		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if !response.Success {
+			t.Error("Expected success to be true")
+		}
+		if response.Imported != 0 {
+			t.Errorf("Expected 0 imported, got %d", response.Imported)
+		}
+		if response.Skipped != 0 {
+			t.Errorf("Expected 0 skipped, got %d", response.Skipped)
+		}
+	})
+
+	t.Run("returns 500 on database error", func(t *testing.T) {
+		handler, db := setupHandler(t)
+		db.Close()
+
+		req := httptest.NewRequest(http.MethodPost, "/api/ibkr/import", nil)
+		w := httptest.NewRecorder()
+
+		handler.ImportFlexReport(w, req)
 
 		if w.Code != http.StatusInternalServerError {
 			t.Errorf("Expected 500, got %d: %s", w.Code, w.Body.String())

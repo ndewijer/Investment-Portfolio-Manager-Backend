@@ -26,6 +26,7 @@ var (
 	// ErrPortfolioFundNotFound indicates that a portfolio-fund relationship does not exist.
 	ErrPortfolioFundNotFound = errors.New("portfolio-fund relationship not found")
 
+	// ErrIBKRTransactionNotFound indicates that the requested IBKR transaction does not exist.
 	ErrIBKRTransactionNotFound = errors.New("ibkr transaction not found")
 
 	// ErrSymbolNotFound indicates that a symbol lookup returned no results
@@ -33,6 +34,9 @@ var (
 
 	// ErrIbkrConfigNotFound indicates IBKR configuration has not been set up
 	ErrIbkrConfigNotFound = errors.New("ibkr configuration not found")
+
+	// ErrIbkrImportCacheNotFound indicates the IBKR import cache is empty.
+	ErrIbkrImportCacheNotFound = errors.New("ibkr import cache not found")
 
 	// ErrExchangeRateNotFound indicates no record for a specific currency and date combination
 	ErrExchangeRateNotFound = errors.New("exchange rate for currency/date not found")
@@ -106,6 +110,7 @@ var (
 	ErrFailedToRetrieveInboxTransactions = errors.New("failed to retrieve inbox transactions")
 	ErrFailedToGetTransactionAllocations = errors.New("failed to get transaction allocations")
 	ErrFailedToGetEligiblePortfolios     = errors.New("failed to get eligible portfolios")
+	ErrFailedToGetNewFlexReport          = errors.New("failed to get new flex report")
 
 	// System operation errors
 	ErrFailedToGetVersionInfo = errors.New("failed to get version information")

@@ -47,3 +47,12 @@ type UpdatedFundError struct {
 	Symbol string `json:"symbol"` // Trading symbol of the fund
 	Error  string `json:"error"`  // Error message describing why the update failed
 }
+
+// ExchangeRate represents a currency exchange rate for a specific date.
+type ExchangeRate struct {
+	ID           string    `json:"id"`           // Unique identifier for the rate
+	FromCurrency string    `json:"fromCurrency"` // Source currency code
+	ToCurrency   string    `json:"toCurrency"`   // Target currency code
+	Rate         float64   `json:"rate"`         // Exchange rate value
+	Date         time.Time `json:"date"`         // Date the rate applies to
+}

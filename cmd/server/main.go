@@ -13,6 +13,7 @@ import (
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/config"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/database"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/ibkr"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/repository"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/service"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/yahoo"
@@ -105,8 +106,9 @@ func createRepoAndServices(db *sql.DB) (
 	// Create services
 	systemService := service.NewSystemService(db)
 
-	// Create yahoo client
+	// Create web clients
 	yahooClient := yahoo.NewFinanceClient()
+	ibkrClient := ibkr.NewFinanceClient()
 
 	developerService := service.NewDeveloperService(
 		db,
@@ -154,10 +156,13 @@ func createRepoAndServices(db *sql.DB) (
 		yahooClient,
 	)
 	ibkrService := service.NewIbkrService(
+		db,
 		ibkrRepo,
 		portfolioRepo,
 		transactionService,
 		fundRepo,
+		developerRepo,
+		ibkrClient,
 	)
 	materializedService := service.NewMaterializedService(
 		materializedRepo,

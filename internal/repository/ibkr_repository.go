@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/apperrors"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
@@ -51,15 +52,15 @@ func (r *IbkrRepository) getQuerier() interface {
 // Returns a config with Configured=false if no configuration exists.
 // Parses nullable fields (token expiration, last import date, default allocations) safely.
 func (r *IbkrRepository) GetIbkrConfig() (*model.IbkrConfig, error) {
-
 	query := `
-        SELECT flex_query_id, token_expires_at, last_import_date, auto_import_enabled, created_at, updated_at, enabled, default_allocation_enabled, default_allocations
+        SELECT flex_token, flex_query_id, token_expires_at, last_import_date, auto_import_enabled, created_at, updated_at, enabled, default_allocation_enabled, default_allocations
 		FROM ibkr_config
       `
 
 	var ic model.IbkrConfig
 	var tokenExpiresStr, lastImportStr, defaultAllocationStr sql.NullString
 	err := r.getQuerier().QueryRow(query).Scan(
+		&ic.FlexToken,
 		&ic.FlexQueryID,
 		&tokenExpiresStr,
 		&lastImportStr,
@@ -209,7 +210,7 @@ func (r *IbkrRepository) GetInbox(status, transactionType string) ([]model.IBKRT
 	query = `
 	SELECT id, ibkr_transaction_id, transaction_date, symbol, isin, description,
          transaction_type, quantity, price, total_amount, currency, fees,
-         status, imported_at
+         status, imported_at, report_date, notes
 	FROM ibkr_transaction
 	WHERE status = ?
   `
@@ -237,7 +238,7 @@ func (r *IbkrRepository) GetInbox(status, transactionType string) ([]model.IBKRT
 	ibkrTransactions := []model.IBKRTransaction{}
 
 	for rows.Next() {
-		var transactionDateStr, importedAtStr string
+		var transactionDateStr, importedAtStr, reportDateStr string
 		t := model.IBKRTransaction{}
 		err := rows.Scan(
 			&t.ID,
@@ -254,6 +255,8 @@ func (r *IbkrRepository) GetInbox(status, transactionType string) ([]model.IBKRT
 			&t.Fees,
 			&t.Status,
 			&importedAtStr,
+			&reportDateStr,
+			&t.Notes,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan IBKR Transactions table results: %w", err)
@@ -266,6 +269,11 @@ func (r *IbkrRepository) GetInbox(status, transactionType string) ([]model.IBKRT
 
 		t.ImportedAt, err = ParseTime(importedAtStr)
 		if err != nil || t.ImportedAt.IsZero() {
+			return nil, fmt.Errorf("failed to parse date: %w", err)
+		}
+
+		t.ReportDate, err = ParseTime(reportDateStr)
+		if err != nil || t.ReportDate.IsZero() {
 			return nil, fmt.Errorf("failed to parse date: %w", err)
 		}
 
@@ -313,16 +321,19 @@ func (r *IbkrRepository) GetIbkrInboxCount() (model.IBKRInboxCount, error) {
 func (r *IbkrRepository) GetIbkrTransaction(transactionID string) (model.IBKRTransaction, error) {
 
 	query := `
-        SELECT id, ibkr_transaction_id, transaction_date, symbol, isin, description, transaction_type, quantity, price, total_amount, currency, fees, status, imported_at
+        SELECT id, ibkr_transaction_id, transaction_date, symbol, isin, description, transaction_type, quantity, price, total_amount, currency, fees, status, imported_at, processed_at, report_date, notes
 		FROM ibkr_transaction
 		WHERE id = ?
       `
 
 	t := model.IBKRTransaction{}
+	var transactionDateStr, importedAtStr, reportDateStr string
+	var proccessedDateStr sql.NullString
+
 	err := r.getQuerier().QueryRow(query, transactionID).Scan(
 		&t.ID,
 		&t.IBKRTransactionID,
-		&t.TransactionDate,
+		&transactionDateStr,
 		&t.Symbol,
 		&t.ISIN,
 		&t.Description,
@@ -333,7 +344,10 @@ func (r *IbkrRepository) GetIbkrTransaction(transactionID string) (model.IBKRTra
 		&t.Currency,
 		&t.Fees,
 		&t.Status,
-		&t.ImportedAt)
+		&importedAtStr,
+		&proccessedDateStr,
+		&reportDateStr,
+		&t.Notes)
 	if err == sql.ErrNoRows {
 		return model.IBKRTransaction{}, apperrors.ErrIBKRTransactionNotFound
 	}
@@ -341,7 +355,57 @@ func (r *IbkrRepository) GetIbkrTransaction(transactionID string) (model.IBKRTra
 		return model.IBKRTransaction{}, err
 	}
 
+	t.TransactionDate, err = ParseTime(transactionDateStr)
+	if err != nil || t.TransactionDate.IsZero() {
+		return model.IBKRTransaction{}, fmt.Errorf("failed to parse date: %w", err)
+	}
+
+	t.ImportedAt, err = ParseTime(importedAtStr)
+	if err != nil || t.ImportedAt.IsZero() {
+		return model.IBKRTransaction{}, fmt.Errorf("failed to parse date: %w", err)
+	}
+
+	t.ReportDate, err = ParseTime(reportDateStr)
+	if err != nil || t.ReportDate.IsZero() {
+		return model.IBKRTransaction{}, fmt.Errorf("failed to parse date: %w", err)
+	}
+
+	// BuyOrderDate is nullable
+	if proccessedDateStr.Valid {
+		parsed, err := ParseTime(proccessedDateStr.String)
+		if err != nil || parsed.IsZero() {
+			return model.IBKRTransaction{}, fmt.Errorf("failed to parse buy_order_date: %w", err)
+		}
+		t.ProcessedAt = &parsed
+	}
+
 	return t, err
+}
+
+// CompareIbkrTransaction checks whether a transaction already exists in the database by ibkr_transaction_id.
+// Returns true if the transaction exists or if a query error occurs.
+// Intentional design: on DB error, we treat the transaction as already existing (fail-safe) to avoid duplicate
+// inserts. The unique constraint on ibkr_transaction_id will catch any actual duplicates, and a future
+// logging/alerting system is expected to surface DB errors from that layer.
+func (r *IbkrRepository) CompareIbkrTransaction(t model.IBKRTransaction) bool {
+
+	query := `
+        SELECT count(*)
+		FROM ibkr_transaction
+		WHERE ibkr_transaction_id = ?
+      `
+
+	var count int
+	err := r.getQuerier().QueryRow(query,
+		t.IBKRTransactionID,
+	).Scan(&count)
+
+	if err != nil {
+		log.Printf("CompareIbkrTransaction: query error for %s, treating as existing: %v", t.IBKRTransactionID, err)
+		return true
+	}
+
+	return count > 0
 }
 
 // GetIbkrTransactionAllocations retrieves all allocation records for a specific IBKR transaction.
@@ -360,7 +424,7 @@ func (r *IbkrRepository) GetIbkrTransactionAllocations(IBKRtransactionID string)
 		FROM ibkr_transaction_allocation i
 		INNER JOIN portfolio p
 		ON i.portfolio_id = p.id
-		INNER JOIN "transaction" t
+		LEFT JOIN "transaction" t
 		on i.transaction_id = t.id
 		WHERE ibkr_transaction_id = ?
       `
@@ -412,4 +476,190 @@ func (r *IbkrRepository) GetIbkrTransactionAllocations(IBKRtransactionID string)
 
 	return allocations, nil
 
+}
+
+// AddIbkrTransactions inserts a batch of IBKR transactions using a prepared statement.
+// Returns nil immediately if the slice is empty.
+// Returns an error if any individual insert fails.
+func (r *IbkrRepository) AddIbkrTransactions(ctx context.Context, transactions []model.IBKRTransaction) error {
+	if len(transactions) == 0 {
+		return nil
+	}
+
+	stmt, err := r.getQuerier().PrepareContext(ctx, `
+        INSERT INTO ibkr_transaction (id, ibkr_transaction_id, transaction_date, symbol, isin, description, transaction_type, quantity, price, total_amount, currency, fees, status, imported_at, processed_at, raw_data, report_date, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `)
+	if err != nil {
+		return fmt.Errorf("failed to prepare statement: %w", err)
+	}
+	defer stmt.Close()
+
+	for _, t := range transactions {
+
+		var processedAt sql.NullString
+		if t.ProcessedAt != nil {
+			processedAt.String = t.ProcessedAt.Format("2006-01-02 15:04:05")
+			processedAt.Valid = true
+		}
+		_, err := stmt.ExecContext(ctx,
+			t.ID,
+			t.IBKRTransactionID,
+			t.TransactionDate.Format("2006-01-02"),
+			t.Symbol,
+			t.ISIN,
+			t.Description,
+			t.TransactionType,
+			t.Quantity,
+			t.Price,
+			t.TotalAmount,
+			t.Currency,
+			t.Fees,
+			t.Status,
+			t.ImportedAt.Format("2006-01-02 15:04:05"),
+			processedAt,
+			t.RawData,
+			t.ReportDate.Format("2006-01-02"),
+			t.Notes,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to insert IBKR Transaction for %s on %s: %w", t.IBKRTransactionID, t.TransactionDate.Format("2006-01-02"), err)
+		}
+	}
+	return nil
+}
+
+// WriteImportCache stores a Flex report XML payload in the import cache.
+// Uses INSERT OR REPLACE on the cache_key unique constraint, so repeated writes
+// for the same query and date are safe and do not affect other cache entries.
+func (r *IbkrRepository) WriteImportCache(ctx context.Context, t model.IbkrImportCache) error {
+
+	query := `
+		INSERT OR REPLACE INTO ibkr_import_cache (id, cache_key, data, created_at, expires_at)
+		VALUES (?, ?, ?, ?, ?)
+	`
+
+	_, err := r.getQuerier().ExecContext(ctx, query,
+		t.ID,
+		t.CacheKey,
+		t.Data,
+		t.CreatedAt.Format("2006-01-02 15:04:05"),
+		t.ExpiresAt.Format("2006-01-02 15:04:05"),
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to set ibkr_import_cache: %w", err)
+	}
+
+	return nil
+}
+
+// UpdateLastImportDate sets the last_import_date on the config row identified by queryID.
+// Scoped to a specific flex_query_id to support multiple flex queries in the future.
+func (r *IbkrRepository) UpdateLastImportDate(ctx context.Context, queryID int, t time.Time) error {
+	query := `UPDATE ibkr_config SET last_import_date = ? WHERE flex_query_id = ?`
+	_, err := r.getQuerier().ExecContext(ctx, query, t.Format("2006-01-02 15:04:05"), queryID)
+	if err != nil {
+		return fmt.Errorf("failed to update last_import_date: %w", err)
+	}
+	return nil
+}
+
+// UpdateIbkrConfig performs a full update of the IBKR config row identified by flexToken (flex_query_id).
+// All fields are overwritten; callers must ensure unset fields are populated before calling.
+// Returns ErrIbkrConfigNotFound if no config row matches the given flex_query_id.
+func (r *IbkrRepository) UpdateIbkrConfig(ctx context.Context, flexToken int, c *model.IbkrConfig) error {
+	query := `
+        UPDATE ibkr_config
+		SET flex_token = ?, flex_query_id = ?, token_expires_at = ?, last_import_date = ?, auto_import_enabled = ?,
+		created_at = ?, updated_at = ?, enabled = ?, default_allocation_enabled = ?, default_allocations = ?
+		WHERE flex_query_id = ?
+    `
+	var tokenExpiresStr, lastImportStr sql.NullString
+	if c.TokenExpiresAt != nil {
+		tokenExpiresStr.String = c.TokenExpiresAt.Format("2006-01-02")
+	}
+	if c.LastImportDate != nil {
+		lastImportStr.String = c.LastImportDate.Format("2006-01-02 15:04:05")
+	}
+
+	var defaultAllocationsStr []byte
+	if len(c.DefaultAllocations) > 0 {
+		var err error
+		defaultAllocationsStr, err = json.Marshal(c.DefaultAllocations)
+		if err != nil {
+			return fmt.Errorf("failed to marshal default allocations: %w", err)
+		}
+	}
+
+	result, err := r.getQuerier().ExecContext(ctx, query,
+		c.FlexToken,
+		c.FlexQueryID,
+		tokenExpiresStr.String,
+		lastImportStr.String,
+		c.AutoImportEnabled,
+		c.CreatedAt.Format("2006-01-02 15:04:05"),
+		c.UpdatedAt.Format("2006-01-02 15:04:05"),
+		c.Enabled,
+		c.DefaultAllocationEnabled,
+		defaultAllocationsStr,
+		flexToken,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to update ibkr config: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return apperrors.ErrIbkrConfigNotFound
+	}
+
+	return nil
+}
+
+// GetIbkrImportCache retrieves the most recent cached Flex report from the database.
+// Returns ErrIbkrImportCacheNotFound if the cache is empty.
+// The caller should check ExpiresAt to determine whether the cached data is still valid.
+func (r *IbkrRepository) GetIbkrImportCache() (model.IbkrImportCache, error) {
+
+	query := `
+		SELECT id, cache_key, data, created_at, expires_at
+		FROM ibkr_import_cache
+		ORDER BY created_at DESC
+		LIMIT 1
+	`
+
+	var c model.IbkrImportCache
+	var createdAtStr, expiresAtStr string
+	err := r.getQuerier().QueryRow(query).Scan(
+		&c.ID,
+		&c.CacheKey,
+		&c.Data,
+		&createdAtStr,
+		&expiresAtStr,
+	)
+	if err == sql.ErrNoRows {
+		return model.IbkrImportCache{}, apperrors.ErrIbkrImportCacheNotFound
+	}
+
+	if err != nil {
+		return model.IbkrImportCache{}, err
+	}
+
+	c.CreatedAt, err = ParseTime(createdAtStr)
+	if err != nil || c.CreatedAt.IsZero() {
+		return model.IbkrImportCache{}, fmt.Errorf("failed to parse date: %w", err)
+	}
+
+	c.ExpiresAt, err = ParseTime(expiresAtStr)
+	if err != nil || c.ExpiresAt.IsZero() {
+		return model.IbkrImportCache{}, fmt.Errorf("failed to parse date: %w", err)
+	}
+
+	return c, nil
 }

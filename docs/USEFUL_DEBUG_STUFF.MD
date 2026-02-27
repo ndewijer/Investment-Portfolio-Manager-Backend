@@ -84,3 +84,14 @@ jsonBytes, _ := json.MarshalIndent(response, "", "  ")
 		t.Logf("Response JSON:\n%s", string(jsonBytes))
 
 ```
+
+## XML struct generation
+
+[zek](https://github.com/miku/zek/) — generates Go structs from XML input.
+Pipe sample XML into it and it produces tagged structs ready to use with `encoding/xml`.
+
+```bash
+cat sample.xml | zek -e -p
+```
+
+Used for generating IBKR FlexQuery response structs.

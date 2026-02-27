@@ -193,7 +193,7 @@ func createTestSchema(db *sql.DB) error {
 		CREATE TABLE IF NOT EXISTS ibkr_config (
 			id VARCHAR(36) NOT NULL PRIMARY KEY,
 			flex_token VARCHAR(500) NOT NULL,
-			flex_query_id VARCHAR(100) NOT NULL,
+			flex_query_id VARCHAR(100) NOT NULL, -- model uses int, but SQLite type affinity handles the coercion transparently
 			token_expires_at DATETIME,
 			last_import_date DATETIME,
 			auto_import_enabled BOOLEAN NOT NULL,
@@ -205,9 +205,9 @@ func createTestSchema(db *sql.DB) error {
 		);
 
 		-- IBKR transaction table
-		CREATE TABLE ibkr_transaction (
-			id VARCHAR(36) NOT NULL PRIMARY KEY,
-			ibkr_transaction_id VARCHAR(100) NOT NULL UNIQUE,
+		CREATE TABLE "ibkr_transaction" (
+			id VARCHAR(36) NOT NULL,
+			ibkr_transaction_id VARCHAR(100) NOT NULL,
 			transaction_date DATE NOT NULL,
 			symbol VARCHAR(10),
 			isin VARCHAR(12),
@@ -219,9 +219,13 @@ func createTestSchema(db *sql.DB) error {
 			currency VARCHAR(3) NOT NULL,
 			fees FLOAT NOT NULL,
 			status VARCHAR(20) NOT NULL,
-			imported_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			imported_at DATETIME DEFAULT (CURRENT_TIMESTAMP),
 			processed_at DATETIME,
-			raw_data TEXT
+			raw_data TEXT,
+			report_date DATE NOT NULL,
+			notes VARCHAR(255) NOT NULL,
+			PRIMARY KEY (id),
+			UNIQUE (ibkr_transaction_id)
 		);
 
 		-- IBKR transaction allocation table

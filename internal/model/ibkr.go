@@ -1,6 +1,8 @@
 package model
 
-import "time"
+import (
+	"time"
+)
 
 // Allocation represents a portfolio allocation percentage for IBKR imports.
 type Allocation struct {
@@ -12,7 +14,8 @@ type Allocation struct {
 // Contains settings for flex queries, token management, and default allocation rules.
 type IbkrConfig struct {
 	Configured               bool         `json:"configured"`
-	FlexQueryID              string       `json:"flexQueryId"`
+	FlexToken                string       `json:"-"`
+	FlexQueryID              int          `json:"flexQueryId"`
 	TokenExpiresAt           *time.Time   `json:"tokenExpiresAt,omitempty"`
 	TokenWarning             string       `json:"tokenWarning,omitempty"`
 	LastImportDate           *time.Time   `json:"lastImportDate,omitempty"`
@@ -28,20 +31,24 @@ type IbkrConfig struct {
 // Stores transaction details including trades, dividends, fees, and other account activities.
 // Transactions are initially imported with status "pending" and require allocation to portfolios.
 type IBKRTransaction struct {
-	ID                string    `json:"id"`
-	IBKRTransactionID string    `json:"ibkrTransactionId"`
-	TransactionDate   time.Time `json:"transactionDate"`
-	Symbol            string    `json:"symbol,omitempty"`
-	ISIN              string    `json:"isin,omitempty"`
-	Description       string    `json:"description,omitempty"`
-	TransactionType   string    `json:"transactionType"`
-	Quantity          float64   `json:"quantity,omitempty"`
-	Price             float64   `json:"price,omitempty"`
-	TotalAmount       float64   `json:"totalAmount"`
-	Currency          string    `json:"currency"`
-	Fees              float64   `json:"fees"`
-	Status            string    `json:"status"`
-	ImportedAt        time.Time `json:"importedAt"`
+	ID                string     `json:"id"`
+	IBKRTransactionID string     `json:"ibkrTransactionId"`
+	TransactionDate   time.Time  `json:"transactionDate"`
+	Symbol            string     `json:"symbol,omitempty"`
+	ISIN              string     `json:"isin,omitempty"`
+	Description       string     `json:"description,omitempty"`
+	TransactionType   string     `json:"transactionType"`
+	Quantity          float64    `json:"quantity,omitempty"`
+	Price             float64    `json:"price,omitempty"`
+	TotalAmount       float64    `json:"totalAmount"`
+	Currency          string     `json:"currency"`
+	Fees              float64    `json:"fees"`
+	Status            string     `json:"status"`
+	ImportedAt        time.Time  `json:"importedAt"`
+	ProcessedAt       *time.Time `json:"-"`
+	RawData           []byte     `json:"-"`
+	Notes             string     `json:"notes"`
+	ReportDate        time.Time  `json:"reportDate"`
 }
 
 // IBKRInboxCount represents the count of IBKR imported transactions.
@@ -105,4 +112,14 @@ type FundMatchInfo struct {
 	FundName   string `json:"fundName,omitempty"`   // The matched fund's name
 	FundSymbol string `json:"fundSymbol,omitempty"` // The matched fund's symbol
 	FundISIN   string `json:"fundIsin,omitempty"`   // The matched fund's ISIN
+}
+
+// IbkrImportCache represents a cached IBKR Flex report payload, keyed by query ID and date.
+// Used to avoid redundant API calls when the report has already been fetched today.
+type IbkrImportCache struct {
+	ID        string
+	CacheKey  string
+	Data      []byte
+	CreatedAt time.Time
+	ExpiresAt time.Time
 }

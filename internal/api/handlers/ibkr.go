@@ -188,3 +188,25 @@ func (h *IbkrHandler) GetEligiblePortfolios(w http.ResponseWriter, r *http.Reque
 	// Always return 200 OK if fund is not found, Frontend uses match_info.found = false
 	response.RespondJSON(w, http.StatusOK, eligiblePortfolios)
 }
+
+// ImportFlexReport triggers an IBKR Flex report import.
+// Serves cached data if a valid cache entry exists, otherwise fetches from the IBKR API.
+// Returns a JSON response with the number of imported and skipped transactions.
+func (h *IbkrHandler) ImportFlexReport(w http.ResponseWriter, r *http.Request) {
+
+	add, skipped, err := h.ibkrService.ImportFlexReport(r.Context())
+	if err != nil {
+		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToGetNewFlexReport.Error(), err.Error())
+		return
+	}
+
+	type respStruct struct {
+		Success  bool `json:"success"`
+		Imported int  `json:"imported"`
+		Skipped  int  `json:"skipped"`
+	}
+
+	response.RespondJSON(w, http.StatusOK, respStruct{
+		Success: true, Imported: add, Skipped: skipped,
+	})
+}
