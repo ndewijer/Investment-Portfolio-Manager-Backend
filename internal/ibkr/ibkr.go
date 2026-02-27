@@ -101,10 +101,6 @@ func (c *FinanceClient) retrieveIBKRFlexReport(ctx context.Context, token string
 	var data []byte
 
 	queryURL := fmt.Sprintf("%s?t=%s&q=%d&v=3", request.URL, token, request.ReferenceCode)
-	req, err := http.NewRequestWithContext(ctx, "GET", queryURL, nil)
-	if err != nil {
-		return FlexQueryResponse{}, nil, err
-	}
 
 	backoff := 2 * time.Second // start at 2s
 	maxBackoff := 30 * time.Second
@@ -122,6 +118,12 @@ func (c *FinanceClient) retrieveIBKRFlexReport(ctx context.Context, token string
 				backoff = maxBackoff
 			}
 		}
+
+		req, err := http.NewRequestWithContext(ctx, "GET", queryURL, nil)
+		if err != nil {
+			return FlexQueryResponse{}, nil, err
+		}
+
 		//nolint:gosec // G704: host is brought in from previous query; token and queryID are DB-sourced query params, not URL components.
 		resp, err := c.httpClient.Do(req)
 		if err != nil {

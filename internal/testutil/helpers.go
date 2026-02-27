@@ -181,13 +181,19 @@ func NewTestMaterializedService(t *testing.T, db *sql.DB) *service.MaterializedS
 
 func NewTestIbkrService(t *testing.T, db *sql.DB) *service.IbkrService {
 	t.Helper()
+	return NewTestIbkrServiceWithMockIBKR(t, db, ibkr.NewFinanceClient())
+}
+
+// NewTestIbkrServiceWithMockIBKR creates an IbkrService with a mock IBKR client for testing.
+// This is useful for testing import operations without making real API calls to IBKR.
+func NewTestIbkrServiceWithMockIBKR(t *testing.T, db *sql.DB, mockIBKR ibkr.Client) *service.IbkrService {
+	t.Helper()
 
 	ibkrRepo := repository.NewIbkrRepository(db)
 	fundRepo := repository.NewFundRepository(db)
 	pfRepo := repository.NewPortfolioFundRepository(db)
 	transactionService := service.NewTransactionService(db, repository.NewTransactionRepository(db), pfRepo)
 	developerRepo := repository.NewDeveloperRepository(db)
-	ibkrClient := ibkr.NewFinanceClient()
 
 	return service.NewIbkrService(
 		db,
@@ -196,7 +202,7 @@ func NewTestIbkrService(t *testing.T, db *sql.DB) *service.IbkrService {
 		transactionService,
 		fundRepo,
 		developerRepo,
-		ibkrClient,
+		mockIBKR,
 	)
 }
 

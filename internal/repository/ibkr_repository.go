@@ -321,16 +321,19 @@ func (r *IbkrRepository) GetIbkrInboxCount() (model.IBKRInboxCount, error) {
 func (r *IbkrRepository) GetIbkrTransaction(transactionID string) (model.IBKRTransaction, error) {
 
 	query := `
-        SELECT id, ibkr_transaction_id, transaction_date, symbol, isin, description, transaction_type, quantity, price, total_amount, currency, fees, status, imported_at, report_date, notes
+        SELECT id, ibkr_transaction_id, transaction_date, symbol, isin, description, transaction_type, quantity, price, total_amount, currency, fees, status, imported_at, processed_at, report_date, notes
 		FROM ibkr_transaction
 		WHERE id = ?
       `
 
 	t := model.IBKRTransaction{}
+	var transactionDateStr, importedAtStr, reportDateStr string
+	var proccessedDateStr sql.NullString
+
 	err := r.getQuerier().QueryRow(query, transactionID).Scan(
 		&t.ID,
 		&t.IBKRTransactionID,
-		&t.TransactionDate,
+		&transactionDateStr,
 		&t.Symbol,
 		&t.ISIN,
 		&t.Description,
@@ -341,8 +344,9 @@ func (r *IbkrRepository) GetIbkrTransaction(transactionID string) (model.IBKRTra
 		&t.Currency,
 		&t.Fees,
 		&t.Status,
-		&t.ImportedAt,
-		&t.ReportDate,
+		&importedAtStr,
+		&proccessedDateStr,
+		&reportDateStr,
 		&t.Notes)
 	if err == sql.ErrNoRows {
 		return model.IBKRTransaction{}, apperrors.ErrIBKRTransactionNotFound
@@ -351,11 +355,38 @@ func (r *IbkrRepository) GetIbkrTransaction(transactionID string) (model.IBKRTra
 		return model.IBKRTransaction{}, err
 	}
 
+	t.TransactionDate, err = ParseTime(transactionDateStr)
+	if err != nil || t.TransactionDate.IsZero() {
+		return model.IBKRTransaction{}, fmt.Errorf("failed to parse date: %w", err)
+	}
+
+	t.ImportedAt, err = ParseTime(importedAtStr)
+	if err != nil || t.ImportedAt.IsZero() {
+		return model.IBKRTransaction{}, fmt.Errorf("failed to parse date: %w", err)
+	}
+
+	t.ReportDate, err = ParseTime(reportDateStr)
+	if err != nil || t.ReportDate.IsZero() {
+		return model.IBKRTransaction{}, fmt.Errorf("failed to parse date: %w", err)
+	}
+
+	// BuyOrderDate is nullable
+	if proccessedDateStr.Valid {
+		parsed, err := ParseTime(proccessedDateStr.String)
+		if err != nil || parsed.IsZero() {
+			return model.IBKRTransaction{}, fmt.Errorf("failed to parse buy_order_date: %w", err)
+		}
+		t.ProcessedAt = &parsed
+	}
+
 	return t, err
 }
 
 // CompareIbkrTransaction checks whether a transaction already exists in the database by ibkr_transaction_id.
-// Returns true if the transaction exists or if a query error occurs (fail-safe: treat as existing to avoid duplicates).
+// Returns true if the transaction exists or if a query error occurs.
+// Intentional design: on DB error, we treat the transaction as already existing (fail-safe) to avoid duplicate
+// inserts. The unique constraint on ibkr_transaction_id will catch any actual duplicates, and a future
+// logging/alerting system is expected to surface DB errors from that layer.
 func (r *IbkrRepository) CompareIbkrTransaction(t model.IBKRTransaction) bool {
 
 	query := `
@@ -393,7 +424,7 @@ func (r *IbkrRepository) GetIbkrTransactionAllocations(IBKRtransactionID string)
 		FROM ibkr_transaction_allocation i
 		INNER JOIN portfolio p
 		ON i.portfolio_id = p.id
-		INNER JOIN "transaction" t
+		LEFT JOIN "transaction" t
 		on i.transaction_id = t.id
 		WHERE ibkr_transaction_id = ?
       `
@@ -544,18 +575,34 @@ func (r *IbkrRepository) UpdateIbkrConfig(ctx context.Context, flexToken int, c 
 		created_at = ?, updated_at = ?, enabled = ?, default_allocation_enabled = ?, default_allocations = ?
 		WHERE flex_query_id = ?
     `
+	var tokenExpiresStr, lastImportStr sql.NullString
+	if c.TokenExpiresAt != nil {
+		tokenExpiresStr.String = c.TokenExpiresAt.Format("2006-01-02")
+	}
+	if c.LastImportDate != nil {
+		lastImportStr.String = c.LastImportDate.Format("2006-01-02 15:04:05")
+	}
+
+	var defaultAllocationsStr []byte
+	if len(c.DefaultAllocations) > 0 {
+		var err error
+		defaultAllocationsStr, err = json.Marshal(c.DefaultAllocations)
+		if err != nil {
+			return fmt.Errorf("failed to marshal default allocations: %w", err)
+		}
+	}
 
 	result, err := r.getQuerier().ExecContext(ctx, query,
 		c.FlexToken,
 		c.FlexQueryID,
-		c.TokenExpiresAt.Format("2006-01-02"),
-		c.LastImportDate.Format("2006-01-02 15:04:05"),
+		tokenExpiresStr.String,
+		lastImportStr.String,
 		c.AutoImportEnabled,
 		c.CreatedAt.Format("2006-01-02 15:04:05"),
 		c.UpdatedAt.Format("2006-01-02 15:04:05"),
 		c.Enabled,
 		c.DefaultAllocationEnabled,
-		c.DefaultAllocations,
+		defaultAllocationsStr,
 		flexToken,
 	)
 
@@ -583,6 +630,7 @@ func (r *IbkrRepository) GetIbkrImportCache() (model.IbkrImportCache, error) {
 	query := `
 		SELECT id, cache_key, data, created_at, expires_at
 		FROM ibkr_import_cache
+		ORDER BY created_at DESC
 		LIMIT 1
 	`
 
@@ -597,6 +645,10 @@ func (r *IbkrRepository) GetIbkrImportCache() (model.IbkrImportCache, error) {
 	)
 	if err == sql.ErrNoRows {
 		return model.IbkrImportCache{}, apperrors.ErrIbkrImportCacheNotFound
+	}
+
+	if err != nil {
+		return model.IbkrImportCache{}, err
 	}
 
 	c.CreatedAt, err = ParseTime(createdAtStr)

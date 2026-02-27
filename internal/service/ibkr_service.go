@@ -7,7 +7,6 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"log"
 	"math"
 	"os"
 	"strings"
@@ -35,7 +34,13 @@ type IbkrService struct {
 
 // NewIbkrService creates a new IbkrService with the provided repository dependencies.
 func NewIbkrService(
-	db *sql.DB, ibkrRepo *repository.IbkrRepository, portfolioRepo *repository.PortfolioRepository, transactionService *TransactionService, fundRepository *repository.FundRepository, developerRepository *repository.DeveloperRepository, ibkrClient ibkr.Client,
+	db *sql.DB,
+	ibkrRepo *repository.IbkrRepository,
+	portfolioRepo *repository.PortfolioRepository,
+	transactionService *TransactionService,
+	fundRepository *repository.FundRepository,
+	developerRepository *repository.DeveloperRepository,
+	ibkrClient ibkr.Client,
 ) *IbkrService {
 	return &IbkrService{
 		db:                  db,
@@ -241,7 +246,7 @@ func (s *IbkrService) GetEligiblePortfolios(transactionID string) (model.IBKREli
 // Updates the last import date on the config after a successful run.
 // Returns the number of imported and skipped transactions, or an error if the import fails.
 //
-// nolint:gocyclo // Primary Flex Report Import orchestrator. Mostly filled with error handling.
+//nolint:gocyclo // Primary Flex Report Import orchestrator. Mostly filled with error handling.
 func (s *IbkrService) ImportFlexReport(ctx context.Context) (int, int, error) {
 
 	config, err := s.GetIbkrConfig()
@@ -320,7 +325,7 @@ func (s *IbkrService) ImportFlexReport(ctx context.Context) (int, int, error) {
 	}
 
 	if err := s.ibkrRepo.UpdateLastImportDate(ctx, config.FlexQueryID, now); err != nil {
-		log.Printf("ImportFlexReport: failed to update last_import_date: %v", err)
+		return 0, 0, fmt.Errorf("ImportFlexReport: failed to update last_import_date: %w", err)
 	}
 
 	return len(missingTransactions), len(report) - len(missingTransactions), nil
@@ -487,11 +492,6 @@ func (s *IbkrService) UpdateIbkrConfig(
 		return nil, fmt.Errorf("begin transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }() //nolint:errcheck // Rollback is a no-op after Commit; error is intentionally ignored.
-
-	// portfolio, err := s.portfolioRepo.WithTx(tx).GetPortfolioOnID(id)
-	// if err != nil {
-	// 	return nil, err
-	// }
 
 	if req.Configured != nil {
 		config.Configured = *req.Configured

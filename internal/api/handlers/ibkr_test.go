@@ -56,29 +56,28 @@ func TestIbkrHandler_GetConfig(t *testing.T) {
 		}
 	})
 
-	// NOTE: This test is commented out due to a bug in ibkr_service.go line 45
 	// The service checks config.TokenExpiresAt.IsZero() without checking if TokenExpiresAt is nil first
 	// This causes a panic when the config is unconfigured (TokenExpiresAt is nil)
-	// t.Run("returns unconfigured status when no config exists", func(t *testing.T) {
-	// 	handler, _ := setupHandler(t)
+	t.Run("returns unconfigured status when no config exists", func(t *testing.T) {
+		handler, _ := setupHandler(t)
 
-	// 	req := httptest.NewRequest(http.MethodGet, "/api/ibkr/config", nil)
-	// 	w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/api/ibkr/config", nil)
+		w := httptest.NewRecorder()
 
-	// 	handler.GetConfig(w, req)
+		handler.GetConfig(w, req)
 
-	// 	if w.Code != http.StatusOK {
-	// 		t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
-	// 	}
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
 
-	// 	var response model.IbkrConfig
-	// 	//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
-	// 	json.NewDecoder(w.Body).Decode(&response)
+		var response model.IbkrConfig
+		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
+		json.NewDecoder(w.Body).Decode(&response)
 
-	// 	if response.Configured {
-	// 		t.Error("Expected configured to be false")
-	// 	}
-	// })
+		if response.Configured {
+			t.Error("Expected configured to be false")
+		}
+	})
 
 	t.Run("returns 500 on database error", func(t *testing.T) {
 		handler, db := setupHandler(t)

@@ -193,7 +193,7 @@ func createTestSchema(db *sql.DB) error {
 		CREATE TABLE IF NOT EXISTS ibkr_config (
 			id VARCHAR(36) NOT NULL PRIMARY KEY,
 			flex_token VARCHAR(500) NOT NULL,
-			flex_query_id VARCHAR(100) NOT NULL,
+			flex_query_id VARCHAR(100) NOT NULL, -- model uses int, but SQLite type affinity handles the coercion transparently
 			token_expires_at DATETIME,
 			last_import_date DATETIME,
 			auto_import_enabled BOOLEAN NOT NULL,

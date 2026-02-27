@@ -114,6 +114,8 @@ type FundMatchInfo struct {
 	FundISIN   string `json:"fundIsin,omitempty"`   // The matched fund's ISIN
 }
 
+// IbkrImportCache represents a cached IBKR Flex report payload, keyed by query ID and date.
+// Used to avoid redundant API calls when the report has already been fetched today.
 type IbkrImportCache struct {
 	ID        string
 	CacheKey  string
