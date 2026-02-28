@@ -107,6 +107,8 @@ var (
 
 	// IBKR operation errors
 	ErrFailedToRetrieveIbkrConfig        = errors.New("failed to retrieve ibkr config")
+	ErrFailedToUpdateIbkrConfig          = errors.New("failed to update ibkr config")
+	ErrFailedToDeleteIbkrConfig          = errors.New("failed to delete ibkr config")
 	ErrFailedToRetrieveInboxTransactions = errors.New("failed to retrieve inbox transactions")
 	ErrFailedToGetTransactionAllocations = errors.New("failed to get transaction allocations")
 	ErrFailedToGetEligiblePortfolios     = errors.New("failed to get eligible portfolios")

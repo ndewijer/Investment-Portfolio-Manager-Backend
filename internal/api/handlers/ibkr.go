@@ -213,6 +213,15 @@ func (h *IbkrHandler) ImportFlexReport(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// UpdateIbkrConfig handles POST requests to create or update the IBKR integration configuration.
+// Applies a partial update — only non-nil fields in the request body are written; existing values
+// are preserved for omitted fields. If the flex_query_id changes while enabled is true, the old
+// config row is replaced to avoid stale data.
+//
+// Endpoint: POST /api/ibkr/config
+// Response: 201 Created with updated IbkrConfig
+// Error: 400 Bad Request on invalid body or validation failure
+// Error: 500 Internal Server Error if the update fails
 func (h *IbkrHandler) UpdateIbkrConfig(w http.ResponseWriter, r *http.Request) {
 
 	req, err := parseJSON[request.UpdateIbkrConfigRequest](r)
@@ -228,13 +237,20 @@ func (h *IbkrHandler) UpdateIbkrConfig(w http.ResponseWriter, r *http.Request) {
 
 	config, err := h.ibkrService.UpdateIbkrConfig(r.Context(), req)
 	if err != nil {
-		response.RespondError(w, http.StatusInternalServerError, "failed to update ibkr config", err.Error())
+		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToUpdateIbkrConfig.Error(), err.Error())
 		return
 	}
 
-	response.RespondJSON(w, http.StatusOK, config)
+	response.RespondJSON(w, http.StatusCreated, config)
 }
 
+// DeleteIbkrConfig handles DELETE requests to remove the IBKR integration configuration.
+// Deletes the single config row; returns 404 if no config exists yet.
+//
+// Endpoint: DELETE /api/ibkr/config
+// Response: 204 No Content on success
+// Error: 404 Not Found if no config is configured
+// Error: 500 Internal Server Error if deletion fails
 func (h *IbkrHandler) DeleteIbkrConfig(w http.ResponseWriter, r *http.Request) {
 	err := h.ibkrService.DeleteIbkrConfig(r.Context())
 	if err != nil {
@@ -244,7 +260,7 @@ func (h *IbkrHandler) DeleteIbkrConfig(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		response.RespondError(w, http.StatusInternalServerError, "failed to delete ibkr config", err.Error())
+		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToDeleteIbkrConfig.Error(), err.Error())
 		return
 	}
 

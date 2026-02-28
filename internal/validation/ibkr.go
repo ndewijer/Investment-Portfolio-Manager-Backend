@@ -2,6 +2,7 @@ package validation
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
@@ -27,7 +28,7 @@ func ValidateUpdateIbkrConfig(req request.UpdateIbkrConfigRequest) error {
 			if *req.FlexQueryID == "" {
 				errors["flexQueryId"] = "flexQueryId must be set"
 			} else if len(*req.FlexQueryID) > 10 {
-				errors["flexQueryId"] = "flexToken must be 10 characters or less"
+				errors["flexQueryId"] = "flexQueryId must be 10 characters or less"
 			} else if _, err := strconv.Atoi(strings.TrimSpace(*req.FlexQueryID)); err != nil {
 				errors["flexQueryId"] = "flexQueryId must be a number"
 			}
@@ -44,11 +45,22 @@ func ValidateUpdateIbkrConfig(req request.UpdateIbkrConfigRequest) error {
 		}
 
 		if req.DefaultAllocationEnabled != nil && *req.DefaultAllocationEnabled {
-			// var allocReq request.Allocation
-			// err := json.Unmarshal(req.DefaultAllocations, &allocReq)
-			// if err != nil {
-			// 	errors["defaultAllocations"] = fmt.Sprintf("DefaultAllocations could not be unmarshaled: %v", err)
-			// }
+			if len(req.DefaultAllocations) == 0 {
+				errors["defaultAllocations"] = "defaultAllocations should have at least 1 portfolio when enabled"
+			} else {
+				var perc float64
+				for _, v := range req.DefaultAllocations {
+					perc += *v.Percentage
+					if v.Percentage == nil || *v.Percentage == 0.0 {
+						errors["defaultAllocations"] = "allocation percentage must be set"
+					} else if v.PortfolioID == nil || *v.PortfolioID == "" {
+						errors["defaultAllocations"] = "portfolio must be set"
+					}
+				}
+				if math.Abs(perc-100) > 0.01 {
+					errors["defaultAllocations"] = "defaultAllocations do not add up to 100%"
+				}
+			}
 		}
 	}
 

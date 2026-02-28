@@ -102,6 +102,8 @@ func validateISIN(isin string) bool {
 	return checkDigit == int(isin[11]-'0')
 }
 
+// ParseTime parses a date string in "2006-01-02" or RFC3339 format.
+// Note: mirrors repository.ParseTime — both are intentionally kept local to avoid cross-layer imports.
 func ParseTime(str string) (time.Time, error) {
 	returnTime, err := time.Parse("2006-01-02", str)
 	if err != nil {

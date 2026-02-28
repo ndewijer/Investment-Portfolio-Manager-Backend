@@ -73,7 +73,7 @@ func (r *IbkrRepository) GetIbkrConfig() (*model.IbkrConfig, error) {
 		&defaultAllocationStr,
 	)
 	if err == sql.ErrNoRows {
-		return &model.IbkrConfig{Configured: false}, nil
+		return &model.IbkrConfig{}, apperrors.ErrIbkrConfigNotFound
 	}
 	if err != nil {
 		return nil, err
@@ -566,10 +566,12 @@ func (r *IbkrRepository) UpdateLastImportDate(ctx context.Context, queryID strin
 	return nil
 }
 
-// UpdateIbkrConfig performs a full update of the IBKR config row identified by flexToken (flex_query_id).
-// All fields are overwritten; callers must ensure unset fields are populated before calling.
-// Returns ErrIbkrConfigNotFound if no config row matches the given flex_query_id.
-// to be added to docstring, only 1 row in this table. it contains all data. having an option wipe and an insert or replace with no where statement works in this regard.
+// UpdateIbkrConfig persists the IBKR config using INSERT OR REPLACE.
+// The table holds exactly one row. When overwriteConfig is true the existing row is deleted first,
+// which is necessary when flex_query_id changes (SQLite REPLACE would leave a stale row behind
+// because the PRIMARY KEY is the config ID, not the query ID).
+// All fields on c must be fully populated before calling; the service layer is responsible for
+// merging the request onto the existing config before invoking this method.
 func (r *IbkrRepository) UpdateIbkrConfig(ctx context.Context, overwriteConfig bool, c *model.IbkrConfig) error {
 
 	if overwriteConfig {
@@ -603,12 +605,12 @@ func (r *IbkrRepository) UpdateIbkrConfig(ctx context.Context, overwriteConfig b
 		}
 	}
 
-	result, err := r.getQuerier().ExecContext(ctx, query,
+	_, err := r.getQuerier().ExecContext(ctx, query,
 		c.ID,
 		c.FlexToken,
 		c.FlexQueryID,
-		tokenExpiresStr.String,
-		lastImportStr.String,
+		tokenExpiresStr,
+		lastImportStr,
 		c.AutoImportEnabled,
 		c.CreatedAt.Format("2006-01-02 15:04:05"),
 		c.UpdatedAt.Format("2006-01-02 15:04:05"),
@@ -619,15 +621,6 @@ func (r *IbkrRepository) UpdateIbkrConfig(ctx context.Context, overwriteConfig b
 
 	if err != nil {
 		return fmt.Errorf("failed to update ibkr config: %w", err)
-	}
-
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("failed to get rows affected: %w", err)
-	}
-
-	if rowsAffected == 0 {
-		return apperrors.ErrIbkrConfigNotFound
 	}
 
 	return nil
@@ -675,6 +668,8 @@ func (r *IbkrRepository) GetIbkrImportCache() (model.IbkrImportCache, error) {
 	return c, nil
 }
 
+// DeleteIbkrConfig removes the IBKR configuration row from the database.
+// Returns ErrIbkrConfigNotFound if no config exists.
 func (r *IbkrRepository) DeleteIbkrConfig(ctx context.Context) error {
 	query := `DELETE FROM ibkr_config`
 
