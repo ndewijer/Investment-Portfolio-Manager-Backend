@@ -521,7 +521,7 @@ func (s *IbkrService) parseIBKRFlexReport(report ibkr.FlexQueryResponse) ([]mode
 // stale primary key. Once multiple IBKR accounts are supported this check will need to use the
 // config ID directly rather than comparing query IDs.
 //
-//nolint:gocyclo // if req.X != nil pattern is intrinsic to patch-style updates in Go
+//nolint:gocyclo,funlen // if req.X != nil pattern is intrinsic to patch-style updates in Go; no meaningful split possible
 func (s *IbkrService) UpdateIbkrConfig(
 	ctx context.Context,
 	req request.UpdateIbkrConfigRequest,
