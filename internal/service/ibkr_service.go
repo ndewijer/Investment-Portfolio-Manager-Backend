@@ -482,41 +482,89 @@ func (s *IbkrService) parseIBKRFlexReport(report ibkr.FlexQueryResponse) ([]mode
 //nolint:gocyclo // if req.X != nil pattern is intrinsic to patch-style updates in Go
 func (s *IbkrService) UpdateIbkrConfig(
 	ctx context.Context,
-	flexToken int,
 	req request.UpdateIbkrConfigRequest,
 ) (*model.IbkrConfig, error) {
 
-	config := model.IbkrConfig{}
+	var config *model.IbkrConfig
+	var err error
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("begin transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }() //nolint:errcheck // Rollback is a no-op after Commit; error is intentionally ignored.
 
-	if req.Configured != nil {
-		config.Configured = *req.Configured
+	config, err = s.ibkrRepo.WithTx(tx).GetIbkrConfig()
+	// see if config exists.
+	// here it does not exist so, that's fine
+	if err != nil && !errors.Is(err, apperrors.ErrIbkrConfigNotFound) {
+		// other error type, bomb.
+		return nil, err
+	} else if errors.Is(err, apperrors.ErrIbkrConfigNotFound) {
+		config.ID = uuid.New().String()
+		config.CreatedAt = time.Now().UTC()
 	}
-	if req.FlexToken != nil {
-		config.FlexToken = *req.FlexToken
-	}
+	var overwriteConfig bool
+
 	if req.FlexQueryID != nil {
+		if *req.FlexQueryID != config.FlexQueryID {
+			// check if the flex query id matches the one in the config.
+			// Right now we only have the one. once we start having multiple,
+			// we need a different way of figuring out if a flexToken already exists or not.
+			// Most likely by passing along the ID in both the get and then the POST. For now, this'll work.
+			overwriteConfig = true
+		}
 		config.FlexQueryID = *req.FlexQueryID
 	}
-	if req.TokenExpiresAt != nil {
-		config.TokenExpiresAt = req.TokenExpiresAt
+
+	if req.Enabled != nil {
+		// if this is false, the rest of the thing really doesn't matter.
+		// If there is a config, in place, we'll use that. If there isn't, then default values won't hurt ether.
+
+		config.Enabled = *req.Enabled
+		if !config.Enabled {
+
+			config.AutoImportEnabled = false
+
+			if err := s.ibkrRepo.WithTx(tx).UpdateIbkrConfig(ctx, overwriteConfig, config); err != nil {
+				return nil, fmt.Errorf("failed to update IBKR config: %w", err)
+			}
+
+			if err := tx.Commit(); err != nil {
+				return nil, fmt.Errorf("commit transaction: %w", err)
+			}
+
+			config.Configured = true
+
+			return config, nil
+		}
 	}
-	if req.LastImportDate != nil {
-		config.LastImportDate = req.LastImportDate
+
+	if req.FlexToken != nil && *req.FlexToken != "" {
+		// Set flextoken that's not updated passes in as "", this prevents accedental overwriting.
+		config.FlexToken = *req.FlexToken
+	}
+
+	if req.TokenExpiresAt != nil {
+		time, err := repository.ParseTime(*req.TokenExpiresAt)
+		if err != nil {
+			return nil, err
+		}
+		config.TokenExpiresAt = &time
 	}
 	if req.AutoImportEnabled != nil {
 		config.AutoImportEnabled = *req.AutoImportEnabled
 	}
-	if req.Enabled != nil {
-		config.Enabled = *req.Enabled
-	}
 	if req.DefaultAllocationEnabled != nil {
 		config.DefaultAllocationEnabled = *req.DefaultAllocationEnabled
 	}
+	// if req.DefaultAllocations != nil {
+	// 	all := make([]model.Allocation, len(req.DefaultAllocations))
+	// 	err := json.Unmarshal(req.DefaultAllocations, &all)
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+	// 	config.DefaultAllocations = all
+	// }
 	if req.DefaultAllocations != nil {
 		all := make([]model.Allocation, len(req.DefaultAllocations))
 		for i, v := range req.DefaultAllocations {
@@ -525,14 +573,10 @@ func (s *IbkrService) UpdateIbkrConfig(
 		}
 		config.DefaultAllocations = all
 	}
-	if req.CreatedAt != nil {
-		config.CreatedAt = *req.CreatedAt
-	}
-	if req.UpdatedAt != nil {
-		config.UpdatedAt = *req.UpdatedAt
-	}
 
-	if err := s.ibkrRepo.WithTx(tx).UpdateIbkrConfig(ctx, flexToken, &config); err != nil {
+	config.UpdatedAt = time.Now().UTC()
+
+	if err := s.ibkrRepo.WithTx(tx).UpdateIbkrConfig(ctx, overwriteConfig, config); err != nil {
 		return nil, fmt.Errorf("failed to update IBKR config: %w", err)
 	}
 
@@ -540,5 +584,27 @@ func (s *IbkrService) UpdateIbkrConfig(
 		return nil, fmt.Errorf("commit transaction: %w", err)
 	}
 
-	return &config, nil
+	config.Configured = true
+
+	return config, nil
+}
+
+func (s *IbkrService) DeleteIbkrConfig(ctx context.Context) error {
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }() //nolint:errcheck // Rollback is a no-op after Commit; error is intentionally ignored.
+
+	err = s.ibkrRepo.WithTx(tx).DeleteIbkrConfig(ctx)
+	if err != nil {
+		return err
+	}
+
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("commit transaction: %w", err)
+	}
+
+	return nil
 }

@@ -13,9 +13,10 @@ type Allocation struct {
 // IbkrConfig represents the IBKR (Interactive Brokers) integration configuration.
 // Contains settings for flex queries, token management, and default allocation rules.
 type IbkrConfig struct {
+	ID                       string       `json:"id"`
 	Configured               bool         `json:"configured"`
 	FlexToken                string       `json:"-"`
-	FlexQueryID              int          `json:"flexQueryId"`
+	FlexQueryID              string       `json:"flexQueryId"`
 	TokenExpiresAt           *time.Time   `json:"tokenExpiresAt,omitempty"`
 	TokenWarning             string       `json:"tokenWarning,omitempty"`
 	LastImportDate           *time.Time   `json:"lastImportDate,omitempty"`
