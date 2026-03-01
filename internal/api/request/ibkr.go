@@ -1,19 +1,13 @@
 package request
 
-import "time"
-
 type UpdateIbkrConfigRequest struct {
-	Configured               *bool        `json:"configured"`
-	FlexToken                *string      `json:"flexToken"`
-	FlexQueryID              *int         `json:"flexQueryId"`
-	TokenExpiresAt           *time.Time   `json:"tokenExpiresAt,omitempty"`
-	LastImportDate           *time.Time   `json:"lastImportDate,omitempty"`
-	AutoImportEnabled        *bool        `json:"autoImportEnabled"`
 	Enabled                  *bool        `json:"enabled"`
+	FlexToken                *string      `json:"flexToken"`
+	FlexQueryID              *string      `json:"flexQueryId"`
+	TokenExpiresAt           *string      `json:"tokenExpiresAt,omitempty"`
+	AutoImportEnabled        *bool        `json:"autoImportEnabled"`
 	DefaultAllocationEnabled *bool        `json:"defaultAllocationEnabled"`
 	DefaultAllocations       []Allocation `json:"defaultAllocations,omitempty"`
-	CreatedAt                *time.Time   `json:"createdAt"`
-	UpdatedAt                *time.Time   `json:"updatedAt"`
 }
 
 type Allocation struct {

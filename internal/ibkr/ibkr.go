@@ -13,7 +13,7 @@ import (
 // Client defines the interface for fetching financial data from Interactive Brokers.
 // This interface enables dependency injection and testing with mock implementations.
 type Client interface {
-	RequestIBKRFlexReport(ctx context.Context, token string, queryID int) (FlexQueryResponse, []byte, error)
+	RequestIBKRFlexReport(ctx context.Context, token string, queryID string) (FlexQueryResponse, []byte, error)
 }
 
 // FinanceClient provides methods for fetching financial data from Interactive Brokers.
@@ -37,9 +37,9 @@ func NewFinanceClient() *FinanceClient {
 // It first submits a request with the provided token and query ID to obtain a reference code,
 // then polls until the statement is ready and returns the parsed response and raw XML bytes.
 // Returns an error if either the token or query ID is missing, or if the API call fails.
-func (c *FinanceClient) RequestIBKRFlexReport(ctx context.Context, token string, queryID int) (FlexQueryResponse, []byte, error) {
+func (c *FinanceClient) RequestIBKRFlexReport(ctx context.Context, token string, queryID string) (FlexQueryResponse, []byte, error) {
 
-	if token == "" || queryID == 0 {
+	if token == "" || queryID == "" {
 		return FlexQueryResponse{}, nil, fmt.Errorf("missing variables")
 	}
 
@@ -55,12 +55,12 @@ func (c *FinanceClient) RequestIBKRFlexReport(ctx context.Context, token string,
 	return report, data, nil
 }
 
-func (c *FinanceClient) requestIBKRFlexReport(ctx context.Context, token string, queryID int) (FlexRequestResponse, error) {
-	if queryID == 0 || token == "" {
+func (c *FinanceClient) requestIBKRFlexReport(ctx context.Context, token string, queryID string) (FlexRequestResponse, error) {
+	if queryID == "" || token == "" {
 		return FlexRequestResponse{}, fmt.Errorf("not all parameters set")
 	}
 
-	queryURL := fmt.Sprintf("https://ndcdyn.interactivebrokers.com/AccountManagement/FlexWebService/SendRequest?t=%s&q=%d&v=3", url.PathEscape(token), queryID)
+	queryURL := fmt.Sprintf("https://ndcdyn.interactivebrokers.com/AccountManagement/FlexWebService/SendRequest?t=%s&q=%s&v=3", url.PathEscape(token), url.PathEscape(queryID))
 
 	req, err := http.NewRequestWithContext(ctx, "GET", queryURL, nil)
 	if err != nil {

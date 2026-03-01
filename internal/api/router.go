@@ -148,6 +148,8 @@ func NewRouter(
 		r.Route("/ibkr", func(r chi.Router) {
 			ibkrHandler := handlers.NewIbkrHandler(ibkrService)
 			r.Get("/config", ibkrHandler.GetConfig)
+			r.Post("/config", ibkrHandler.UpdateIbkrConfig)
+			r.Delete("/config", ibkrHandler.DeleteIbkrConfig)
 			r.Get("/portfolios", ibkrHandler.GetActivePortfolios)
 			r.Get("/dividend/pending", ibkrHandler.GetPendingDividends)
 			r.Get("/inbox", ibkrHandler.GetInbox)

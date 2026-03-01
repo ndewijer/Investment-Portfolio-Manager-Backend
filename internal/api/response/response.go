@@ -20,12 +20,14 @@ type ErrorResponse struct {
 // If data is nil, only the status code is sent (useful for 204 No Content).
 // Logs encoding errors but does not fail the response.
 func RespondJSON(w http.ResponseWriter, status int, data interface{}) {
+	if data == nil {
+		w.WriteHeader(status)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	if data != nil {
-		if err := json.NewEncoder(w).Encode(data); err != nil {
-			log.Printf("failed to encode JSON response: %v", err)
-		}
+	if err := json.NewEncoder(w).Encode(data); err != nil {
+		log.Printf("failed to encode JSON response: %v", err)
 	}
 }
 

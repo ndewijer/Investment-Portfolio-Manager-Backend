@@ -59,7 +59,10 @@ func (s *IbkrService) GetIbkrConfig() (*model.IbkrConfig, error) {
 	config, err := s.ibkrRepo.GetIbkrConfig()
 
 	if err != nil {
-		return config, err // Return whatever we got
+		if errors.Is(err, apperrors.ErrIbkrConfigNotFound) {
+			return &model.IbkrConfig{Configured: false}, nil
+		}
+		return &model.IbkrConfig{}, err
 	}
 	if config == nil {
 		return nil, fmt.Errorf("unexpected nil config")
@@ -331,6 +334,8 @@ func (s *IbkrService) ImportFlexReport(ctx context.Context) (int, int, error) {
 	return len(missingTransactions), len(report) - len(missingTransactions), nil
 }
 
+// decryptToken decrypts a fernet-encrypted IBKR flex token using the key in IBKR_ENCRYPTION_KEY.
+// Returns an error if the env var is unset, the key is malformed, or decryption fails.
 func (s *IbkrService) decryptToken(token string) (string, error) {
 
 	enckey := os.Getenv("IBKR_ENCRYPTION_KEY")
@@ -349,6 +354,31 @@ func (s *IbkrService) decryptToken(token string) (string, error) {
 	return strings.TrimSpace(string(decryptedToken)), nil
 }
 
+// encryptToken encrypts a plaintext IBKR flex token using fernet with the key in IBKR_ENCRYPTION_KEY.
+// Returns an error if the env var is unset, the key is malformed, or encryption fails.
+func (s *IbkrService) encryptToken(token string) (string, error) {
+
+	enckey := os.Getenv("IBKR_ENCRYPTION_KEY")
+	if enckey == "" {
+		return "", fmt.Errorf("IBKR_ENCRYPTION_KEY not set")
+	}
+	key, err := fernet.DecodeKey(enckey)
+	if err != nil {
+		return "", fmt.Errorf("invalid encryption key: %w", err)
+	}
+	encryptedToken, err := fernet.EncryptAndSign([]byte(token), key)
+	if err != nil {
+		return "", err
+	}
+	if encryptedToken == nil {
+		return "", fmt.Errorf("encryption failed")
+	}
+
+	return strings.TrimSpace(string(encryptedToken)), nil
+}
+
+// writeImportCache persists a Flex report cache entry to the database within a transaction.
+// The caller is responsible for populating all fields on importCache before calling.
 func (s *IbkrService) writeImportCache(ctx context.Context, importCache model.IbkrImportCache) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -367,6 +397,8 @@ func (s *IbkrService) writeImportCache(ctx context.Context, importCache model.Ib
 	return nil
 }
 
+// addExchangeRates upserts a slice of exchange rates within a single transaction.
+// Iterates all rates and calls UpdateExchangeRate for each; rolls back on the first failure.
 func (s *IbkrService) addExchangeRates(ctx context.Context, rates []model.ExchangeRate) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -408,6 +440,9 @@ func (s *IbkrService) AddIbkrTransactions(ctx context.Context, transactions []mo
 	return nil
 }
 
+// parseIBKRFlexReport converts a raw IBKR Flex report into slices of IBKRTransaction and ExchangeRate models.
+// Dates are parsed from IBKR's "20060102" format. Each trade's quantity, net cash, and commission
+// are normalised to absolute values. Returns an error if any date or JSON marshal step fails.
 func (s *IbkrService) parseIBKRFlexReport(report ibkr.FlexQueryResponse) ([]model.IBKRTransaction, []model.ExchangeRate, error) {
 
 	ibkrTransactions := make([]model.IBKRTransaction, len(report.FlexStatements.FlexStatement.Trades.Trade))
@@ -476,47 +511,95 @@ func (s *IbkrService) parseIBKRFlexReport(report ibkr.FlexQueryResponse) ([]mode
 }
 
 // UpdateIbkrConfig applies a partial update to the IBKR configuration.
-// Only fields present in the request (non-nil pointers) are applied; unset fields are ignored.
-// The flexToken parameter is the flex_query_id used to identify the config row to update.
+// Only non-nil fields in the request are applied; omitted fields retain their current values.
+// FlexToken is an exception: passing an empty string also means "no change" — only a non-empty
+// value overwrites the existing encrypted token.
 //
-//nolint:gocyclo // if req.X != nil pattern is intrinsic to patch-style updates in Go
+// The table holds exactly one row, so the existing config is fetched and the request is merged
+// onto it before persisting. overwriteConfig is set when flex_query_id changes while enabled is
+// true; in that case the repository deletes the old row before inserting the new one to avoid a
+// stale primary key. Once multiple IBKR accounts are supported this check will need to use the
+// config ID directly rather than comparing query IDs.
+//
+//nolint:gocyclo,funlen // if req.X != nil pattern is intrinsic to patch-style updates in Go; no meaningful split possible
 func (s *IbkrService) UpdateIbkrConfig(
 	ctx context.Context,
-	flexToken int,
 	req request.UpdateIbkrConfigRequest,
 ) (*model.IbkrConfig, error) {
 
-	config := model.IbkrConfig{}
+	var config *model.IbkrConfig
+	var err error
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("begin transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }() //nolint:errcheck // Rollback is a no-op after Commit; error is intentionally ignored.
 
-	if req.Configured != nil {
-		config.Configured = *req.Configured
+	config, err = s.ibkrRepo.WithTx(tx).GetIbkrConfig()
+	if err != nil && !errors.Is(err, apperrors.ErrIbkrConfigNotFound) {
+		return nil, err
+	} else if errors.Is(err, apperrors.ErrIbkrConfigNotFound) {
+		config.ID = uuid.New().String()
+		config.CreatedAt = time.Now().UTC()
 	}
-	if req.FlexToken != nil {
-		config.FlexToken = *req.FlexToken
+	var overwriteConfig bool
+
+	if (req.FlexQueryID != nil && *req.FlexQueryID != config.FlexQueryID) && (req.Enabled != nil && *req.Enabled) {
+		overwriteConfig = true
 	}
+
 	if req.FlexQueryID != nil {
 		config.FlexQueryID = *req.FlexQueryID
 	}
-	if req.TokenExpiresAt != nil {
-		config.TokenExpiresAt = req.TokenExpiresAt
+
+	if req.Enabled != nil {
+		config.Enabled = *req.Enabled
 	}
-	if req.LastImportDate != nil {
-		config.LastImportDate = req.LastImportDate
+
+	config.UpdatedAt = time.Now().UTC()
+
+	if !config.Enabled {
+		config.AutoImportEnabled = false
+
+		if err := s.ibkrRepo.WithTx(tx).UpdateIbkrConfig(ctx, overwriteConfig, config); err != nil {
+			return nil, fmt.Errorf("failed to update IBKR config: %w", err)
+		}
+
+		if err := tx.Commit(); err != nil {
+			return nil, fmt.Errorf("commit transaction: %w", err)
+		}
+
+		config.Configured = true
+
+		return config, nil
+	}
+
+	if req.FlexToken != nil && *req.FlexToken != "" {
+		encToken, err := s.encryptToken(*req.FlexToken)
+		if err != nil {
+			return nil, err
+		}
+		config.FlexToken = encToken
+	}
+
+	if config.Enabled && config.FlexToken == "" {
+		return nil, fmt.Errorf("flexToken is required when enabled is true")
+	}
+
+	if req.TokenExpiresAt != nil {
+		time, err := repository.ParseTime(*req.TokenExpiresAt)
+		if err != nil {
+			return nil, err
+		}
+		config.TokenExpiresAt = &time
 	}
 	if req.AutoImportEnabled != nil {
 		config.AutoImportEnabled = *req.AutoImportEnabled
 	}
-	if req.Enabled != nil {
-		config.Enabled = *req.Enabled
-	}
 	if req.DefaultAllocationEnabled != nil {
 		config.DefaultAllocationEnabled = *req.DefaultAllocationEnabled
 	}
+
 	if req.DefaultAllocations != nil {
 		all := make([]model.Allocation, len(req.DefaultAllocations))
 		for i, v := range req.DefaultAllocations {
@@ -525,14 +608,8 @@ func (s *IbkrService) UpdateIbkrConfig(
 		}
 		config.DefaultAllocations = all
 	}
-	if req.CreatedAt != nil {
-		config.CreatedAt = *req.CreatedAt
-	}
-	if req.UpdatedAt != nil {
-		config.UpdatedAt = *req.UpdatedAt
-	}
 
-	if err := s.ibkrRepo.WithTx(tx).UpdateIbkrConfig(ctx, flexToken, &config); err != nil {
+	if err := s.ibkrRepo.WithTx(tx).UpdateIbkrConfig(ctx, overwriteConfig, config); err != nil {
 		return nil, fmt.Errorf("failed to update IBKR config: %w", err)
 	}
 
@@ -540,5 +617,19 @@ func (s *IbkrService) UpdateIbkrConfig(
 		return nil, fmt.Errorf("commit transaction: %w", err)
 	}
 
-	return &config, nil
+	config.Configured = true
+
+	return config, nil
+}
+
+// DeleteIbkrConfig removes the IBKR configuration from the database.
+// Returns ErrIbkrConfigNotFound (propagated from the repository) if no config exists.
+func (s *IbkrService) DeleteIbkrConfig(ctx context.Context) error {
+
+	err := s.ibkrRepo.DeleteIbkrConfig(ctx)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

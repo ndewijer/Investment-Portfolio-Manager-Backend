@@ -53,13 +53,14 @@ func (r *IbkrRepository) getQuerier() interface {
 // Parses nullable fields (token expiration, last import date, default allocations) safely.
 func (r *IbkrRepository) GetIbkrConfig() (*model.IbkrConfig, error) {
 	query := `
-        SELECT flex_token, flex_query_id, token_expires_at, last_import_date, auto_import_enabled, created_at, updated_at, enabled, default_allocation_enabled, default_allocations
+        SELECT id, flex_token, flex_query_id, token_expires_at, last_import_date, auto_import_enabled, created_at, updated_at, enabled, default_allocation_enabled, default_allocations
 		FROM ibkr_config
       `
 
 	var ic model.IbkrConfig
 	var tokenExpiresStr, lastImportStr, defaultAllocationStr sql.NullString
 	err := r.getQuerier().QueryRow(query).Scan(
+		&ic.ID,
 		&ic.FlexToken,
 		&ic.FlexQueryID,
 		&tokenExpiresStr,
@@ -72,7 +73,7 @@ func (r *IbkrRepository) GetIbkrConfig() (*model.IbkrConfig, error) {
 		&defaultAllocationStr,
 	)
 	if err == sql.ErrNoRows {
-		return &model.IbkrConfig{Configured: false}, nil
+		return &model.IbkrConfig{}, apperrors.ErrIbkrConfigNotFound
 	}
 	if err != nil {
 		return nil, err
@@ -556,7 +557,7 @@ func (r *IbkrRepository) WriteImportCache(ctx context.Context, t model.IbkrImpor
 
 // UpdateLastImportDate sets the last_import_date on the config row identified by queryID.
 // Scoped to a specific flex_query_id to support multiple flex queries in the future.
-func (r *IbkrRepository) UpdateLastImportDate(ctx context.Context, queryID int, t time.Time) error {
+func (r *IbkrRepository) UpdateLastImportDate(ctx context.Context, queryID string, t time.Time) error {
 	query := `UPDATE ibkr_config SET last_import_date = ? WHERE flex_query_id = ?`
 	_, err := r.getQuerier().ExecContext(ctx, query, t.Format("2006-01-02 15:04:05"), queryID)
 	if err != nil {
@@ -565,15 +566,27 @@ func (r *IbkrRepository) UpdateLastImportDate(ctx context.Context, queryID int, 
 	return nil
 }
 
-// UpdateIbkrConfig performs a full update of the IBKR config row identified by flexToken (flex_query_id).
-// All fields are overwritten; callers must ensure unset fields are populated before calling.
-// Returns ErrIbkrConfigNotFound if no config row matches the given flex_query_id.
-func (r *IbkrRepository) UpdateIbkrConfig(ctx context.Context, flexToken int, c *model.IbkrConfig) error {
+// UpdateIbkrConfig persists the IBKR config using INSERT OR REPLACE.
+// The table holds exactly one row. When overwriteConfig is true the existing row is deleted first,
+// which is necessary when flex_query_id changes (SQLite REPLACE would leave a stale row behind
+// because the PRIMARY KEY is the config ID, not the query ID).
+// All fields on c must be fully populated before calling; the service layer is responsible for
+// merging the request onto the existing config before invoking this method.
+func (r *IbkrRepository) UpdateIbkrConfig(ctx context.Context, overwriteConfig bool, c *model.IbkrConfig) error {
+
+	if overwriteConfig {
+		query := `DELETE FROM ibkr_config`
+
+		_, err := r.getQuerier().ExecContext(ctx, query)
+		if err != nil {
+			return fmt.Errorf("failed to delete ibkr config: %w", err)
+		}
+	}
+
 	query := `
-        UPDATE ibkr_config
-		SET flex_token = ?, flex_query_id = ?, token_expires_at = ?, last_import_date = ?, auto_import_enabled = ?,
-		created_at = ?, updated_at = ?, enabled = ?, default_allocation_enabled = ?, default_allocations = ?
-		WHERE flex_query_id = ?
+        INSERT OR REPLACE INTO ibkr_config (id, flex_token, flex_query_id, token_expires_at, last_import_date, auto_import_enabled,
+	created_at, updated_at, enabled, default_allocation_enabled, default_allocations)
+	values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `
 	var tokenExpiresStr, lastImportStr sql.NullString
 	if c.TokenExpiresAt != nil {
@@ -592,31 +605,22 @@ func (r *IbkrRepository) UpdateIbkrConfig(ctx context.Context, flexToken int, c 
 		}
 	}
 
-	result, err := r.getQuerier().ExecContext(ctx, query,
+	_, err := r.getQuerier().ExecContext(ctx, query,
+		c.ID,
 		c.FlexToken,
 		c.FlexQueryID,
-		tokenExpiresStr.String,
-		lastImportStr.String,
+		tokenExpiresStr,
+		lastImportStr,
 		c.AutoImportEnabled,
 		c.CreatedAt.Format("2006-01-02 15:04:05"),
 		c.UpdatedAt.Format("2006-01-02 15:04:05"),
 		c.Enabled,
 		c.DefaultAllocationEnabled,
 		defaultAllocationsStr,
-		flexToken,
 	)
 
 	if err != nil {
 		return fmt.Errorf("failed to update ibkr config: %w", err)
-	}
-
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("failed to get rows affected: %w", err)
-	}
-
-	if rowsAffected == 0 {
-		return apperrors.ErrIbkrConfigNotFound
 	}
 
 	return nil
@@ -662,4 +666,26 @@ func (r *IbkrRepository) GetIbkrImportCache() (model.IbkrImportCache, error) {
 	}
 
 	return c, nil
+}
+
+// DeleteIbkrConfig removes the IBKR configuration row from the database.
+// Returns ErrIbkrConfigNotFound if no config exists.
+func (r *IbkrRepository) DeleteIbkrConfig(ctx context.Context) error {
+	query := `DELETE FROM ibkr_config`
+
+	result, err := r.getQuerier().ExecContext(ctx, query)
+	if err != nil {
+		return fmt.Errorf("failed to delete ibkr config: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return apperrors.ErrIbkrConfigNotFound
+	}
+
+	return nil
 }
