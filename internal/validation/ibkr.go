@@ -19,8 +19,15 @@ func ValidateUpdateIbkrConfig(req request.UpdateIbkrConfigRequest) error {
 			if strings.TrimSpace(*req.FlexToken) != "" {
 				if len(*req.FlexToken) != 25 {
 					errors["flexToken"] = "flexToken must be 25 characters"
-				} else if _, err := strconv.Atoi(strings.TrimSpace(*req.FlexToken)); err != nil {
-					errors["flexToken"] = "flexToken must be a number"
+				} else {
+					// strconv.Atoi is not used here: a 25-digit token overflows int64.
+					// Validate digit-by-digit instead.
+					for _, c := range strings.TrimSpace(*req.FlexToken) {
+						if c < '0' || c > '9' {
+							errors["flexToken"] = "flexToken must be a number"
+							break
+						}
+					}
 				}
 			}
 		}

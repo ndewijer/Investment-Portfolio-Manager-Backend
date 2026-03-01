@@ -1006,6 +1006,421 @@ func TestIbkrHandler_GetEligiblePortfolios(t *testing.T) {
 	})
 }
 
+// testFernetKey is a valid 32-byte fernet key (URL-safe base64) used only in tests.
+const testFernetKey = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+
+// validFlexToken is a realistic 25-digit IBKR flex token for testing.
+const validFlexToken = "1079673754867139037835410"
+
+// validFlexQueryID is a short numeric string that satisfies validation rules.
+const validFlexQueryID = "123456"
+
+//nolint:gocyclo // Comprehensive integration test with multiple subtests
+func TestIbkrHandler_UpdateIbkrConfig(t *testing.T) {
+	setupHandler := func(t *testing.T) (*IbkrHandler, *sql.DB) {
+		t.Helper()
+		db := testutil.SetupTestDB(t)
+		is := testutil.NewTestIbkrService(t, db)
+		return NewIbkrHandler(is), db
+	}
+
+	t.Run("creates config when enabled is true", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+		t.Setenv("IBKR_ENCRYPTION_KEY", testFernetKey)
+
+		req := testutil.NewRequestWithBody(http.MethodPost, "/api/ibkr/config", `{
+			"enabled": true,
+			"flexToken": "`+validFlexToken+`",
+			"flexQueryId": "`+validFlexQueryID+`",
+			"tokenExpiresAt": "2030-01-01"
+		}`)
+		w := httptest.NewRecorder()
+
+		handler.UpdateIbkrConfig(w, req)
+
+		if w.Code != http.StatusCreated {
+			t.Errorf("Expected 201, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var response model.IbkrConfig
+		//nolint:errcheck
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if !response.Configured {
+			t.Error("Expected configured to be true")
+		}
+		if !response.Enabled {
+			t.Error("Expected enabled to be true")
+		}
+		if response.FlexQueryID != validFlexQueryID {
+			t.Errorf("Expected flexQueryId %q, got %q", validFlexQueryID, response.FlexQueryID)
+		}
+	})
+
+	t.Run("creates config when disabled", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		req := testutil.NewRequestWithBody(http.MethodPost, "/api/ibkr/config", `{
+			"enabled": false
+		}`)
+		w := httptest.NewRecorder()
+
+		handler.UpdateIbkrConfig(w, req)
+
+		if w.Code != http.StatusCreated {
+			t.Errorf("Expected 201, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var response model.IbkrConfig
+		//nolint:errcheck
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if response.Enabled {
+			t.Error("Expected enabled to be false")
+		}
+	})
+
+	t.Run("disabling also forces autoImportEnabled to false", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		_, err := db.Exec(`
+			INSERT INTO ibkr_config (
+				id, flex_token, flex_query_id, auto_import_enabled, enabled,
+				default_allocation_enabled, created_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+		`, testutil.MakeID(), "some_token", validFlexQueryID, true, true, false)
+		if err != nil {
+			t.Fatalf("Failed to insert test config: %v", err)
+		}
+
+		req := testutil.NewRequestWithBody(http.MethodPost, "/api/ibkr/config", `{
+			"enabled": false
+		}`)
+		w := httptest.NewRecorder()
+
+		handler.UpdateIbkrConfig(w, req)
+
+		if w.Code != http.StatusCreated {
+			t.Errorf("Expected 201, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var response model.IbkrConfig
+		//nolint:errcheck
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if response.AutoImportEnabled {
+			t.Error("Expected autoImportEnabled to be false when disabled")
+		}
+	})
+
+	t.Run("partial update preserves existing fields", func(t *testing.T) {
+		handler, db := setupHandler(t)
+		t.Setenv("IBKR_ENCRYPTION_KEY", testFernetKey)
+
+		_, err := db.Exec(`
+			INSERT INTO ibkr_config (
+				id, flex_token, flex_query_id, auto_import_enabled, enabled,
+				default_allocation_enabled, created_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+		`, testutil.MakeID(), "encrypted_token", validFlexQueryID, false, true, false)
+		if err != nil {
+			t.Fatalf("Failed to insert test config: %v", err)
+		}
+
+		// Only update autoImportEnabled; flexQueryId should be unchanged.
+		req := testutil.NewRequestWithBody(http.MethodPost, "/api/ibkr/config", `{
+			"autoImportEnabled": true
+		}`)
+		w := httptest.NewRecorder()
+
+		handler.UpdateIbkrConfig(w, req)
+
+		if w.Code != http.StatusCreated {
+			t.Errorf("Expected 201, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var response model.IbkrConfig
+		//nolint:errcheck
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if response.FlexQueryID != validFlexQueryID {
+			t.Errorf("Expected flexQueryId %q to be preserved, got %q", validFlexQueryID, response.FlexQueryID)
+		}
+		if !response.AutoImportEnabled {
+			t.Error("Expected autoImportEnabled to be updated to true")
+		}
+	})
+
+	t.Run("empty flexToken does not overwrite existing token", func(t *testing.T) {
+		handler, db := setupHandler(t)
+		t.Setenv("IBKR_ENCRYPTION_KEY", testFernetKey)
+
+		_, err := db.Exec(`
+			INSERT INTO ibkr_config (
+				id, flex_token, flex_query_id, auto_import_enabled, enabled,
+				default_allocation_enabled, created_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+		`, testutil.MakeID(), "my_encrypted_token", validFlexQueryID, false, true, false)
+		if err != nil {
+			t.Fatalf("Failed to insert test config: %v", err)
+		}
+
+		// flexToken is empty string — should not overwrite existing.
+		req := testutil.NewRequestWithBody(http.MethodPost, "/api/ibkr/config", `{
+			"flexToken": "",
+			"autoImportEnabled": true
+		}`)
+		w := httptest.NewRecorder()
+
+		handler.UpdateIbkrConfig(w, req)
+
+		if w.Code != http.StatusCreated {
+			t.Errorf("Expected 201, got %d: %s", w.Code, w.Body.String())
+		}
+
+		// Verify DB still holds the original token.
+		var storedToken string
+		err = db.QueryRow(`SELECT flex_token FROM ibkr_config`).Scan(&storedToken)
+		if err != nil {
+			t.Fatalf("Failed to query token: %v", err)
+		}
+		if storedToken != "my_encrypted_token" {
+			t.Errorf("Expected token to be preserved, got %q", storedToken)
+		}
+	})
+
+	t.Run("replaces config row when flexQueryId changes", func(t *testing.T) {
+		handler, db := setupHandler(t)
+		t.Setenv("IBKR_ENCRYPTION_KEY", testFernetKey)
+
+		oldID := testutil.MakeID()
+		_, err := db.Exec(`
+			INSERT INTO ibkr_config (
+				id, flex_token, flex_query_id, auto_import_enabled, enabled,
+				default_allocation_enabled, created_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+		`, oldID, "some_token", validFlexQueryID, false, true, false)
+		if err != nil {
+			t.Fatalf("Failed to insert test config: %v", err)
+		}
+
+		req := testutil.NewRequestWithBody(http.MethodPost, "/api/ibkr/config", `{
+			"enabled": true,
+			"flexToken": "`+validFlexToken+`",
+			"flexQueryId": "654321",
+			"tokenExpiresAt": "2030-01-01"
+		}`)
+		w := httptest.NewRecorder()
+
+		handler.UpdateIbkrConfig(w, req)
+
+		if w.Code != http.StatusCreated {
+			t.Errorf("Expected 201, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var response model.IbkrConfig
+		//nolint:errcheck
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if response.FlexQueryID != "654321" {
+			t.Errorf("Expected flexQueryId '654321', got %q", response.FlexQueryID)
+		}
+
+		// Old row must be gone — only one row should remain.
+		var count int
+		err = db.QueryRow(`SELECT COUNT(*) FROM ibkr_config`).Scan(&count)
+		if err != nil {
+			t.Fatalf("Failed to count config rows: %v", err)
+		}
+		if count != 1 {
+			t.Errorf("Expected 1 config row after replace, got %d", count)
+		}
+	})
+
+	t.Run("returns 400 on invalid JSON body", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		req := testutil.NewRequestWithBody(http.MethodPost, "/api/ibkr/config", `{invalid json}`)
+		w := httptest.NewRecorder()
+
+		handler.UpdateIbkrConfig(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("returns 400 when flexToken is wrong length", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		req := testutil.NewRequestWithBody(http.MethodPost, "/api/ibkr/config", `{
+			"enabled": true,
+			"flexToken": "tooshort",
+			"flexQueryId": "`+validFlexQueryID+`"
+		}`)
+		w := httptest.NewRecorder()
+
+		handler.UpdateIbkrConfig(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("returns 400 when default allocations do not add up to 100", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		portfolioID := portfolio.ID
+
+		body := `{
+			"enabled": true,
+			"defaultAllocationEnabled": true,
+			"defaultAllocations": [
+				{"portfolioId": "` + portfolioID + `", "percentage": 50.0}
+			]
+		}`
+
+		req := testutil.NewRequestWithBody(http.MethodPost, "/api/ibkr/config", body)
+		w := httptest.NewRecorder()
+
+		handler.UpdateIbkrConfig(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("returns 500 when IBKR_ENCRYPTION_KEY is not set", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+		t.Setenv("IBKR_ENCRYPTION_KEY", "")
+
+		req := testutil.NewRequestWithBody(http.MethodPost, "/api/ibkr/config", `{
+			"enabled": true,
+			"flexToken": "`+validFlexToken+`",
+			"flexQueryId": "`+validFlexQueryID+`"
+		}`)
+		w := httptest.NewRecorder()
+
+		handler.UpdateIbkrConfig(w, req)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Errorf("Expected 500, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("returns 500 on database error", func(t *testing.T) {
+		handler, db := setupHandler(t)
+		db.Close()
+
+		req := testutil.NewRequestWithBody(http.MethodPost, "/api/ibkr/config", `{
+			"enabled": false
+		}`)
+		w := httptest.NewRecorder()
+
+		handler.UpdateIbkrConfig(w, req)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Errorf("Expected 500, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+}
+
+func TestIbkrHandler_DeleteIbkrConfig(t *testing.T) {
+	setupHandler := func(t *testing.T) (*IbkrHandler, *sql.DB) {
+		t.Helper()
+		db := testutil.SetupTestDB(t)
+		is := testutil.NewTestIbkrService(t, db)
+		return NewIbkrHandler(is), db
+	}
+
+	t.Run("returns 204 when config exists", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		_, err := db.Exec(`
+			INSERT INTO ibkr_config (
+				id, flex_token, flex_query_id, auto_import_enabled, enabled,
+				default_allocation_enabled, created_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+		`, testutil.MakeID(), "some_token", validFlexQueryID, false, true, false)
+		if err != nil {
+			t.Fatalf("Failed to insert test config: %v", err)
+		}
+
+		req := httptest.NewRequest(http.MethodDelete, "/api/ibkr/config", nil)
+		w := httptest.NewRecorder()
+
+		handler.DeleteIbkrConfig(w, req)
+
+		if w.Code != http.StatusNoContent {
+			t.Errorf("Expected 204, got %d: %s", w.Code, w.Body.String())
+		}
+
+		if w.Body.Len() != 0 {
+			t.Errorf("Expected empty body for 204, got: %s", w.Body.String())
+		}
+	})
+
+	t.Run("config is removed from database after delete", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		_, err := db.Exec(`
+			INSERT INTO ibkr_config (
+				id, flex_token, flex_query_id, auto_import_enabled, enabled,
+				default_allocation_enabled, created_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+		`, testutil.MakeID(), "some_token", validFlexQueryID, false, true, false)
+		if err != nil {
+			t.Fatalf("Failed to insert test config: %v", err)
+		}
+
+		req := httptest.NewRequest(http.MethodDelete, "/api/ibkr/config", nil)
+		w := httptest.NewRecorder()
+
+		handler.DeleteIbkrConfig(w, req)
+
+		if w.Code != http.StatusNoContent {
+			t.Errorf("Expected 204, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var count int
+		err = db.QueryRow(`SELECT COUNT(*) FROM ibkr_config`).Scan(&count)
+		if err != nil {
+			t.Fatalf("Failed to count config rows: %v", err)
+		}
+		if count != 0 {
+			t.Errorf("Expected 0 rows after delete, got %d", count)
+		}
+	})
+
+	t.Run("returns 404 when no config exists", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		req := httptest.NewRequest(http.MethodDelete, "/api/ibkr/config", nil)
+		w := httptest.NewRecorder()
+
+		handler.DeleteIbkrConfig(w, req)
+
+		if w.Code != http.StatusNotFound {
+			t.Errorf("Expected 404, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("returns 500 on database error", func(t *testing.T) {
+		handler, db := setupHandler(t)
+		db.Close()
+
+		req := httptest.NewRequest(http.MethodDelete, "/api/ibkr/config", nil)
+		w := httptest.NewRecorder()
+
+		handler.DeleteIbkrConfig(w, req)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Errorf("Expected 500, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+}
+
 func TestIbkrHandler_ImportFlexReport(t *testing.T) {
 	setupHandler := func(t *testing.T) (*IbkrHandler, *sql.DB) {
 		t.Helper()
