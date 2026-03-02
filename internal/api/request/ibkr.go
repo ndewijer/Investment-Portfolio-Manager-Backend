@@ -15,6 +15,9 @@ type Allocation struct {
 	Percentage  *float64 `json:"percentage"`
 }
 
+// TestIbkrConnectionRequest holds the credentials for a one-off IBKR connection test.
+// The token is supplied in plaintext here because this endpoint is used to verify
+// credentials before they are saved to the encrypted config.
 type TestIbkrConnectionRequest struct {
 	FlexQueryID string `json:"flexQueryId"`
 	FlexToken   string `json:"flexToken"`
