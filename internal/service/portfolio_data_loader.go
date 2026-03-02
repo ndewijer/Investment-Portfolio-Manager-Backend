@@ -22,21 +22,44 @@ type DataLoaderService struct {
 	realizedGainLossService *RealizedGainLossService
 }
 
-// NewDataLoaderService creates a new DataLoaderService with the provided dependencies.
-func NewDataLoaderService(
-	pfRepo *repository.PortfolioFundRepository,
-	fundRepo *repository.FundRepository,
-	transactionService *TransactionService,
-	dividendService *DividendService,
-	realizedGainLossService *RealizedGainLossService,
-) *DataLoaderService {
-	return &DataLoaderService{
-		pfRepo:                  pfRepo,
-		fundRepo:                fundRepo,
-		transactionService:      transactionService,
-		dividendService:         dividendService,
-		realizedGainLossService: realizedGainLossService,
+// DataLoaderServiceOption is a functional option for configuring a DataLoaderService.
+// Pass one or more options to NewDataLoaderService to inject dependencies selectively.
+type DataLoaderServiceOption func(*DataLoaderService)
+
+// DataLoaderWithPortfolioFundRepository injects the PortfolioFundRepository dependency.
+func DataLoaderWithPortfolioFundRepository(r *repository.PortfolioFundRepository) DataLoaderServiceOption {
+	return func(s *DataLoaderService) { s.pfRepo = r }
+}
+
+// DataLoaderWithFundRepository injects the FundRepository dependency.
+func DataLoaderWithFundRepository(r *repository.FundRepository) DataLoaderServiceOption {
+	return func(s *DataLoaderService) { s.fundRepo = r }
+}
+
+// DataLoaderWithTransactionService injects the TransactionService dependency.
+func DataLoaderWithTransactionService(ss *TransactionService) DataLoaderServiceOption {
+	return func(s *DataLoaderService) { s.transactionService = ss }
+}
+
+// DataLoaderWithDividendService injects the DividendService dependency.
+func DataLoaderWithDividendService(ss *DividendService) DataLoaderServiceOption {
+	return func(s *DataLoaderService) { s.dividendService = ss }
+}
+
+// DataLoaderWithRealizedGainLossService injects the RealizedGainLossService dependency.
+func DataLoaderWithRealizedGainLossService(r *RealizedGainLossService) DataLoaderServiceOption {
+	return func(s *DataLoaderService) { s.realizedGainLossService = r }
+}
+
+// NewDataLoaderService creates a new DataLoaderService. Pass DataLoaderWith* options to
+// inject dependencies. Only the options relevant to the calling context need to be provided;
+// unset fields remain nil and will panic if the corresponding method is called.
+func NewDataLoaderService(opts ...DataLoaderServiceOption) *DataLoaderService {
+	s := &DataLoaderService{}
+	for _, opt := range opts {
+		opt(s)
 	}
+	return s
 }
 
 // PortfolioData contains all data needed for portfolio calculations.

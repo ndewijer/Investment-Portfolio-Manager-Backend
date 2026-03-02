@@ -8,18 +8,25 @@ import (
 	"net/http"
 	"net/url"
 	"time"
+
+	"golang.org/x/sync/singleflight"
 )
 
 // Client defines the interface for fetching financial data from Interactive Brokers.
 // This interface enables dependency injection and testing with mock implementations.
 type Client interface {
-	RequestIBKRFlexReport(ctx context.Context, token string, queryID string) (FlexQueryResponse, []byte, error)
+	RetreiveIbkrFlexReport(ctx context.Context, token string, queryID string) (FlexQueryResponse, []byte, error)
 }
 
 // FinanceClient provides methods for fetching financial data from Interactive Brokers.
 // It wraps an HTTP client and provides convenient methods for querying flex queries.
+//
+// Concurrent calls to RetreiveIbkrFlexReport or TestIbkrConnection with the same queryID
+// are deduplicated via an embedded singleflight.Group: only one in-flight HTTP round-trip
+// is made to IBKR regardless of how many goroutines call simultaneously.
 type FinanceClient struct {
 	httpClient *http.Client
+	sf         singleflight.Group // deduplicates concurrent IBKR API calls per queryID
 }
 
 // NewFinanceClient creates a new IBKR client with default HTTP settings.
@@ -33,26 +40,62 @@ func NewFinanceClient() *FinanceClient {
 	}
 }
 
-// RequestIBKRFlexReport fetches a Flex statement from the IBKR API.
+// flexReportResult carries the two return values of a Flex report fetch through
+// singleflight's single interface{} return value, allowing waiters to unpack
+// both the parsed response and the raw XML bytes from a shared in-flight call.
+type flexReportResult struct {
+	response FlexQueryResponse
+	data     []byte
+}
+
+// RetreiveIbkrFlexReport fetches a Flex statement from the IBKR API.
 // It first submits a request with the provided token and query ID to obtain a reference code,
 // then polls until the statement is ready and returns the parsed response and raw XML bytes.
+// Concurrent calls with the same queryID are collapsed into a single in-flight request via
+// singleflight — only one call is made to IBKR regardless of how many callers are waiting.
 // Returns an error if either the token or query ID is missing, or if the API call fails.
-func (c *FinanceClient) RequestIBKRFlexReport(ctx context.Context, token string, queryID string) (FlexQueryResponse, []byte, error) {
+func (c *FinanceClient) RetreiveIbkrFlexReport(ctx context.Context, token string, queryID string) (FlexQueryResponse, []byte, error) {
 
 	if token == "" || queryID == "" {
 		return FlexQueryResponse{}, nil, fmt.Errorf("missing variables")
 	}
 
-	request, err := c.requestIBKRFlexReport(ctx, token, queryID)
-	if err != nil {
-		return FlexQueryResponse{}, nil, err
-	}
-	report, data, err := c.retrieveIBKRFlexReport(ctx, token, request)
+	v, err, _ := c.sf.Do(queryID, func() (interface{}, error) {
+		request, err := c.requestIBKRFlexReport(ctx, token, queryID)
+		if err != nil {
+			return nil, err
+		}
+		report, data, err := c.retrieveIBKRFlexReport(ctx, token, request)
+		if err != nil {
+			return nil, err
+		}
+		return flexReportResult{response: report, data: data}, nil
+	})
 	if err != nil {
 		return FlexQueryResponse{}, nil, err
 	}
 
-	return report, data, nil
+	r := v.(flexReportResult)
+	return r.response, r.data, nil
+}
+
+// TestIbkrConnection verifies that the provided token and queryID are accepted by IBKR.
+// It submits a SendRequest call and returns true if IBKR responds without an error.
+// Uses a "test:" key prefix on the singleflight group to avoid colliding with in-flight imports.
+func (c *FinanceClient) TestIbkrConnection(ctx context.Context, token string, queryID string) (bool, error) {
+	if token == "" || queryID == "" {
+		return false, fmt.Errorf("missing variables")
+	}
+
+	_, err, _ := c.sf.Do("test:"+queryID, func() (interface{}, error) {
+		_, err := c.requestIBKRFlexReport(ctx, token, queryID)
+		return nil, err
+	})
+	if err != nil {
+		return false, err
+	}
+
+	return true, nil
 }
 
 func (c *FinanceClient) requestIBKRFlexReport(ctx context.Context, token string, queryID string) (FlexRequestResponse, error) {
@@ -66,6 +109,7 @@ func (c *FinanceClient) requestIBKRFlexReport(ctx context.Context, token string,
 	if err != nil {
 		return FlexRequestResponse{}, err
 	}
+
 	//nolint:gosec // G704: host is hardcoded; token and queryID are DB-sourced query params, not URL components.
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

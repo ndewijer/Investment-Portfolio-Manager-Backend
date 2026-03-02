@@ -274,7 +274,7 @@ func (s *IbkrService) ImportFlexReport(ctx context.Context) (int, int, error) {
 			return 0, 0, err
 		}
 
-		req, body, err = s.ibkrClient.RequestIBKRFlexReport(ctx, token, config.FlexQueryID)
+		req, body, err = s.ibkrClient.RetreiveIbkrFlexReport(ctx, token, config.FlexQueryID)
 		if err != nil {
 			return 0, 0, err
 		}
