@@ -20,7 +20,7 @@ func ValidateUpdateIbkrConfig(req request.UpdateIbkrConfigRequest) error {
 				if len(*req.FlexToken) < 24 {
 					errors["flexToken"] = "flexToken must be at least 24 characters"
 				} else {
-					if !_validateFlexToken(*req.FlexToken) {
+					if !validateFlexToken(*req.FlexToken) {
 						errors["flexToken"] = "flexToken must be a number"
 					}
 				}
@@ -76,15 +76,13 @@ func ValidateUpdateIbkrConfig(req request.UpdateIbkrConfigRequest) error {
 func ValidateTestConnection(req request.TestIbkrConnectionRequest) error {
 	errors := make(map[string]string)
 
-	if strings.TrimSpace(req.FlexToken) != "" {
-		if len(req.FlexToken) < 24 {
-			errors["flexToken"] = "flexToken must be at least 24 characters"
-		} else {
-			if !_validateFlexToken(req.FlexToken) {
-				errors["flexToken"] = "flexToken must be a number"
-			}
-
+	if len(req.FlexToken) < 24 {
+		errors["flexToken"] = "flexToken must be at least 24 characters"
+	} else {
+		if !validateFlexToken(req.FlexToken) {
+			errors["flexToken"] = "flexToken must be a number"
 		}
+
 	}
 
 	if req.FlexQueryID == "" {
@@ -101,9 +99,10 @@ func ValidateTestConnection(req request.TestIbkrConnectionRequest) error {
 	return nil
 }
 
-// strconv.Atoi is not used here: a 25-digit token overflows int64.
+// validateFlexToken returns true if flexToken consists entirely of ASCII digits.
+// strconv.Atoi is not used here: a 19-digit number overflows int64. The token is 23 or larger.
 // Validate digit-by-digit instead.
-func _validateFlexToken(flexToken string) bool {
+func validateFlexToken(flexToken string) bool {
 	for _, c := range strings.TrimSpace(flexToken) {
 		if c < '0' || c > '9' {
 			return false
