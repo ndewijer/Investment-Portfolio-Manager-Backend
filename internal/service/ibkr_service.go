@@ -634,6 +634,10 @@ func (s *IbkrService) DeleteIbkrConfig(ctx context.Context) error {
 	return nil
 }
 
+// TestIbkrConnection verifies that the provided credentials are accepted by IBKR.
+// Unlike other token operations, the token here comes directly from the caller rather
+// than from the encrypted config — this is intentional for a pre-save credential check.
+// Returns true if IBKR accepts the credentials, or an error if the call fails.
 func (s *IbkrService) TestIbkrConnection(ctx context.Context, req request.TestIbkrConnectionRequest) (bool, error) {
 
 	return s.ibkrClient.TestIbkrConnection(ctx, req.FlexToken, req.FlexQueryID)

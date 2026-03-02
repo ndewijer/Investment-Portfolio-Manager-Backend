@@ -73,6 +73,9 @@ func ValidateUpdateIbkrConfig(req request.UpdateIbkrConfigRequest) error {
 	return nil
 }
 
+// ValidateTestConnection validates the fields of a TestIbkrConnectionRequest.
+// Both flexToken and flexQueryId are required: the token must be at least 24 digits,
+// and the queryId must be a numeric string of at most 10 characters.
 func ValidateTestConnection(req request.TestIbkrConnectionRequest) error {
 	errors := make(map[string]string)
 
