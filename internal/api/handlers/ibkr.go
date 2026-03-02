@@ -266,3 +266,24 @@ func (h *IbkrHandler) DeleteIbkrConfig(w http.ResponseWriter, r *http.Request) {
 
 	response.RespondJSON(w, http.StatusNoContent, nil)
 }
+
+func (h *IbkrHandler) TestIbkrConnection(w http.ResponseWriter, r *http.Request) {
+
+	req, err := parseJSON[request.TestIbkrConnectionRequest](r)
+	if err != nil {
+		response.RespondError(w, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
+
+	if err := validation.ValidateTestConnection(req); err != nil {
+		response.RespondError(w, http.StatusBadRequest, "validation failed", err.Error())
+		return
+	}
+
+	_, err = h.ibkrService.TestIbkrConnection(r.Context(), req)
+	if err != nil {
+		response.RespondError(w, http.StatusInternalServerError, "ibkr test connection failed", err.Error())
+		return
+	}
+	response.RespondJSON(w, http.StatusOK, map[string]bool{"success": true})
+}

@@ -14,3 +14,8 @@ type Allocation struct {
 	PortfolioID *string  `json:"portfolioId"`
 	Percentage  *float64 `json:"percentage"`
 }
+
+type TestIbkrConnectionRequest struct {
+	FlexQueryID string `json:"flexQueryId"`
+	FlexToken   string `json:"flexToken"`
+}

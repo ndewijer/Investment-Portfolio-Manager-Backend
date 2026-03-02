@@ -633,3 +633,8 @@ func (s *IbkrService) DeleteIbkrConfig(ctx context.Context) error {
 
 	return nil
 }
+
+func (s *IbkrService) TestIbkrConnection(ctx context.Context, req request.TestIbkrConnectionRequest) (bool, error) {
+
+	return s.ibkrClient.TestIbkrConnection(ctx, req.FlexToken, req.FlexQueryID)
+}

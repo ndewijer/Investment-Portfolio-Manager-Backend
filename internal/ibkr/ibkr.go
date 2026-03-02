@@ -16,6 +16,7 @@ import (
 // This interface enables dependency injection and testing with mock implementations.
 type Client interface {
 	RetreiveIbkrFlexReport(ctx context.Context, token string, queryID string) (FlexQueryResponse, []byte, error)
+	TestIbkrConnection(ctx context.Context, token string, queryID string) (bool, error)
 }
 
 // FinanceClient provides methods for fetching financial data from Interactive Brokers.
