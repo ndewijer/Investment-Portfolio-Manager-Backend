@@ -75,7 +75,10 @@ func (c *FinanceClient) RetreiveIbkrFlexReport(ctx context.Context, token string
 		return FlexQueryResponse{}, nil, err
 	}
 
-	r := v.(flexReportResult)
+	r, ok := v.(flexReportResult)
+	if !ok {
+		return FlexQueryResponse{}, nil, fmt.Errorf("singleflight returned unexpected type")
+	}
 	return r.response, r.data, nil
 }
 
