@@ -138,22 +138,22 @@ func createRepoAndServices(db *sql.DB) (
 		pfRepo,
 	)
 	dataloaderService := service.NewDataLoaderService(
-		pfRepo,
-		fundRepo,
-		transactionService,
-		dividendService,
-		realizedGainLossService,
+		service.DataLoaderWithPortfolioFundRepository(pfRepo),
+		service.DataLoaderWithFundRepository(fundRepo),
+		service.DataLoaderWithTransactionService(transactionService),
+		service.DataLoaderWithDividendService(dividendService),
+		service.DataLoaderWithRealizedGainLossService(realizedGainLossService),
 	)
 	fundService := service.NewFundService(
 		db,
-		fundRepo,
-		pfRepo,
-		transactionService,
-		dividendService,
-		realizedGainLossService,
-		dataloaderService,
-		portfolioRepo,
-		yahooClient,
+		service.FundWithFundRepo(fundRepo),
+		service.FundWithPortfolioFundRepo(pfRepo),
+		service.FundWithTransactionService(transactionService),
+		service.FundWithDividendService(dividendService),
+		service.FundWithRealizedGainLossService(realizedGainLossService),
+		service.FundWithDataLoaderService(dataloaderService),
+		service.FundWithPortfolioRepo(portfolioRepo),
+		service.FundWithYahooClient(yahooClient),
 	)
 	ibkrService := service.NewIbkrService(
 		db,
@@ -165,15 +165,15 @@ func createRepoAndServices(db *sql.DB) (
 		ibkrClient,
 	)
 	materializedService := service.NewMaterializedService(
-		materializedRepo,
-		portfolioRepo,
-		fundRepo,
-		transactionService,
-		fundService,
-		dividendService,
-		realizedGainLossService,
-		dataloaderService,
-		portfolioService,
+		service.MaterializedWithMaterializedRepository(materializedRepo),
+		service.MaterializedWithPortfolioRepository(portfolioRepo),
+		service.MaterializedWithFundRepository(fundRepo),
+		service.MaterializedWithTransactionService(transactionService),
+		service.MaterializedWithFundService(fundService),
+		service.MaterializedWithDividendService(dividendService),
+		service.MaterializedWithRealizedGainLossService(realizedGainLossService),
+		service.MaterializedWithDataLoaderService(dataloaderService),
+		service.MaterializedWithPortfolioService(portfolioService),
 	)
 
 	return systemService,

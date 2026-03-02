@@ -22,6 +22,8 @@ This document explains **why** we made specific implementation choices and **wha
 8. [Error Handling Strategy](#8-error-handling-strategy)
 9. [Hybrid Database Approach](#9-hybrid-database-approach)
 10. [PortfolioFundRepository — Separate Join Table Repository](#10-portfoliofundrepository--separate-join-table-repository)
+11. [Functional Options for Service Constructors](#11-functional-options-for-service-constructors)
+12. [Singleflight for IBKR External API Calls](#12-singleflight-for-ibkr-external-api-calls)
 
 ---
 
@@ -1520,3 +1522,298 @@ The timing was right because constructor signatures were in flux anyway (recentl
 ---
 
 Happy learning! The decisions documented here will make more sense as you implement more endpoints. Revisit this document when you're ready for Phase 3 migration.
+
+---
+
+## 11. Functional Options for Service Constructors
+
+### Context
+
+Service constructors grew as more dependencies were introduced. Adding a new dependency to a service meant changing the constructor signature everywhere: `main.go`, every test helper in `testutil/helpers.go`, and any other call site. This positional-argument approach is fragile:
+
+```go
+// Before: adding a 9th argument breaks every call site
+func NewFundService(
+    db *sql.DB,
+    fundRepo *repository.FundRepository,
+    pfRepo *repository.PortfolioFundRepository,
+    transactionService *TransactionService,
+    dividendService *DividendService,
+    realizedGainLossService *RealizedGainLossService,
+    dataLoaderService *DataLoaderService,
+    portfolioRepo *repository.PortfolioRepository,
+    yahooClient yahoo.Client,   // adding this broke 4 call sites
+) *FundService
+```
+
+Tests also need to wire only the dependencies they exercise, but positional constructors force every caller to provide all arguments — or use nil, which is fragile.
+
+### Decision
+
+**Functional Options pattern** for services with multiple or optional dependencies.
+
+```go
+type FundServiceOption func(*FundService)
+
+func FundWithFundRepo(r *repository.FundRepository) FundServiceOption {
+    return func(s *FundService) { s.fundRepo = r }
+}
+
+func NewFundService(db *sql.DB, opts ...FundServiceOption) *FundService {
+    s := &FundService{db: db}
+    for _, opt := range opts {
+        opt(s)
+    }
+    return s
+}
+```
+
+Applied to: `FundService`, `MaterializedService`, `DataLoaderService`.
+
+### Alternatives Considered
+
+#### A. Positional Constructor Arguments
+```go
+func NewFundService(db *sql.DB, fundRepo *repository.FundRepository, ...) *FundService
+```
+
+**Pros:**
+- Immediately obvious which dependencies are required
+- Compile-time enforcement that all args are provided
+
+**Cons:**
+- Adding a dependency is a breaking change at every call site
+- Tests are forced to supply all dependencies even when testing only one path
+- Long argument lists are error-prone (easy to swap two `*repository.X` values)
+
+**Why not kept:**
+- The constructor had grown to 8–9 positional parameters; the maintenance cost outweighed the clarity
+
+---
+
+#### B. Config Struct
+```go
+type FundServiceConfig struct {
+    FundRepo   *repository.FundRepository
+    PFRepo     *repository.PortfolioFundRepository
+    // ...
+}
+
+func NewFundService(db *sql.DB, cfg FundServiceConfig) *FundService
+```
+
+**Pros:**
+- Named fields prevent argument-order bugs
+- Single addition to the struct doesn't require signature change
+
+**Cons:**
+- Still a breaking change if a new required field is added without a default
+- More verbose at call sites (`FundServiceConfig{FundRepo: r, ...}`)
+- Less idiomatic Go than functional options
+
+**Why not chosen:**
+- The functional-options pattern is the established Go idiom for this problem (see `grpc.Dial`, `http.Server`)
+
+---
+
+#### C. Builder Pattern
+```go
+service.NewFundService(db).
+    WithFundRepo(fundRepo).
+    WithYahooClient(yahooClient).
+    Build()
+```
+
+**Pros:**
+- Fluent, readable
+- Validation logic lives in `Build()`
+
+**Cons:**
+- Requires an intermediate "builder" type that mirrors the service struct
+- Two separate types to maintain for the same thing
+- Uncommon in the Go standard library
+
+**Why not chosen:**
+- Functional options achieve the same result with one type instead of two
+
+---
+
+### Rationale for Functional Options
+
+1. **Additive without breaking call sites:**
+```go
+// Before: must thread a new arg through every caller
+service.NewFundService(db, fundRepo, pfRepo, ...)
+
+// After: new dependency added to main.go only, existing test helpers unchanged
+service.NewFundService(db,
+    service.FundWithFundRepo(fundRepo),
+    service.FundWithYahooClient(yahooClient), // new — zero impact on test helpers
+)
+```
+
+2. **Selective wiring in tests:**
+```go
+// Test only needs price-update path — wire just what it touches
+return service.NewFundService(
+    db,
+    service.FundWithFundRepo(fundRepo),
+    service.FundWithPortfolioFundRepo(pfRepo),
+    service.FundWithTransactionService(transactionService),
+    service.FundWithYahooClient(mockYahoo), // swap real client for mock
+)
+```
+Unused dependencies are simply zero values — a nil pointer panic is a clear signal that the test wired incorrectly.
+
+3. **Named — no argument-order bugs:**
+`service.FundWithFundRepo(r)` is unambiguous; `NewFundService(db, r, r2, ...)` is not.
+
+4. **Consistent interface across services:**
+All services that adopt this pattern follow the same shape (`New*Service(db, ...Option)`), making it predictable.
+
+### Trade-offs
+
+**Pros:**
+- New dependencies never break existing call sites
+- Test helpers only wire the subset of dependencies they need
+- Idiomatic Go (mirrors `grpc`, `zap`, `cobra` patterns)
+- Named options eliminate argument-order mistakes
+
+**Cons:**
+- More verbose: one exported function per dependency
+- No compile-time enforcement that required dependencies are set — a missing `FundWithFundRepo` silently leaves `s.fundRepo == nil` and panics at runtime
+- The option functions themselves are boilerplate (mitigated by their trivial size)
+
+**Mitigation for the nil-dependency risk:**
+The service is wired in exactly one production call site (`createRepoAndServices` in `main.go`). Any missing option causes an immediate, obvious panic on the first request — not silent data corruption.
+
+---
+
+## 12. Singleflight for IBKR External API Calls
+
+### Context
+
+The IBKR Flex report fetch is a slow, multi-step operation: a `SendRequest` call followed by polling until the statement is ready (up to 10 retries with exponential backoff). If two callers trigger an import concurrently — e.g., a scheduled auto-import fires while a manual import is already in flight — both would independently call the IBKR API, which:
+
+- Wastes time (each call can take 10–30 seconds)
+- Risks rate-limiting or duplicate data ingestion
+- Provides no additional value (the second caller wants the same data as the first)
+
+### Decision
+
+**`golang.org/x/sync/singleflight`** on the IBKR `FinanceClient`.
+
+```go
+type FinanceClient struct {
+    httpClient *http.Client
+    sf         singleflight.Group
+}
+
+func (c *FinanceClient) RetreiveIbkrFlexReport(ctx context.Context, token, queryID string) (FlexQueryResponse, []byte, error) {
+    v, err, _ := c.sf.Do(queryID, func() (interface{}, error) {
+        // ... actual IBKR API call
+        return flexReportResult{response: report, data: data}, nil
+    })
+    // ...
+}
+```
+
+Concurrent calls with the same `queryID` are collapsed: the second caller waits for the first's result and reuses it. Only one HTTP round-trip is made to IBKR.
+
+### Alternatives Considered
+
+#### A. No Deduplication
+**Pros:** Simplest implementation — no additional dependency
+
+**Cons:**
+- Multiple concurrent imports hit IBKR independently
+- Could trigger IBKR rate limits
+- Duplicate transactions would be inserted (mitigated by `CompareIbkrTransaction`, but still wasteful)
+
+**Why not chosen:**
+- The polling retry loop makes each request expensive; deduplication is cheap by comparison
+
+---
+
+#### B. Application-Level Mutex
+```go
+var mu sync.Mutex
+
+func (c *FinanceClient) RetreiveIbkrFlexReport(...) {
+    mu.Lock()
+    defer mu.Unlock()
+    // ... call IBKR
+}
+```
+
+**Pros:**
+- Simple — stdlib only
+
+**Cons:**
+- **Serializes** all callers: the second call waits, then makes its own full IBKR round-trip
+- Does not share results — each caller gets its own copy of the data
+- A global mutex would block even calls for different query IDs
+
+**Why not chosen:**
+- `singleflight` shares the result across waiters, halving total API calls
+- Singleflight is keyed per `queryID`; a mutex would be too coarse-grained
+
+---
+
+#### C. Database-Level Import Lock
+Use a `SELECT ... FOR UPDATE` or a `ibkr_import_lock` table row to prevent concurrent imports.
+
+**Pros:**
+- Works across multiple server instances (if ever deployed that way)
+- Durable — survives process restarts
+
+**Cons:**
+- Much more infrastructure for a single-process server
+- Adds a DB round-trip before every import
+- Lock release requires careful error handling (deadlock risk)
+
+**Why not chosen:**
+- The application currently runs as a single process
+- `singleflight` solves the same problem with zero infrastructure
+
+---
+
+### Rationale for Singleflight
+
+1. **Result sharing, not just serialization:**
+```
+Caller A  ──── Do(queryID) ──────────────────── (gets result, 12 s)
+Caller B  ──── Do(queryID) ── waits ──────────── (gets same result, 12 s total)
+                                    No second IBKR call made
+```
+Both callers receive identical data from a single in-flight network call.
+
+2. **Keyed by `queryID`:**
+Different query IDs (different IBKR accounts or report templates) never block each other.
+
+3. **Separate key for `TestIbkrConnection`:**
+```go
+c.sf.Do("test:"+queryID, ...)
+```
+A connection test uses a `"test:"` prefix so it never shares results with an in-flight production import — their semantics differ (test only submits `SendRequest`; import also polls and returns XML).
+
+4. **Shared-flag is intentionally ignored:**
+```go
+v, err, _ := c.sf.Do(...)  // third return value: shared=bool
+```
+The `shared` flag indicates whether the result was shared with another caller. We do not need to differentiate — both cases are treated identically.
+
+5. **Zero infrastructure:**
+`singleflight.Group` is a zero-value-safe struct from `golang.org/x/sync` (already in the module graph). No Redis, no DB table, no deployment changes required.
+
+### Trade-offs
+
+**Pros:**
+- Eliminates redundant IBKR API calls under concurrent load
+- All waiting callers fail together if the first call fails — consistent error state
+- No infrastructure beyond an in-process struct
+
+**Cons:**
+- All waiting callers receive the same error if the first call fails; there is no retry-per-caller
+- The `shared` semantics mean a slow first call blocks all waiters for its full duration — appropriate here since we specifically want to avoid parallel IBKR requests
+- In-process only: does not protect against concurrent imports from multiple server replicas (acceptable for current single-process deployment)
