@@ -30,15 +30,7 @@ func (r *PortfolioRepository) WithTx(tx *sql.Tx) *PortfolioRepository {
 }
 
 // getQuerier returns the active transaction if one is set, otherwise the database connection.
-func (r *PortfolioRepository) getQuerier() interface {
-	Query(query string, args ...any) (*sql.Rows, error)
-	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
-	QueryRow(query string, args ...any) *sql.Row
-	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
-	Exec(query string, args ...any) (sql.Result, error)
-	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
-	PrepareContext(ctx context.Context, query string) (*sql.Stmt, error)
-} {
+func (r *PortfolioRepository) getQuerier() Querier {
 	if r.tx != nil {
 		return r.tx
 	}
