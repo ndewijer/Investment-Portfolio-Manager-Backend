@@ -27,29 +27,60 @@ type FundService struct {
 	yahooClient             yahoo.Client
 }
 
-// NewFundService creates a new FundService with the provided repository dependencies.
-func NewFundService(
-	db *sql.DB,
-	fundRepo *repository.FundRepository,
-	pfRepo *repository.PortfolioFundRepository,
-	transactionService *TransactionService,
-	dividendService *DividendService,
-	realizedGainLossService *RealizedGainLossService,
-	dataLoaderService *DataLoaderService,
-	portfolioRepo *repository.PortfolioRepository,
-	yahooClient yahoo.Client,
-) *FundService {
-	return &FundService{
-		db:                      db,
-		fundRepo:                fundRepo,
-		pfRepo:                  pfRepo,
-		transactionService:      transactionService,
-		dividendService:         dividendService,
-		realizedGainLossService: realizedGainLossService,
-		dataLoaderService:       dataLoaderService,
-		portfolioRepo:           portfolioRepo,
-		yahooClient:             yahooClient,
+// FundServiceOption is a functional option for configuring a FundService.
+// Pass one or more options to NewFundService to inject dependencies selectively.
+type FundServiceOption func(*FundService)
+
+// FundWithFundRepo injects the FundRepository dependency.
+func FundWithFundRepo(r *repository.FundRepository) FundServiceOption {
+	return func(s *FundService) { s.fundRepo = r }
+}
+
+// FundWithPortfolioFundRepo injects the PortfolioFundRepository dependency.
+func FundWithPortfolioFundRepo(r *repository.PortfolioFundRepository) FundServiceOption {
+	return func(s *FundService) { s.pfRepo = r }
+}
+
+// FundWithTransactionService injects the TransactionService dependency.
+func FundWithTransactionService(ss *TransactionService) FundServiceOption {
+	return func(s *FundService) { s.transactionService = ss }
+}
+
+// FundWithDividendService injects the DividendService dependency.
+func FundWithDividendService(ss *DividendService) FundServiceOption {
+	return func(s *FundService) { s.dividendService = ss }
+}
+
+// FundWithRealizedGainLossService injects the RealizedGainLossService dependency.
+func FundWithRealizedGainLossService(ss *RealizedGainLossService) FundServiceOption {
+	return func(s *FundService) { s.realizedGainLossService = ss }
+}
+
+// FundWithDataLoaderService injects the DataLoaderService dependency.
+func FundWithDataLoaderService(ss *DataLoaderService) FundServiceOption {
+	return func(s *FundService) { s.dataLoaderService = ss }
+}
+
+// FundWithPortfolioRepo injects the PortfolioRepository dependency.
+func FundWithPortfolioRepo(r *repository.PortfolioRepository) FundServiceOption {
+	return func(s *FundService) { s.portfolioRepo = r }
+}
+
+// FundWithYahooClient injects the Yahoo Finance client dependency.
+// Swap for a mock implementation in tests to avoid real network calls.
+func FundWithYahooClient(c yahoo.Client) FundServiceOption {
+	return func(s *FundService) { s.yahooClient = c }
+}
+
+// NewFundService creates a new FundService. Pass FundWith* options to inject dependencies.
+// Only the options relevant to the calling context need to be provided; unset fields remain
+// nil and will panic if the corresponding method is called — a clear wiring error.
+func NewFundService(db *sql.DB, opts ...FundServiceOption) *FundService {
+	s := &FundService{db: db}
+	for _, opt := range opts {
+		opt(s)
 	}
+	return s
 }
 
 // GetFund retrieves fund from the database.

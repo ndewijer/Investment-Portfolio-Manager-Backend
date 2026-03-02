@@ -33,29 +33,64 @@ type MaterializedService struct {
 	portfolioService        *PortfolioService
 }
 
-// NewMaterializedService creates a new MaterializedService with the provided dependencies.
-func NewMaterializedService(
-	materializedRepo *repository.MaterializedRepository,
-	portfolioRepo *repository.PortfolioRepository,
-	fundRepo *repository.FundRepository,
-	transactionService *TransactionService,
-	fundService *FundService,
-	dividendService *DividendService,
-	realizedGainLossService *RealizedGainLossService,
-	dataLoaderService *DataLoaderService,
-	portfolioService *PortfolioService,
-) *MaterializedService {
-	return &MaterializedService{
-		materializedRepo:        materializedRepo,
-		portfolioRepo:           portfolioRepo,
-		fundRepo:                fundRepo,
-		transactionService:      transactionService,
-		fundService:             fundService,
-		dividendService:         dividendService,
-		realizedGainLossService: realizedGainLossService,
-		dataLoaderService:       dataLoaderService,
-		portfolioService:        portfolioService,
+// MaterializedServiceOption is a functional option for configuring a MaterializedService.
+// Pass one or more options to NewMaterializedService to inject dependencies selectively.
+type MaterializedServiceOption func(*MaterializedService)
+
+// MaterializedWithMaterializedRepository injects the MaterializedRepository dependency.
+func MaterializedWithMaterializedRepository(r *repository.MaterializedRepository) MaterializedServiceOption {
+	return func(s *MaterializedService) { s.materializedRepo = r }
+}
+
+// MaterializedWithPortfolioRepository injects the PortfolioRepository dependency.
+func MaterializedWithPortfolioRepository(r *repository.PortfolioRepository) MaterializedServiceOption {
+	return func(s *MaterializedService) { s.portfolioRepo = r }
+}
+
+// MaterializedWithFundRepository injects the FundRepository dependency.
+func MaterializedWithFundRepository(r *repository.FundRepository) MaterializedServiceOption {
+	return func(s *MaterializedService) { s.fundRepo = r }
+}
+
+// MaterializedWithTransactionService injects the TransactionService dependency.
+func MaterializedWithTransactionService(ss *TransactionService) MaterializedServiceOption {
+	return func(s *MaterializedService) { s.transactionService = ss }
+}
+
+// MaterializedWithFundService injects the FundService dependency.
+func MaterializedWithFundService(ss *FundService) MaterializedServiceOption {
+	return func(s *MaterializedService) { s.fundService = ss }
+}
+
+// MaterializedWithDividendService injects the DividendService dependency.
+func MaterializedWithDividendService(ss *DividendService) MaterializedServiceOption {
+	return func(s *MaterializedService) { s.dividendService = ss }
+}
+
+// MaterializedWithRealizedGainLossService injects the RealizedGainLossService dependency.
+func MaterializedWithRealizedGainLossService(ss *RealizedGainLossService) MaterializedServiceOption {
+	return func(s *MaterializedService) { s.realizedGainLossService = ss }
+}
+
+// MaterializedWithDataLoaderService injects the DataLoaderService dependency.
+func MaterializedWithDataLoaderService(ss *DataLoaderService) MaterializedServiceOption {
+	return func(s *MaterializedService) { s.dataLoaderService = ss }
+}
+
+// MaterializedWithPortfolioService injects the PortfolioService dependency.
+func MaterializedWithPortfolioService(ss *PortfolioService) MaterializedServiceOption {
+	return func(s *MaterializedService) { s.portfolioService = ss }
+}
+
+// NewMaterializedService creates a new MaterializedService. Pass MaterializedWith* options to
+// inject dependencies. Only the options relevant to the calling context need to be provided;
+// unset fields remain nil and will panic if the corresponding method is called.
+func NewMaterializedService(opts ...MaterializedServiceOption) *MaterializedService {
+	s := &MaterializedService{}
+	for _, opt := range opts {
+		opt(s)
 	}
+	return s
 }
 
 // =============================================================================
