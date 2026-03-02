@@ -149,6 +149,7 @@ func NewRouter(
 			ibkrHandler := handlers.NewIbkrHandler(ibkrService)
 			r.Get("/config", ibkrHandler.GetConfig)
 			r.Post("/config", ibkrHandler.UpdateIbkrConfig)
+			r.Post("/config/test", ibkrHandler.TestIbkrConnection)
 			r.Delete("/config", ibkrHandler.DeleteIbkrConfig)
 			r.Get("/portfolios", ibkrHandler.GetActivePortfolios)
 			r.Get("/dividend/pending", ibkrHandler.GetPendingDividends)

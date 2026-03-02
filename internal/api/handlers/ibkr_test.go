@@ -1,15 +1,38 @@
 package handlers
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/ibkr"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/testutil"
 )
+
+// mockIbkrClient is a configurable test double for ibkr.Client.
+// Set testConnectionFn to control the outcome of TestIbkrConnection.
+// RetreiveIbkrFlexReport always returns empty results and is not exercised
+// by TestIbkrConnection tests.
+type mockIbkrClient struct {
+	testConnectionFn func(ctx context.Context, token, queryID string) (bool, error)
+}
+
+func (m *mockIbkrClient) RetreiveIbkrFlexReport(_ context.Context, _, _ string) (ibkr.FlexQueryResponse, []byte, error) {
+	return ibkr.FlexQueryResponse{}, nil, nil
+}
+
+func (m *mockIbkrClient) TestIbkrConnection(ctx context.Context, token, queryID string) (bool, error) {
+	if m.testConnectionFn != nil {
+		return m.testConnectionFn(ctx, token, queryID)
+	}
+	return true, nil
+}
 
 func TestIbkrHandler_GetConfig(t *testing.T) {
 	setupHandler := func(t *testing.T) (*IbkrHandler, *sql.DB) {
@@ -1506,4 +1529,146 @@ func TestIbkrHandler_ImportFlexReport(t *testing.T) {
 			t.Errorf("Expected 500, got %d: %s", w.Code, w.Body.String())
 		}
 	})
+}
+
+func TestIbkrHandler_TestIbkrConnection(t *testing.T) {
+	// validBody contains a 24-digit token (minimum accepted) and a numeric queryId.
+	const validBody = `{"flexToken":"123456789012345678901234","flexQueryId":"12345"}`
+
+	setupHandler := func(t *testing.T, mock *mockIbkrClient) (*IbkrHandler, *sql.DB) {
+		t.Helper()
+		db := testutil.SetupTestDB(t)
+		is := testutil.NewTestIbkrServiceWithMockIBKR(t, db, mock)
+		return NewIbkrHandler(is), db
+	}
+
+	successMock := func() *mockIbkrClient {
+		return &mockIbkrClient{
+			testConnectionFn: func(_ context.Context, _, _ string) (bool, error) {
+				return true, nil
+			},
+		}
+	}
+
+	t.Run("returns 200 with success=true on valid credentials", func(t *testing.T) {
+		handler, _ := setupHandler(t, successMock())
+
+		req := httptest.NewRequest(http.MethodPost, "/api/ibkr/config/test", strings.NewReader(validBody))
+		w := httptest.NewRecorder()
+
+		handler.TestIbkrConnection(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var response map[string]bool
+		//nolint:errcheck // Test assertion — decode failure would cause test to fail anyway
+		json.NewDecoder(w.Body).Decode(&response)
+		if !response["success"] {
+			t.Error("Expected success to be true")
+		}
+	})
+
+	t.Run("returns 400 on invalid JSON body", func(t *testing.T) {
+		handler, _ := setupHandler(t, successMock())
+
+		req := httptest.NewRequest(http.MethodPost, "/api/ibkr/config/test", strings.NewReader("{invalid}"))
+		w := httptest.NewRecorder()
+
+		handler.TestIbkrConnection(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("returns 400 when flexToken is absent", func(t *testing.T) {
+		handler, _ := setupHandler(t, successMock())
+
+		req := httptest.NewRequest(http.MethodPost, "/api/ibkr/config/test",
+			strings.NewReader(`{"flexQueryId":"12345"}`))
+		w := httptest.NewRecorder()
+
+		handler.TestIbkrConnection(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("returns 400 when flexToken is too short", func(t *testing.T) {
+		handler, _ := setupHandler(t, successMock())
+
+		req := httptest.NewRequest(http.MethodPost, "/api/ibkr/config/test",
+			strings.NewReader(`{"flexToken":"12345","flexQueryId":"12345"}`))
+		w := httptest.NewRecorder()
+
+		handler.TestIbkrConnection(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("returns 400 when flexToken contains non-digit characters", func(t *testing.T) {
+		handler, _ := setupHandler(t, successMock())
+
+		req := httptest.NewRequest(http.MethodPost, "/api/ibkr/config/test",
+			strings.NewReader(`{"flexToken":"1234567890abcdefghijklmn","flexQueryId":"12345"}`))
+		w := httptest.NewRecorder()
+
+		handler.TestIbkrConnection(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("returns 400 when flexQueryId is empty", func(t *testing.T) {
+		handler, _ := setupHandler(t, successMock())
+
+		req := httptest.NewRequest(http.MethodPost, "/api/ibkr/config/test",
+			strings.NewReader(`{"flexToken":"123456789012345678901234","flexQueryId":""}`))
+		w := httptest.NewRecorder()
+
+		handler.TestIbkrConnection(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("returns 400 when flexQueryId is not numeric", func(t *testing.T) {
+		handler, _ := setupHandler(t, successMock())
+
+		req := httptest.NewRequest(http.MethodPost, "/api/ibkr/config/test",
+			strings.NewReader(`{"flexToken":"123456789012345678901234","flexQueryId":"abc"}`))
+		w := httptest.NewRecorder()
+
+		handler.TestIbkrConnection(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("returns 500 when IBKR client returns an error", func(t *testing.T) {
+		mock := &mockIbkrClient{
+			testConnectionFn: func(_ context.Context, _, _ string) (bool, error) {
+				return false, fmt.Errorf("ibkr authentication failed")
+			},
+		}
+		handler, _ := setupHandler(t, mock)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/ibkr/config/test", strings.NewReader(validBody))
+		w := httptest.NewRecorder()
+
+		handler.TestIbkrConnection(w, req)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Errorf("Expected 500, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
 }

@@ -81,7 +81,7 @@ This backend aims to replicate all 73 endpoints from the Python backend. Below i
 │   ├── POST    /config                                    ✅ Create or update IBKR configuration
 │   ├── GET     /config                                    ✅ Get IBKR configuration status
 │   ├── DELETE  /config                                    ✅ Delete IBKR configuration
-│   ├── POST    /config/test                               ⬜ Test IBKR connection with provided credentials
+│   ├── POST    /config/test                               ✅ Test IBKR connection with provided credentials
 │   ├── GET     /dividend/pending                          ✅ Get pending dividend records for matching
 │   ├── POST    /import                                    ✅ Trigger IBKR import mechanism
 │   ├── GET     /inbox                                     ✅ List IBKR imported transactions

@@ -266,3 +266,32 @@ func (h *IbkrHandler) DeleteIbkrConfig(w http.ResponseWriter, r *http.Request) {
 
 	response.RespondJSON(w, http.StatusNoContent, nil)
 }
+
+// TestIbkrConnection handles POST requests to verify IBKR API credentials without saving them.
+// Accepts a plaintext flexToken and flexQueryId in the request body and submits a SendRequest
+// call to IBKR to confirm the credentials are accepted.
+//
+// Endpoint: POST /api/ibkr/config/test
+// Response: 200 OK with {"success": true}
+// Error: 400 Bad Request if the request body is invalid or credentials fail validation
+// Error: 500 Internal Server Error if the IBKR API call fails
+func (h *IbkrHandler) TestIbkrConnection(w http.ResponseWriter, r *http.Request) {
+
+	req, err := parseJSON[request.TestIbkrConnectionRequest](r)
+	if err != nil {
+		response.RespondError(w, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
+
+	if err := validation.ValidateTestConnection(req); err != nil {
+		response.RespondError(w, http.StatusBadRequest, "validation failed", err.Error())
+		return
+	}
+
+	_, err = h.ibkrService.TestIbkrConnection(r.Context(), req)
+	if err != nil {
+		response.RespondError(w, http.StatusInternalServerError, "ibkr test connection failed", err.Error())
+		return
+	}
+	response.RespondJSON(w, http.StatusOK, map[string]bool{"success": true})
+}

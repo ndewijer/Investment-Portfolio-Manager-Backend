@@ -17,16 +17,11 @@ func ValidateUpdateIbkrConfig(req request.UpdateIbkrConfigRequest) error {
 	if req.Enabled != nil && *req.Enabled {
 		if req.FlexToken != nil {
 			if strings.TrimSpace(*req.FlexToken) != "" {
-				if len(*req.FlexToken) != 25 {
-					errors["flexToken"] = "flexToken must be 25 characters"
+				if len(*req.FlexToken) < 24 {
+					errors["flexToken"] = "flexToken must be at least 24 characters"
 				} else {
-					// strconv.Atoi is not used here: a 25-digit token overflows int64.
-					// Validate digit-by-digit instead.
-					for _, c := range strings.TrimSpace(*req.FlexToken) {
-						if c < '0' || c > '9' {
-							errors["flexToken"] = "flexToken must be a number"
-							break
-						}
+					if !validateFlexToken(*req.FlexToken) {
+						errors["flexToken"] = "flexToken must be a number"
 					}
 				}
 			}
@@ -76,4 +71,42 @@ func ValidateUpdateIbkrConfig(req request.UpdateIbkrConfigRequest) error {
 		return &Error{Fields: errors}
 	}
 	return nil
+}
+
+func ValidateTestConnection(req request.TestIbkrConnectionRequest) error {
+	errors := make(map[string]string)
+
+	if len(req.FlexToken) < 24 {
+		errors["flexToken"] = "flexToken must be at least 24 characters"
+	} else {
+		if !validateFlexToken(req.FlexToken) {
+			errors["flexToken"] = "flexToken must be a number"
+		}
+
+	}
+
+	if req.FlexQueryID == "" {
+		errors["flexQueryId"] = "flexQueryId must be set"
+	} else if len(req.FlexQueryID) > 10 {
+		errors["flexQueryId"] = "flexQueryId must be 10 characters or less"
+	} else if _, err := strconv.Atoi(strings.TrimSpace(req.FlexQueryID)); err != nil {
+		errors["flexQueryId"] = "flexQueryId must be a number"
+	}
+
+	if len(errors) > 0 {
+		return &Error{Fields: errors}
+	}
+	return nil
+}
+
+// validateFlexToken returns true if flexToken consists entirely of ASCII digits.
+// strconv.Atoi is not used here: a 19-digit number overflows int64. The token is 23 or larger.
+// Validate digit-by-digit instead.
+func validateFlexToken(flexToken string) bool {
+	for _, c := range strings.TrimSpace(flexToken) {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
 }
