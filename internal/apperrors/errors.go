@@ -49,6 +49,15 @@ var (
 	// because the portfolio does not hold enough shares of the fund.
 	ErrInsufficientShares = errors.New("insufficient shares for sale")
 
+	// ErrIBKRTransactionAlreadyProcessed indicates the IBKR transaction has already been processed.
+	ErrIBKRTransactionAlreadyProcessed = errors.New("ibkr transaction already processed")
+
+	// ErrIBKRInvalidAllocations indicates the allocation percentages are invalid.
+	ErrIBKRInvalidAllocations = errors.New("invalid allocations")
+
+	// ErrIBKRFundNotMatched indicates no matching fund was found for the IBKR transaction.
+	ErrIBKRFundNotMatched = errors.New("no matching fund found for ibkr transaction")
+
 	// ErrInvalidDateRange indicates that the provided date range is invalid
 	// (e.g., start date is after end date).
 	ErrInvalidDateRange = errors.New("invalid date range")
@@ -113,6 +122,13 @@ var (
 	ErrFailedToGetTransactionAllocations = errors.New("failed to get transaction allocations")
 	ErrFailedToGetEligiblePortfolios     = errors.New("failed to get eligible portfolios")
 	ErrFailedToGetNewFlexReport          = errors.New("failed to get new flex report")
+	ErrFailedToDeleteIbkrTransaction     = errors.New("failed to delete ibkr transaction")
+	ErrFailedToIgnoreIbkrTransaction     = errors.New("failed to ignore ibkr transaction")
+	ErrFailedToAllocateIbkrTransaction   = errors.New("failed to allocate ibkr transaction")
+	ErrFailedToUnallocateIbkrTransaction = errors.New("failed to unallocate ibkr transaction")
+	ErrFailedToModifyAllocations         = errors.New("failed to modify allocations")
+	ErrFailedToMatchDividend             = errors.New("failed to match dividend")
+	ErrFailedToGetIbkrTransaction        = errors.New("failed to get ibkr transaction")
 
 	// System operation errors
 	ErrFailedToGetVersionInfo = errors.New("failed to get version information")

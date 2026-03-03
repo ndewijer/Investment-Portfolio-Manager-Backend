@@ -156,11 +156,19 @@ func NewRouter(
 			r.Get("/inbox", ibkrHandler.GetInbox)
 			r.Get("/inbox/count", ibkrHandler.GetInboxCount)
 			r.Post("/import", ibkrHandler.ImportFlexReport)
+			r.Post("/inbox/bulk-allocate", ibkrHandler.BulkAllocate)
 
 			r.Route("/inbox/{uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}}", func(r chi.Router) {
 				r.Use(custommiddleware.ValidateUUIDMiddleware)
+				r.Get("/", ibkrHandler.GetTransaction)
+				r.Delete("/", ibkrHandler.DeleteTransaction)
 				r.Get("/allocations", ibkrHandler.GetTransactionAllocations)
+				r.Put("/allocations", ibkrHandler.ModifyAllocations)
 				r.Get("/eligible-portfolios", ibkrHandler.GetEligiblePortfolios)
+				r.Post("/ignore", ibkrHandler.IgnoreTransaction)
+				r.Post("/allocate", ibkrHandler.AllocateTransaction)
+				r.Post("/unallocate", ibkrHandler.UnallocateTransaction)
+				r.Post("/match-dividend", ibkrHandler.MatchDividend)
 			})
 		})
 

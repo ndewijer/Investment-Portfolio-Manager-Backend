@@ -5,7 +5,7 @@ A personal learning project rebuilding the Investment Portfolio Manager backend 
 **Important:** This backend is being built **manually by me, not AI-generated**. Every line of code is written to understand Go fundamentals, patterns, and best practices. The implementation follows a phased approach starting with raw `database/sql` to learn the foundations before migrating to modern tools like `sqlc` and Atlas.
 
 ## Project Status
-🚧 **In Active Development** - 83% complete (60/72 endpoints implemented)
+🚧 **In Active Development** - 88% complete (64/72 endpoints implemented)
 
 This is a ground-up rewrite of the [Investment Portfolio Manager backend](https://github.com/ndewijer/Investment-Portfolio-Manager) from Python/Flask to Go. The goal is to achieve feature parity while learning Go idioms, patterns, and ecosystem.
 
@@ -77,7 +77,7 @@ This backend aims to replicate all 73 endpoints from the Python backend. Below i
 │   ├── PUT    /{id}                            ✅ Update dividend
 │   └── DELETE /{id}                            ✅ Delete dividend
 │
-├── /ibkr (7/19 endpoints) ⬜
+├── /ibkr (11/19 endpoints) ⬜
 │   ├── POST    /config                                    ✅ Create or update IBKR configuration
 │   ├── GET     /config                                    ✅ Get IBKR configuration status
 │   ├── DELETE  /config                                    ✅ Delete IBKR configuration
@@ -113,7 +113,7 @@ This backend aims to replicate all 73 endpoints from the Python backend. Below i
     └── PUT /system-settings/logging      ✅ Update logging configuration settings
 
 Legend: ✅ Implemented | 🚧 In Progress | ⬜ Planned
-Overall Progress: 60/72 endpoints (83%)
+Overall Progress: 64/72 endpoints (88%)
 ```
 
 ## Quick Start

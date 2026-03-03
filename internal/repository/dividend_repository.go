@@ -412,7 +412,7 @@ func (r *DividendRepository) GetDividend(dividendID string) (model.Dividend, err
 	var RecordDateStr, ExDividendDateStr string
 	var buyOrderDateStr, reinvestmentTransactionIDString sql.NullString
 
-	err := r.db.QueryRow(query, dividendID).Scan(
+	err := r.getQuerier().QueryRow(query, dividendID).Scan(
 		&d.ID,
 		&d.FundID,
 		&d.PortfolioFundID,
