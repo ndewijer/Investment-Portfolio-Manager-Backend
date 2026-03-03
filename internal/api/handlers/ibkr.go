@@ -535,7 +535,7 @@ func (h *IbkrHandler) MatchDividend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = h.ibkrService.MatchDividend(r.Context(), transactionID, req.DividendIds)
+	err = h.ibkrService.MatchDividend(r.Context(), transactionID, req.DividendIDs)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrIBKRTransactionNotFound) {
 			response.RespondError(w, http.StatusNotFound, apperrors.ErrIBKRTransactionNotFound.Error(), err.Error())

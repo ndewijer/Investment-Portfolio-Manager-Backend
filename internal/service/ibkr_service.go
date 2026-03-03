@@ -761,8 +761,6 @@ func (s *IbkrService) findFundByISINOrSymbol(isin, symbol string) (model.Fund, e
 // If allocations is empty and default allocation is enabled in config, uses default allocations.
 // Creates Transaction and IBKRTransactionAllocation records for each portfolio, including
 // separate fee transactions when fees > 0.
-//
-//nolint:gocyclo // Allocation orchestrator with per-portfolio loop, fee handling, and auto-allocate fallback.
 func (s *IbkrService) AllocateIbkrTransaction(ctx context.Context, transactionID string, allocations []request.AllocationEntry) error {
 	dbTx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -770,123 +768,8 @@ func (s *IbkrService) AllocateIbkrTransaction(ctx context.Context, transactionID
 	}
 	defer func() { _ = dbTx.Rollback() }() //nolint:errcheck
 
-	ibkrTx, err := s.ibkrRepo.WithTx(dbTx).GetIbkrTransaction(transactionID)
-	if err != nil {
+	if err := s.allocateIbkrTransactionTx(ctx, dbTx, transactionID, allocations); err != nil {
 		return err
-	}
-
-	if ibkrTx.Status != "pending" {
-		return apperrors.ErrIBKRTransactionAlreadyProcessed
-	}
-
-	// Auto-allocate fallback
-	if len(allocations) == 0 {
-		config, err := s.ibkrRepo.WithTx(dbTx).GetIbkrConfig()
-		if err != nil && !errors.Is(err, apperrors.ErrIbkrConfigNotFound) {
-			return err
-		}
-		if config != nil && config.DefaultAllocationEnabled && len(config.DefaultAllocations) > 0 {
-			allocations = make([]request.AllocationEntry, len(config.DefaultAllocations))
-			for i, a := range config.DefaultAllocations {
-				allocations[i] = request.AllocationEntry{
-					PortfolioID: a.PortfolioID,
-					Percentage:  a.Percentage,
-				}
-			}
-		}
-	}
-
-	if len(allocations) == 0 {
-		return apperrors.ErrIBKRInvalidAllocations
-	}
-
-	// Find the fund
-	fund, err := s.findFundByISINOrSymbol(ibkrTx.ISIN, ibkrTx.Symbol)
-	if err != nil {
-		return err
-	}
-
-	now := time.Now().UTC()
-
-	for _, alloc := range allocations {
-		pf, err := s.pfRepo.WithTx(dbTx).GetPortfolioFundByPortfolioAndFund(alloc.PortfolioID, fund.ID)
-		if errors.Is(err, apperrors.ErrPortfolioFundNotFound) {
-			if err := s.pfRepo.WithTx(dbTx).InsertPortfolioFund(ctx, alloc.PortfolioID, fund.ID); err != nil {
-				return fmt.Errorf("failed to create portfolio_fund: %w", err)
-			}
-			pf, err = s.pfRepo.WithTx(dbTx).GetPortfolioFundByPortfolioAndFund(alloc.PortfolioID, fund.ID)
-			if err != nil {
-				return fmt.Errorf("failed to retrieve created portfolio_fund: %w", err)
-			}
-		} else if err != nil {
-			return err
-		}
-
-		pct := alloc.Percentage / 100.0
-		allocatedAmount := round(ibkrTx.TotalAmount * pct)
-		allocatedShares := round(ibkrTx.Quantity * pct)
-		allocatedFees := round(ibkrTx.Fees * pct)
-
-		txn := &model.Transaction{
-			ID:              uuid.New().String(),
-			PortfolioFundID: pf.ID,
-			Date:            ibkrTx.TransactionDate,
-			Type:            ibkrTx.TransactionType,
-			Shares:          allocatedShares,
-			CostPerShare:    ibkrTx.Price,
-			CreatedAt:       now,
-		}
-
-		if err := s.transactionRepo.WithTx(dbTx).InsertTransaction(ctx, txn); err != nil {
-			return fmt.Errorf("failed to insert transaction: %w", err)
-		}
-
-		tradeAlloc := model.IBKRTransactionAllocation{
-			ID:                   uuid.New().String(),
-			IBKRTransactionID:    transactionID,
-			PortfolioID:          alloc.PortfolioID,
-			AllocationPercentage: alloc.Percentage,
-			AllocatedAmount:      allocatedAmount,
-			AllocatedShares:      allocatedShares,
-			TransactionID:        txn.ID,
-			CreatedAt:            now,
-		}
-		if err := s.ibkrRepo.WithTx(dbTx).InsertIbkrTransactionAllocation(ctx, tradeAlloc); err != nil {
-			return fmt.Errorf("failed to insert trade allocation: %w", err)
-		}
-
-		if allocatedFees > 0 {
-			feeTxn := &model.Transaction{
-				ID:              uuid.New().String(),
-				PortfolioFundID: pf.ID,
-				Date:            ibkrTx.TransactionDate,
-				Type:            "fee",
-				Shares:          0,
-				CostPerShare:    allocatedFees,
-				CreatedAt:       now,
-			}
-			if err := s.transactionRepo.WithTx(dbTx).InsertTransaction(ctx, feeTxn); err != nil {
-				return fmt.Errorf("failed to insert fee transaction: %w", err)
-			}
-
-			feeAlloc := model.IBKRTransactionAllocation{
-				ID:                   uuid.New().String(),
-				IBKRTransactionID:    transactionID,
-				PortfolioID:          alloc.PortfolioID,
-				AllocationPercentage: alloc.Percentage,
-				AllocatedAmount:      allocatedFees,
-				AllocatedShares:      0,
-				TransactionID:        feeTxn.ID,
-				CreatedAt:            now,
-			}
-			if err := s.ibkrRepo.WithTx(dbTx).InsertIbkrTransactionAllocation(ctx, feeAlloc); err != nil {
-				return fmt.Errorf("failed to insert fee allocation: %w", err)
-			}
-		}
-	}
-
-	if err := s.ibkrRepo.WithTx(dbTx).UpdateIbkrTransactionStatus(ctx, transactionID, "processed", &now); err != nil {
-		return fmt.Errorf("failed to update transaction status: %w", err)
 	}
 
 	if err := dbTx.Commit(); err != nil {
@@ -901,7 +784,7 @@ func (s *IbkrService) AllocateIbkrTransaction(ctx context.Context, transactionID
 func (s *IbkrService) BulkAllocateIbkrTransactions(ctx context.Context, req request.BulkAllocateRequest) model.BulkAllocateResponse {
 	resp := model.BulkAllocateResponse{Errors: []string{}}
 
-	for _, txID := range req.TransactionIds {
+	for _, txID := range req.TransactionIDs {
 		if err := s.AllocateIbkrTransaction(ctx, txID, req.Allocations); err != nil {
 			resp.Failed++
 			resp.Errors = append(resp.Errors, fmt.Sprintf("%s: %s", txID, err.Error()))
@@ -1000,13 +883,17 @@ func (s *IbkrService) ModifyAllocations(ctx context.Context, transactionID strin
 }
 
 // allocateIbkrTransactionTx performs allocation within an existing DB transaction.
-// Used by ModifyAllocations to share a tx with unallocate.
+// Contains the core allocation logic shared by AllocateIbkrTransaction and ModifyAllocations.
 //
-//nolint:gocyclo // Mirrors AllocateIbkrTransaction but within a provided tx.
+//nolint:gocyclo,funlen // Allocation orchestrator with per-portfolio loop, fee handling, and auto-allocate fallback.
 func (s *IbkrService) allocateIbkrTransactionTx(ctx context.Context, dbTx *sql.Tx, transactionID string, allocations []request.AllocationEntry) error {
 	ibkrTx, err := s.ibkrRepo.WithTx(dbTx).GetIbkrTransaction(transactionID)
 	if err != nil {
 		return err
+	}
+
+	if ibkrTx.Status != "pending" {
+		return apperrors.ErrIBKRTransactionAlreadyProcessed
 	}
 
 	// Auto-allocate fallback
@@ -1125,7 +1012,7 @@ func (s *IbkrService) allocateIbkrTransactionTx(ctx context.Context, dbTx *sql.T
 // exist. Each dividend's reinvestment_transaction_id is set to the allocation's transaction_id.
 //
 //nolint:gocyclo // Dividend matching with per-dividend portfolio lookup and validation.
-func (s *IbkrService) MatchDividend(ctx context.Context, transactionID string, dividendIds []string) error {
+func (s *IbkrService) MatchDividend(ctx context.Context, transactionID string, dividendIDs []string) error {
 	dbTx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
@@ -1157,7 +1044,7 @@ func (s *IbkrService) MatchDividend(ctx context.Context, transactionID string, d
 		}
 	}
 
-	for _, dividendID := range dividendIds {
+	for _, dividendID := range dividendIDs {
 		dividend, err := s.dividendRepo.WithTx(dbTx).GetDividend(dividendID)
 		if err != nil {
 			return fmt.Errorf("failed to get dividend %s: %w", dividendID, err)

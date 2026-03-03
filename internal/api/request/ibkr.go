@@ -36,7 +36,7 @@ type AllocateTransactionRequest struct {
 
 // BulkAllocateRequest holds the transaction IDs and allocation details for bulk allocation.
 type BulkAllocateRequest struct {
-	TransactionIds []string          `json:"transactionIds"`
+	TransactionIDs []string          `json:"transactionIds"`
 	Allocations    []AllocationEntry `json:"allocations"`
 }
 
@@ -47,5 +47,5 @@ type ModifyAllocationsRequest struct {
 
 // MatchDividendRequest holds the dividend IDs to match against an IBKR transaction.
 type MatchDividendRequest struct {
-	DividendIds []string `json:"dividendIds"`
+	DividendIDs []string `json:"dividendIds"`
 }

@@ -141,11 +141,11 @@ func ValidateAllocateTransaction(allocations []request.AllocationEntry) error {
 func ValidateBulkAllocate(req request.BulkAllocateRequest) error {
 	errors := make(map[string]string)
 
-	if len(req.TransactionIds) == 0 {
+	if len(req.TransactionIDs) == 0 {
 		errors["transactionIds"] = "at least one transaction ID is required"
 	}
 
-	for i, id := range req.TransactionIds {
+	for i, id := range req.TransactionIDs {
 		if err := ValidateUUID(id); err != nil {
 			errors[fmt.Sprintf("transactionIds[%d]", i)] = "invalid UUID format"
 		}
@@ -168,11 +168,11 @@ func ValidateBulkAllocate(req request.BulkAllocateRequest) error {
 func ValidateMatchDividend(req request.MatchDividendRequest) error {
 	errors := make(map[string]string)
 
-	if len(req.DividendIds) == 0 {
+	if len(req.DividendIDs) == 0 {
 		errors["dividendIds"] = "at least one dividend ID is required"
 	}
 
-	for i, id := range req.DividendIds {
+	for i, id := range req.DividendIDs {
 		if err := ValidateUUID(id); err != nil {
 			errors[fmt.Sprintf("dividendIds[%d]", i)] = "invalid UUID format"
 		}
