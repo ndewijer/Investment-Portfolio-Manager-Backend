@@ -792,6 +792,141 @@ func NewLoggingLevel(level string) *SystemSettingBuilder {
 	return NewSystemSetting("LOGGING_LEVEL", level)
 }
 
+// IBKRTransactionBuilder provides a fluent interface for creating IBKR transactions.
+type IBKRTransactionBuilder struct {
+	ID                string
+	IBKRTransactionID string
+	TransactionDate   time.Time
+	Symbol            string
+	ISIN              string
+	Description       string
+	TransactionType   string
+	Quantity          float64
+	Price             float64
+	TotalAmount       float64
+	Currency          string
+	Fees              float64
+	Status            string
+	ReportDate        time.Time
+	Notes             string
+}
+
+// NewIBKRTransaction creates an IBKRTransactionBuilder with sensible defaults.
+func NewIBKRTransaction() *IBKRTransactionBuilder {
+	return &IBKRTransactionBuilder{
+		ID:                MakeID(),
+		IBKRTransactionID: "IBKR_" + randomAlphanumeric(10),
+		TransactionDate:   time.Now().UTC(),
+		Symbol:            "AAPL",
+		ISIN:              "US0378331005",
+		Description:       "Buy AAPL",
+		TransactionType:   "buy",
+		Quantity:          10,
+		Price:             150.00,
+		TotalAmount:       1500.00,
+		Currency:          "USD",
+		Fees:              1.00,
+		Status:            "pending",
+		ReportDate:        time.Now().UTC(),
+		Notes:             "",
+	}
+}
+
+// WithStatus sets the transaction status.
+func (b *IBKRTransactionBuilder) WithStatus(status string) *IBKRTransactionBuilder {
+	b.Status = status
+	return b
+}
+
+// WithSymbol sets the symbol.
+func (b *IBKRTransactionBuilder) WithSymbol(symbol string) *IBKRTransactionBuilder {
+	b.Symbol = symbol
+	return b
+}
+
+// WithISIN sets the ISIN.
+func (b *IBKRTransactionBuilder) WithISIN(isin string) *IBKRTransactionBuilder {
+	b.ISIN = isin
+	return b
+}
+
+// WithNotes sets the notes field.
+func (b *IBKRTransactionBuilder) WithNotes(notes string) *IBKRTransactionBuilder {
+	b.Notes = notes
+	return b
+}
+
+// WithFees sets the fees.
+func (b *IBKRTransactionBuilder) WithFees(fees float64) *IBKRTransactionBuilder {
+	b.Fees = fees
+	return b
+}
+
+// WithType sets the transaction type.
+func (b *IBKRTransactionBuilder) WithType(txType string) *IBKRTransactionBuilder {
+	b.TransactionType = txType
+	return b
+}
+
+// WithQuantity sets the quantity.
+func (b *IBKRTransactionBuilder) WithQuantity(qty float64) *IBKRTransactionBuilder {
+	b.Quantity = qty
+	return b
+}
+
+// WithPrice sets the price.
+func (b *IBKRTransactionBuilder) WithPrice(price float64) *IBKRTransactionBuilder {
+	b.Price = price
+	return b
+}
+
+// WithTotalAmount sets the total amount.
+func (b *IBKRTransactionBuilder) WithTotalAmount(amount float64) *IBKRTransactionBuilder {
+	b.TotalAmount = amount
+	return b
+}
+
+// Build creates the IBKR transaction in the database and returns it.
+func (b *IBKRTransactionBuilder) Build(t *testing.T, db *sql.DB) model.IBKRTransaction {
+	t.Helper()
+
+	query := `
+		INSERT INTO ibkr_transaction (
+			id, ibkr_transaction_id, transaction_date, symbol, isin, description,
+			transaction_type, quantity, price, total_amount, currency, fees,
+			status, imported_at, report_date, notes
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), ?, ?)
+	`
+
+	_, err := db.Exec(query,
+		b.ID, b.IBKRTransactionID, b.TransactionDate.Format("2006-01-02"),
+		b.Symbol, b.ISIN, b.Description, b.TransactionType,
+		b.Quantity, b.Price, b.TotalAmount, b.Currency, b.Fees,
+		b.Status, b.ReportDate.Format("2006-01-02"), b.Notes,
+	)
+	if err != nil {
+		t.Fatalf("Failed to create IBKR transaction: %v", err)
+	}
+
+	return model.IBKRTransaction{
+		ID:                b.ID,
+		IBKRTransactionID: b.IBKRTransactionID,
+		TransactionDate:   b.TransactionDate,
+		Symbol:            b.Symbol,
+		ISIN:              b.ISIN,
+		Description:       b.Description,
+		TransactionType:   b.TransactionType,
+		Quantity:          b.Quantity,
+		Price:             b.Price,
+		TotalAmount:       b.TotalAmount,
+		Currency:          b.Currency,
+		Fees:              b.Fees,
+		Status:            b.Status,
+		ReportDate:        b.ReportDate,
+		Notes:             b.Notes,
+	}
+}
+
 // ExchangeRateBuilder provides a fluent interface for creating exchange rates.
 //
 // Example usage:

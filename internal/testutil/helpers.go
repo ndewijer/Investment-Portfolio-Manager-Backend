@@ -159,20 +159,18 @@ func NewTestIbkrServiceWithMockIBKR(t *testing.T, db *sql.DB, mockIBKR ibkr.Clie
 
 	ibkrRepo := repository.NewIbkrRepository(db)
 	fundRepo := repository.NewFundRepository(db)
-	// pfRepo := repository.NewPortfolioFundRepository(db)
-	// transactionRepo := repository.NewTransactionRepository(db)
-	// developerRepo := repository.NewDeveloperRepository(db)
-	// dividendRepo := repository.NewDividendRepository(db)
+	pfRepo := repository.NewPortfolioFundRepository(db)
+	transactionRepo := repository.NewTransactionRepository(db)
+	dividendRepo := repository.NewDividendRepository(db)
 
 	return service.NewIbkrService(
 		db,
 		service.IbkrWithIbkrRepo(ibkrRepo),
 		service.IbkrWithPortfolioRepo(repository.NewPortfolioRepository(db)),
 		service.IbkrWithFundRepo(fundRepo),
-		// service.IbkrWithDeveloperRepo(developerRepo),
-		// service.IbkrWithPortfolioFundRepo(pfRepo),
-		// service.IbkrWithTransactionRepo(transactionRepo),
-		// service.IbkrWithDividendRepo(dividendRepo),
+		service.IbkrWithPortfolioFundRepo(pfRepo),
+		service.IbkrWithTransactionRepo(transactionRepo),
+		service.IbkrWithDividendRepo(dividendRepo),
 		service.IbkrWithClient(mockIBKR),
 	)
 }
