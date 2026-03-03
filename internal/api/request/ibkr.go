@@ -22,3 +22,30 @@ type TestIbkrConnectionRequest struct {
 	FlexQueryID string `json:"flexQueryId"`
 	FlexToken   string `json:"flexToken"`
 }
+
+// AllocationEntry represents a single portfolio allocation with its percentage.
+type AllocationEntry struct {
+	PortfolioID string  `json:"portfolioId"`
+	Percentage  float64 `json:"percentage"`
+}
+
+// AllocateTransactionRequest holds the allocation details for a single IBKR transaction.
+type AllocateTransactionRequest struct {
+	Allocations []AllocationEntry `json:"allocations"`
+}
+
+// BulkAllocateRequest holds the transaction IDs and allocation details for bulk allocation.
+type BulkAllocateRequest struct {
+	TransactionIDs []string          `json:"transactionIds"`
+	Allocations    []AllocationEntry `json:"allocations"`
+}
+
+// ModifyAllocationsRequest holds updated allocation details for a processed IBKR transaction.
+type ModifyAllocationsRequest struct {
+	Allocations []AllocationEntry `json:"allocations"`
+}
+
+// MatchDividendRequest holds the dividend IDs to match against an IBKR transaction.
+type MatchDividendRequest struct {
+	DividendIDs []string `json:"dividendIds"`
+}

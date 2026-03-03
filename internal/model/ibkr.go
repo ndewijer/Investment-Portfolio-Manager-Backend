@@ -115,6 +115,20 @@ type FundMatchInfo struct {
 	FundISIN   string `json:"fundIsin,omitempty"`   // The matched fund's ISIN
 }
 
+// IBKRTransactionDetail represents a single IBKR transaction with optional allocation details.
+// Used as the response payload for the transaction detail endpoint.
+type IBKRTransactionDetail struct {
+	IBKRTransaction
+	Allocations []IBKRTransactionAllocationResponse `json:"allocations,omitempty"`
+}
+
+// BulkAllocateResponse represents the result of a bulk allocation operation.
+type BulkAllocateResponse struct {
+	Success int      `json:"success"`
+	Failed  int      `json:"failed"`
+	Errors  []string `json:"errors"`
+}
+
 // IbkrImportCache represents a cached IBKR Flex report payload, keyed by query ID and date.
 // Used to avoid redundant API calls when the report has already been fetched today.
 type IbkrImportCache struct {

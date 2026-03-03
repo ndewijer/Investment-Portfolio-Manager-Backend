@@ -660,6 +660,129 @@ func (r *IbkrRepository) GetIbkrImportCache() (model.IbkrImportCache, error) {
 	return c, nil
 }
 
+// UpdateIbkrTransactionStatus updates the status and optional processed_at timestamp of an IBKR transaction.
+// Returns ErrIBKRTransactionNotFound if no transaction with the given ID exists.
+func (r *IbkrRepository) UpdateIbkrTransactionStatus(ctx context.Context, id, status string, processedAt *time.Time) error {
+	var processedAtStr any
+	if processedAt != nil {
+		processedAtStr = processedAt.Format("2006-01-02 15:04:05")
+	}
+
+	query := `UPDATE ibkr_transaction SET status = ?, processed_at = ? WHERE id = ?`
+	result, err := r.getQuerier().ExecContext(ctx, query, status, processedAtStr, id)
+	if err != nil {
+		return fmt.Errorf("failed to update ibkr transaction status: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+	if rowsAffected == 0 {
+		return apperrors.ErrIBKRTransactionNotFound
+	}
+
+	return nil
+}
+
+// DeleteIbkrTransaction removes an IBKR transaction by its ID.
+// Returns ErrIBKRTransactionNotFound if no transaction with the given ID exists.
+func (r *IbkrRepository) DeleteIbkrTransaction(ctx context.Context, id string) error {
+	query := `DELETE FROM ibkr_transaction WHERE id = ?`
+	result, err := r.getQuerier().ExecContext(ctx, query, id)
+	if err != nil {
+		return fmt.Errorf("failed to delete ibkr transaction: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+	if rowsAffected == 0 {
+		return apperrors.ErrIBKRTransactionNotFound
+	}
+
+	return nil
+}
+
+// InsertIbkrTransactionAllocation creates a new IBKR transaction allocation record.
+func (r *IbkrRepository) InsertIbkrTransactionAllocation(ctx context.Context, a model.IBKRTransactionAllocation) error {
+	query := `
+		INSERT INTO ibkr_transaction_allocation (id, ibkr_transaction_id, portfolio_id, allocation_percentage, allocated_amount, allocated_shares, transaction_id, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`
+
+	var transactionID sql.NullString
+	if a.TransactionID != "" {
+		transactionID = sql.NullString{String: a.TransactionID, Valid: true}
+	}
+
+	_, err := r.getQuerier().ExecContext(ctx, query,
+		a.ID,
+		a.IBKRTransactionID,
+		a.PortfolioID,
+		a.AllocationPercentage,
+		a.AllocatedAmount,
+		a.AllocatedShares,
+		transactionID,
+		a.CreatedAt.Format("2006-01-02 15:04:05"),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to insert ibkr transaction allocation: %w", err)
+	}
+
+	return nil
+}
+
+// DeleteIbkrTransactionAllocations removes all allocation records for a given IBKR transaction.
+// Returns ErrIBKRTransactionNotFound if no allocations exist for the given transaction.
+func (r *IbkrRepository) DeleteIbkrTransactionAllocations(ctx context.Context, ibkrTransactionID string) error {
+	query := `DELETE FROM ibkr_transaction_allocation WHERE ibkr_transaction_id = ?`
+	result, err := r.getQuerier().ExecContext(ctx, query, ibkrTransactionID)
+	if err != nil {
+		return fmt.Errorf("failed to delete ibkr transaction allocations: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+	if rowsAffected == 0 {
+		return apperrors.ErrIBKRTransactionNotFound
+	}
+
+	return nil
+}
+
+// GetTransactionIDsByIbkrTransaction retrieves all transaction IDs linked to an IBKR transaction via allocations.
+// Used during unallocation to clean up the created Transaction records.
+func (r *IbkrRepository) GetTransactionIDsByIbkrTransaction(ctx context.Context, ibkrTransactionID string) ([]string, error) {
+	query := `
+		SELECT transaction_id FROM ibkr_transaction_allocation
+		WHERE ibkr_transaction_id = ? AND transaction_id IS NOT NULL
+	`
+
+	rows, err := r.getQuerier().QueryContext(ctx, query, ibkrTransactionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query transaction IDs by ibkr transaction: %w", err)
+	}
+	defer rows.Close()
+
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("failed to scan transaction ID: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating transaction IDs: %w", err)
+	}
+
+	return ids, nil
+}
+
 // DeleteIbkrConfig removes the IBKR configuration row from the database.
 // Returns ErrIbkrConfigNotFound if no config exists.
 func (r *IbkrRepository) DeleteIbkrConfig(ctx context.Context) error {

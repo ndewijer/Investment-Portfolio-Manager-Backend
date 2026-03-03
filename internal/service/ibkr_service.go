@@ -7,6 +7,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"log"
 	"math"
 	"os"
 	"strings"
@@ -26,31 +27,66 @@ type IbkrService struct {
 	db                  *sql.DB
 	ibkrRepo            *repository.IbkrRepository
 	portfolioRepo       *repository.PortfolioRepository
-	transactionService  *TransactionService
 	fundRepository      *repository.FundRepository
 	developerRepository *repository.DeveloperRepository
 	ibkrClient          ibkr.Client
+	pfRepo              *repository.PortfolioFundRepository
+	transactionRepo     *repository.TransactionRepository
+	dividendRepo        *repository.DividendRepository
 }
 
-// NewIbkrService creates a new IbkrService with the provided repository dependencies.
-func NewIbkrService(
-	db *sql.DB,
-	ibkrRepo *repository.IbkrRepository,
-	portfolioRepo *repository.PortfolioRepository,
-	transactionService *TransactionService,
-	fundRepository *repository.FundRepository,
-	developerRepository *repository.DeveloperRepository,
-	ibkrClient ibkr.Client,
-) *IbkrService {
-	return &IbkrService{
-		db:                  db,
-		ibkrRepo:            ibkrRepo,
-		portfolioRepo:       portfolioRepo,
-		transactionService:  transactionService,
-		fundRepository:      fundRepository,
-		developerRepository: developerRepository,
-		ibkrClient:          ibkrClient,
+// IbkrServiceOption is a functional option for configuring an IbkrService.
+type IbkrServiceOption func(*IbkrService)
+
+// IbkrWithIbkrRepo injects the IbkrRepository dependency.
+func IbkrWithIbkrRepo(r *repository.IbkrRepository) IbkrServiceOption {
+	return func(s *IbkrService) { s.ibkrRepo = r }
+}
+
+// IbkrWithPortfolioRepo injects the PortfolioRepository dependency.
+func IbkrWithPortfolioRepo(r *repository.PortfolioRepository) IbkrServiceOption {
+	return func(s *IbkrService) { s.portfolioRepo = r }
+}
+
+// IbkrWithFundRepo injects the FundRepository dependency.
+func IbkrWithFundRepo(r *repository.FundRepository) IbkrServiceOption {
+	return func(s *IbkrService) { s.fundRepository = r }
+}
+
+// IbkrWithDeveloperRepo injects the DeveloperRepository dependency.
+func IbkrWithDeveloperRepo(r *repository.DeveloperRepository) IbkrServiceOption {
+	return func(s *IbkrService) { s.developerRepository = r }
+}
+
+// IbkrWithClient injects the IBKR API client dependency.
+func IbkrWithClient(c ibkr.Client) IbkrServiceOption {
+	return func(s *IbkrService) { s.ibkrClient = c }
+}
+
+// IbkrWithPortfolioFundRepo injects the PortfolioFundRepository dependency.
+func IbkrWithPortfolioFundRepo(r *repository.PortfolioFundRepository) IbkrServiceOption {
+	return func(s *IbkrService) { s.pfRepo = r }
+}
+
+// IbkrWithTransactionRepo injects the TransactionRepository dependency.
+func IbkrWithTransactionRepo(r *repository.TransactionRepository) IbkrServiceOption {
+	return func(s *IbkrService) { s.transactionRepo = r }
+}
+
+// IbkrWithDividendRepo injects the DividendRepository dependency.
+func IbkrWithDividendRepo(r *repository.DividendRepository) IbkrServiceOption {
+	return func(s *IbkrService) { s.dividendRepo = r }
+}
+
+// NewIbkrService creates a new IbkrService. Pass IbkrWith* options to inject dependencies.
+// Only the options relevant to the calling context need to be provided; unset fields remain
+// nil and will panic if the corresponding method is called — a clear wiring error.
+func NewIbkrService(db *sql.DB, opts ...IbkrServiceOption) *IbkrService {
+	s := &IbkrService{db: db}
+	for _, opt := range opts {
+		opt(s)
 	}
+	return s
 }
 
 // GetIbkrConfig retrieves the IBKR integration configuration.
@@ -189,36 +225,27 @@ func (s *IbkrService) GetEligiblePortfolios(transactionID string) (model.IBKREli
 		return model.IBKREligiblePortfolioResponse{}, err
 	}
 
-	// First we try to find the fund on ISIN as it's most reliable
-	fund, err := s.fundRepository.GetFundBySymbolOrIsin("", transaction.ISIN)
-	if err != nil && !errors.Is(err, apperrors.ErrFundNotFound) {
+	fund, err := s.findFundByISINOrSymbol(transaction.ISIN, transaction.Symbol)
+	if errors.Is(err, apperrors.ErrIBKRFundNotMatched) {
+		return model.IBKREligiblePortfolioResponse{
+			MatchInfo: model.FundMatchInfo{
+				Found:     false,
+				MatchedBy: "",
+			},
+			Portfolios: []model.Portfolio{},
+			Warning:    fmt.Sprintf("No fund found matching this transaction (Symbol: %s, ISIN: %s). Please add the fund to the system first.", transaction.Symbol, transaction.ISIN),
+		}, nil
+	}
+	if err != nil {
 		return model.IBKREligiblePortfolioResponse{}, err
 	}
 
-	matchedBy := ""
-	if fund.ID == "" {
-		// Second, we try on Symbol.
-		fund, err = s.fundRepository.GetFundBySymbolOrIsin(transaction.Symbol, "")
-		if err != nil && !errors.Is(err, apperrors.ErrFundNotFound) {
-			return model.IBKREligiblePortfolioResponse{}, err
-		}
-		if fund.ID == "" {
-			// No fund found - return success response with found=false
-			return model.IBKREligiblePortfolioResponse{
-				MatchInfo: model.FundMatchInfo{
-					Found:     false,
-					MatchedBy: "",
-				},
-				Portfolios: []model.Portfolio{},
-				Warning:    fmt.Sprintf("No fund found matching this transaction (Symbol: %s, ISIN: %s). Please add the fund to the system first.", transaction.Symbol, transaction.ISIN),
-			}, nil
-		}
-		matchedBy = "symbol"
-	} else {
+	// Determine how the fund was matched
+	matchedBy := "symbol"
+	if fund.Isin != "" && fund.Isin == transaction.ISIN {
 		matchedBy = "isin"
 	}
 
-	// Fund was found - get portfolios
 	portfolios, err := s.portfolioRepo.GetPortfoliosByFundID(fund.ID)
 	if err != nil {
 		return model.IBKREligiblePortfolioResponse{}, err
@@ -641,4 +668,414 @@ func (s *IbkrService) DeleteIbkrConfig(ctx context.Context) error {
 func (s *IbkrService) TestIbkrConnection(ctx context.Context, req request.TestIbkrConnectionRequest) (bool, error) {
 
 	return s.ibkrClient.TestIbkrConnection(ctx, req.FlexToken, req.FlexQueryID)
+}
+
+// GetIbkrTransactionDetail retrieves a single IBKR transaction with its allocation details.
+// If the transaction is processed, allocations are included in the response.
+func (s *IbkrService) GetIbkrTransactionDetail(transactionID string) (model.IBKRTransactionDetail, error) {
+	tx, err := s.ibkrRepo.GetIbkrTransaction(transactionID)
+	if err != nil {
+		return model.IBKRTransactionDetail{}, err
+	}
+
+	detail := model.IBKRTransactionDetail{IBKRTransaction: tx}
+
+	if tx.Status == "processed" {
+		alloc, err := s.GetTransactionAllocations(transactionID)
+		if err != nil {
+			return model.IBKRTransactionDetail{}, err
+		}
+		detail.Allocations = alloc.Allocations
+	}
+
+	return detail, nil
+}
+
+// DeleteIbkrTransaction removes a pending IBKR transaction.
+// Returns ErrIBKRTransactionAlreadyProcessed if the transaction is not pending.
+func (s *IbkrService) DeleteIbkrTransaction(ctx context.Context, transactionID string) error {
+	tx, err := s.ibkrRepo.GetIbkrTransaction(transactionID)
+	if err != nil {
+		return err
+	}
+
+	if tx.Status != "pending" {
+		return apperrors.ErrIBKRTransactionAlreadyProcessed
+	}
+
+	return s.ibkrRepo.DeleteIbkrTransaction(ctx, transactionID)
+}
+
+// IgnoreIbkrTransaction marks a pending IBKR transaction as ignored.
+// Returns ErrIBKRTransactionAlreadyProcessed if the transaction is not pending.
+func (s *IbkrService) IgnoreIbkrTransaction(ctx context.Context, transactionID string) error {
+	dbTx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = dbTx.Rollback() }() //nolint:errcheck
+
+	ibkrTx, err := s.ibkrRepo.WithTx(dbTx).GetIbkrTransaction(transactionID)
+	if err != nil {
+		return err
+	}
+
+	if ibkrTx.Status != "pending" {
+		return apperrors.ErrIBKRTransactionAlreadyProcessed
+	}
+
+	if err := s.ibkrRepo.WithTx(dbTx).UpdateIbkrTransactionStatus(ctx, transactionID, "ignored", nil); err != nil {
+		return err
+	}
+
+	if err := dbTx.Commit(); err != nil {
+		return fmt.Errorf("commit transaction: %w", err)
+	}
+
+	return nil
+}
+
+// findFundByISINOrSymbol looks up a fund by ISIN first, then by symbol.
+// Returns ErrIBKRFundNotMatched if neither matches.
+func (s *IbkrService) findFundByISINOrSymbol(isin, symbol string) (model.Fund, error) {
+	fund, err := s.fundRepository.GetFundBySymbolOrIsin("", isin)
+	if err != nil && !errors.Is(err, apperrors.ErrFundNotFound) {
+		return model.Fund{}, err
+	}
+	if fund.ID != "" {
+		return fund, nil
+	}
+
+	fund, err = s.fundRepository.GetFundBySymbolOrIsin(symbol, "")
+	if err != nil && !errors.Is(err, apperrors.ErrFundNotFound) {
+		return model.Fund{}, err
+	}
+	if fund.ID != "" {
+		return fund, nil
+	}
+
+	return model.Fund{}, apperrors.ErrIBKRFundNotMatched
+}
+
+// AllocateIbkrTransaction allocates a pending IBKR transaction to portfolios.
+// If allocations is empty and default allocation is enabled in config, uses default allocations.
+// Creates Transaction and IBKRTransactionAllocation records for each portfolio, including
+// separate fee transactions when fees > 0.
+func (s *IbkrService) AllocateIbkrTransaction(ctx context.Context, transactionID string, allocations []request.AllocationEntry) error {
+	dbTx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = dbTx.Rollback() }() //nolint:errcheck
+
+	if err := s.allocateIbkrTransactionTx(ctx, dbTx, transactionID, allocations); err != nil {
+		return err
+	}
+
+	if err := dbTx.Commit(); err != nil {
+		return fmt.Errorf("commit transaction: %w", err)
+	}
+
+	return nil
+}
+
+// BulkAllocateIbkrTransactions allocates multiple IBKR transactions using the same allocation split.
+// Each transaction is allocated in its own DB transaction so partial success is possible.
+func (s *IbkrService) BulkAllocateIbkrTransactions(ctx context.Context, req request.BulkAllocateRequest) model.BulkAllocateResponse {
+	resp := model.BulkAllocateResponse{Errors: []string{}}
+
+	for _, txID := range req.TransactionIDs {
+		if err := s.AllocateIbkrTransaction(ctx, txID, req.Allocations); err != nil {
+			resp.Failed++
+			resp.Errors = append(resp.Errors, fmt.Sprintf("%s: %s", txID, err.Error()))
+		} else {
+			resp.Success++
+		}
+	}
+
+	return resp
+}
+
+// unallocateIbkrTransactionTx performs unallocation within an existing DB transaction.
+// Deletes linked Transaction records and IBKRTransactionAllocation records, then resets
+// the IBKR transaction status to "pending".
+func (s *IbkrService) unallocateIbkrTransactionTx(ctx context.Context, dbTx *sql.Tx, transactionID string) error {
+	ibkrTx, err := s.ibkrRepo.WithTx(dbTx).GetIbkrTransaction(transactionID)
+	if err != nil {
+		return err
+	}
+
+	if ibkrTx.Status != "processed" {
+		return apperrors.ErrIBKRTransactionAlreadyProcessed
+	}
+
+	// Get linked transaction IDs before deleting allocations
+	txIDs, err := s.ibkrRepo.WithTx(dbTx).GetTransactionIDsByIbkrTransaction(ctx, transactionID)
+	if err != nil {
+		return fmt.Errorf("failed to get linked transaction IDs: %w", err)
+	}
+
+	// Delete allocations first (they FK to transactions)
+	if err := s.ibkrRepo.WithTx(dbTx).DeleteIbkrTransactionAllocations(ctx, transactionID); err != nil {
+		return fmt.Errorf("failed to delete allocations: %w", err)
+	}
+
+	// Delete the linked transactions
+	for _, txID := range txIDs {
+		if err := s.transactionRepo.WithTx(dbTx).DeleteTransaction(ctx, txID); err != nil {
+			return fmt.Errorf("failed to delete transaction %s: %w", txID, err)
+		}
+	}
+
+	if err := s.ibkrRepo.WithTx(dbTx).UpdateIbkrTransactionStatus(ctx, transactionID, "pending", nil); err != nil {
+		return fmt.Errorf("failed to reset transaction status: %w", err)
+	}
+
+	return nil
+}
+
+// UnallocateIbkrTransaction reverses the allocation of a processed IBKR transaction.
+// Deletes all linked Transaction and IBKRTransactionAllocation records, then resets
+// the status to "pending".
+func (s *IbkrService) UnallocateIbkrTransaction(ctx context.Context, transactionID string) error {
+	dbTx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = dbTx.Rollback() }() //nolint:errcheck
+
+	if err := s.unallocateIbkrTransactionTx(ctx, dbTx, transactionID); err != nil {
+		return err
+	}
+
+	if err := dbTx.Commit(); err != nil {
+		return fmt.Errorf("commit transaction: %w", err)
+	}
+
+	return nil
+}
+
+// ModifyAllocations atomically unallocates and reallocates an IBKR transaction with new allocation percentages.
+// Both operations run in a single DB transaction for atomicity.
+func (s *IbkrService) ModifyAllocations(ctx context.Context, transactionID string, allocations []request.AllocationEntry) error {
+	dbTx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = dbTx.Rollback() }() //nolint:errcheck
+
+	// Unallocate within this tx
+	if err := s.unallocateIbkrTransactionTx(ctx, dbTx, transactionID); err != nil {
+		return err
+	}
+
+	// Now reallocate within the same tx — we need to inline the allocate logic
+	// because AllocateIbkrTransaction opens its own tx.
+	if err := s.allocateIbkrTransactionTx(ctx, dbTx, transactionID, allocations); err != nil {
+		return err
+	}
+
+	if err := dbTx.Commit(); err != nil {
+		return fmt.Errorf("commit transaction: %w", err)
+	}
+
+	return nil
+}
+
+// allocateIbkrTransactionTx performs allocation within an existing DB transaction.
+// Contains the core allocation logic shared by AllocateIbkrTransaction and ModifyAllocations.
+//
+//nolint:gocyclo,funlen // Allocation orchestrator with per-portfolio loop, fee handling, and auto-allocate fallback.
+func (s *IbkrService) allocateIbkrTransactionTx(ctx context.Context, dbTx *sql.Tx, transactionID string, allocations []request.AllocationEntry) error {
+	ibkrTx, err := s.ibkrRepo.WithTx(dbTx).GetIbkrTransaction(transactionID)
+	if err != nil {
+		return err
+	}
+
+	if ibkrTx.Status != "pending" {
+		return apperrors.ErrIBKRTransactionAlreadyProcessed
+	}
+
+	// Auto-allocate fallback
+	if len(allocations) == 0 {
+		config, err := s.ibkrRepo.WithTx(dbTx).GetIbkrConfig()
+		if err != nil && !errors.Is(err, apperrors.ErrIbkrConfigNotFound) {
+			return err
+		}
+		if config != nil && config.DefaultAllocationEnabled && len(config.DefaultAllocations) > 0 {
+			allocations = make([]request.AllocationEntry, len(config.DefaultAllocations))
+			for i, a := range config.DefaultAllocations {
+				allocations[i] = request.AllocationEntry{
+					PortfolioID: a.PortfolioID,
+					Percentage:  a.Percentage,
+				}
+			}
+		}
+	}
+
+	if len(allocations) == 0 {
+		return apperrors.ErrIBKRInvalidAllocations
+	}
+
+	fund, err := s.findFundByISINOrSymbol(ibkrTx.ISIN, ibkrTx.Symbol)
+	if err != nil {
+		return err
+	}
+
+	now := time.Now().UTC()
+
+	for _, alloc := range allocations {
+		pf, err := s.pfRepo.WithTx(dbTx).GetPortfolioFundByPortfolioAndFund(alloc.PortfolioID, fund.ID)
+		if errors.Is(err, apperrors.ErrPortfolioFundNotFound) {
+			if err := s.pfRepo.WithTx(dbTx).InsertPortfolioFund(ctx, alloc.PortfolioID, fund.ID); err != nil {
+				return fmt.Errorf("failed to create portfolio_fund: %w", err)
+			}
+			pf, err = s.pfRepo.WithTx(dbTx).GetPortfolioFundByPortfolioAndFund(alloc.PortfolioID, fund.ID)
+			if err != nil {
+				return fmt.Errorf("failed to retrieve created portfolio_fund: %w", err)
+			}
+		} else if err != nil {
+			return err
+		}
+
+		pct := alloc.Percentage / 100.0
+		allocatedAmount := round(ibkrTx.TotalAmount * pct)
+		allocatedShares := round(ibkrTx.Quantity * pct)
+		allocatedFees := round(ibkrTx.Fees * pct)
+
+		txn := &model.Transaction{
+			ID:              uuid.New().String(),
+			PortfolioFundID: pf.ID,
+			Date:            ibkrTx.TransactionDate,
+			Type:            ibkrTx.TransactionType,
+			Shares:          allocatedShares,
+			CostPerShare:    ibkrTx.Price,
+			CreatedAt:       now,
+		}
+		if err := s.transactionRepo.WithTx(dbTx).InsertTransaction(ctx, txn); err != nil {
+			return fmt.Errorf("failed to insert transaction: %w", err)
+		}
+
+		tradeAlloc := model.IBKRTransactionAllocation{
+			ID:                   uuid.New().String(),
+			IBKRTransactionID:    transactionID,
+			PortfolioID:          alloc.PortfolioID,
+			AllocationPercentage: alloc.Percentage,
+			AllocatedAmount:      allocatedAmount,
+			AllocatedShares:      allocatedShares,
+			TransactionID:        txn.ID,
+			CreatedAt:            now,
+		}
+		if err := s.ibkrRepo.WithTx(dbTx).InsertIbkrTransactionAllocation(ctx, tradeAlloc); err != nil {
+			return fmt.Errorf("failed to insert trade allocation: %w", err)
+		}
+
+		if allocatedFees > 0 {
+			feeTxn := &model.Transaction{
+				ID:              uuid.New().String(),
+				PortfolioFundID: pf.ID,
+				Date:            ibkrTx.TransactionDate,
+				Type:            "fee",
+				Shares:          0,
+				CostPerShare:    allocatedFees,
+				CreatedAt:       now,
+			}
+			if err := s.transactionRepo.WithTx(dbTx).InsertTransaction(ctx, feeTxn); err != nil {
+				return fmt.Errorf("failed to insert fee transaction: %w", err)
+			}
+
+			feeAlloc := model.IBKRTransactionAllocation{
+				ID:                   uuid.New().String(),
+				IBKRTransactionID:    transactionID,
+				PortfolioID:          alloc.PortfolioID,
+				AllocationPercentage: alloc.Percentage,
+				AllocatedAmount:      allocatedFees,
+				AllocatedShares:      0,
+				TransactionID:        feeTxn.ID,
+				CreatedAt:            now,
+			}
+			if err := s.ibkrRepo.WithTx(dbTx).InsertIbkrTransactionAllocation(ctx, feeAlloc); err != nil {
+				return fmt.Errorf("failed to insert fee allocation: %w", err)
+			}
+		}
+	}
+
+	if err := s.ibkrRepo.WithTx(dbTx).UpdateIbkrTransactionStatus(ctx, transactionID, "processed", &now); err != nil {
+		return fmt.Errorf("failed to update transaction status: %w", err)
+	}
+
+	return nil
+}
+
+// MatchDividend links a processed IBKR transaction (DRIP) to pending dividend records.
+// The IBKR transaction must be allocated first (status "processed") so that Transaction records
+// exist. Each dividend's reinvestment_transaction_id is set to the allocation's transaction_id.
+//
+//nolint:gocyclo // Dividend matching with per-dividend portfolio lookup and validation.
+func (s *IbkrService) MatchDividend(ctx context.Context, transactionID string, dividendIDs []string) error {
+	dbTx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = dbTx.Rollback() }() //nolint:errcheck
+
+	ibkrTx, err := s.ibkrRepo.WithTx(dbTx).GetIbkrTransaction(transactionID)
+	if err != nil {
+		return err
+	}
+
+	if ibkrTx.Status != "processed" {
+		return fmt.Errorf("%w: transaction must be allocated before matching dividends", apperrors.ErrIBKRTransactionAlreadyProcessed)
+	}
+
+	if !strings.Contains(ibkrTx.Notes, "R") {
+		log.Printf("warning: IBKR transaction %s notes field does not contain 'R' (DRIP code), notes: %q", transactionID, ibkrTx.Notes)
+	}
+
+	allocationDetails, err := s.ibkrRepo.WithTx(dbTx).GetIbkrTransactionAllocations(transactionID)
+	if err != nil {
+		return fmt.Errorf("failed to get allocations: %w", err)
+	}
+
+	portfolioToTxID := make(map[string]string)
+	for _, a := range allocationDetails {
+		if a.Type != "fee" && a.TransactionID != "" {
+			portfolioToTxID[a.PortfolioID] = a.TransactionID
+		}
+	}
+
+	for _, dividendID := range dividendIDs {
+		dividend, err := s.dividendRepo.WithTx(dbTx).GetDividend(dividendID)
+		if err != nil {
+			return fmt.Errorf("failed to get dividend %s: %w", dividendID, err)
+		}
+
+		if dividend.ReinvestmentTransactionID != "" {
+			return fmt.Errorf("dividend %s already matched to transaction %s", dividendID, dividend.ReinvestmentTransactionID)
+		}
+
+		pf, err := s.pfRepo.WithTx(dbTx).GetPortfolioFund(dividend.PortfolioFundID)
+		if err != nil {
+			return fmt.Errorf("failed to get portfolio_fund for dividend %s: %w", dividendID, err)
+		}
+
+		allocTxID, ok := portfolioToTxID[pf.PortfolioID]
+		if !ok {
+			return fmt.Errorf("no allocation found for portfolio %s (dividend %s)", pf.PortfolioID, dividendID)
+		}
+
+		dividend.ReinvestmentTransactionID = allocTxID
+		dividend.BuyOrderDate = ibkrTx.TransactionDate
+		dividend.ReinvestmentStatus = "COMPLETED"
+
+		if err := s.dividendRepo.WithTx(dbTx).UpdateDividend(ctx, &dividend); err != nil {
+			return fmt.Errorf("failed to update dividend %s: %w", dividendID, err)
+		}
+	}
+
+	if err := dbTx.Commit(); err != nil {
+		return fmt.Errorf("commit transaction: %w", err)
+	}
+
+	return nil
 }

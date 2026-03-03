@@ -102,6 +102,88 @@ func ValidateTestConnection(req request.TestIbkrConnectionRequest) error {
 	return nil
 }
 
+// ValidateAllocateTransaction validates an allocation request.
+// Ensures percentages sum to 100 (±0.01), each entry has a valid UUID and positive percentage.
+func ValidateAllocateTransaction(allocations []request.AllocationEntry) error {
+	errors := make(map[string]string)
+
+	if len(allocations) == 0 {
+		errors["allocations"] = "at least one allocation is required"
+		return &Error{Fields: errors}
+	}
+
+	var total float64
+	for i, a := range allocations {
+		if a.PortfolioID == "" {
+			errors[fmt.Sprintf("allocations[%d].portfolioId", i)] = "portfolioId is required"
+		} else if err := ValidateUUID(a.PortfolioID); err != nil {
+			errors[fmt.Sprintf("allocations[%d].portfolioId", i)] = "invalid UUID format"
+		}
+
+		if a.Percentage <= 0 {
+			errors[fmt.Sprintf("allocations[%d].percentage", i)] = "percentage must be positive"
+		}
+		total += a.Percentage
+	}
+
+	if len(errors) == 0 && math.Abs(total-100) > 0.01 {
+		errors["allocations"] = "allocations must sum to 100%"
+	}
+
+	if len(errors) > 0 {
+		return &Error{Fields: errors}
+	}
+	return nil
+}
+
+// ValidateBulkAllocate validates a bulk allocation request.
+// Requires at least one transaction ID and valid allocation entries.
+func ValidateBulkAllocate(req request.BulkAllocateRequest) error {
+	errors := make(map[string]string)
+
+	if len(req.TransactionIDs) == 0 {
+		errors["transactionIds"] = "at least one transaction ID is required"
+	}
+
+	for i, id := range req.TransactionIDs {
+		if err := ValidateUUID(id); err != nil {
+			errors[fmt.Sprintf("transactionIds[%d]", i)] = "invalid UUID format"
+		}
+	}
+
+	if len(errors) > 0 {
+		return &Error{Fields: errors}
+	}
+
+	// Allocations are optional for bulk (auto-allocate may apply)
+	if len(req.Allocations) > 0 {
+		return ValidateAllocateTransaction(req.Allocations)
+	}
+
+	return nil
+}
+
+// ValidateMatchDividend validates a match-dividend request.
+// Requires at least one dividend ID, each being a valid UUID.
+func ValidateMatchDividend(req request.MatchDividendRequest) error {
+	errors := make(map[string]string)
+
+	if len(req.DividendIDs) == 0 {
+		errors["dividendIds"] = "at least one dividend ID is required"
+	}
+
+	for i, id := range req.DividendIDs {
+		if err := ValidateUUID(id); err != nil {
+			errors[fmt.Sprintf("dividendIds[%d]", i)] = "invalid UUID format"
+		}
+	}
+
+	if len(errors) > 0 {
+		return &Error{Fields: errors}
+	}
+	return nil
+}
+
 // validateFlexToken returns true if flexToken consists entirely of ASCII digits.
 // strconv.Atoi is not used here: a 19-digit number overflows int64. The token is 23 or larger.
 // Validate digit-by-digit instead.

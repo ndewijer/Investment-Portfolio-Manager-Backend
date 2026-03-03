@@ -5,7 +5,7 @@ A personal learning project rebuilding the Investment Portfolio Manager backend 
 **Important:** This backend is being built **manually by me, not AI-generated**. Every line of code is written to understand Go fundamentals, patterns, and best practices. The implementation follows a phased approach starting with raw `database/sql` to learn the foundations before migrating to modern tools like `sqlc` and Atlas.
 
 ## Project Status
-🚧 **In Active Development** - 83% complete (60/72 endpoints implemented)
+🚧 **In Active Development** - 100% complete (72/72 endpoints implemented)
 
 This is a ground-up rewrite of the [Investment Portfolio Manager backend](https://github.com/ndewijer/Investment-Portfolio-Manager) from Python/Flask to Go. The goal is to achieve feature parity while learning Go idioms, patterns, and ecosystem.
 
@@ -77,7 +77,7 @@ This backend aims to replicate all 73 endpoints from the Python backend. Below i
 │   ├── PUT    /{id}                            ✅ Update dividend
 │   └── DELETE /{id}                            ✅ Delete dividend
 │
-├── /ibkr (7/19 endpoints) ⬜
+├── /ibkr (19/19 endpoints) ✅
 │   ├── POST    /config                                    ✅ Create or update IBKR configuration
 │   ├── GET     /config                                    ✅ Get IBKR configuration status
 │   ├── DELETE  /config                                    ✅ Delete IBKR configuration
@@ -85,17 +85,17 @@ This backend aims to replicate all 73 endpoints from the Python backend. Below i
 │   ├── GET     /dividend/pending                          ✅ Get pending dividend records for matching
 │   ├── POST    /import                                    ✅ Trigger IBKR import mechanism
 │   ├── GET     /inbox                                     ✅ List IBKR imported transactions
-│   ├── POST    /inbox/bulk-allocate                       ⬜ Allocate multiple IBKR transactions with same allocations
+│   ├── POST    /inbox/bulk-allocate                       ✅ Allocate multiple IBKR transactions with same allocations
 │   ├── GET     /inbox/count                               ✅ Get count of IBKR transactions
-│   ├── GET     /inbox/{transactionId}                     ⬜ Get IBKR transaction details
-│   ├── DELETE  /inbox/{transactionId}                     ⬜ Delete IBKR transaction
-│   ├── POST    /inbox/{transactionId}/allocate            ⬜ Allocate IBKR transaction to portfolios
+│   ├── GET     /inbox/{transactionId}                     ✅ Get IBKR transaction details
+│   ├── DELETE  /inbox/{transactionId}                     ✅ Delete IBKR transaction
+│   ├── POST    /inbox/{transactionId}/allocate            ✅ Allocate IBKR transaction to portfolios
 │   ├── GET     /inbox/{transactionId}/allocations         ✅ Get allocation details for a processed IBKR transaction
-│   ├── PUT     /inbox/{transactionId}/allocations         ⬜ Modify allocation percentages for a processed IBKR transaction
+│   ├── PUT     /inbox/{transactionId}/allocations         ✅ Modify allocation percentages for a processed IBKR transaction
 │   ├── GET     /inbox/{transactionId}/eligible-portfolios ✅ Get eligible portfolios for allocating this transaction
-│   ├── POST    /inbox/{transactionId}/ignore              ⬜ Mark IBKR transaction as ignored
-│   ├── POST    /inbox/{transactionId}/match-dividend      ⬜ Match IBKR dividend transaction to existing dividend records
-│   ├── POST    /inbox/{transactionId}/unallocate          ⬜ Unallocate a processed IBKR transaction
+│   ├── POST    /inbox/{transactionId}/ignore              ✅ Mark IBKR transaction as ignored
+│   ├── POST    /inbox/{transactionId}/match-dividend      ✅ Match IBKR dividend transaction to existing dividend records
+│   ├── POST    /inbox/{transactionId}/unallocate          ✅ Unallocate a processed IBKR transaction
 │   └── GET     /portfolios                                ✅ Get available portfolios for transaction allocation
 │
 └── /developer (12/12 endpoints) ✅
@@ -113,7 +113,7 @@ This backend aims to replicate all 73 endpoints from the Python backend. Below i
     └── PUT /system-settings/logging      ✅ Update logging configuration settings
 
 Legend: ✅ Implemented | 🚧 In Progress | ⬜ Planned
-Overall Progress: 60/72 endpoints (83%)
+Overall Progress: 72/72 endpoints (100%)
 ```
 
 ## Quick Start

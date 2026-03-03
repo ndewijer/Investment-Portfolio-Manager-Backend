@@ -295,3 +295,263 @@ func (h *IbkrHandler) TestIbkrConnection(w http.ResponseWriter, r *http.Request)
 	}
 	response.RespondJSON(w, http.StatusOK, map[string]bool{"success": true})
 }
+
+// GetTransaction handles GET /api/ibkr/inbox/{uuid}
+// Retrieves a single IBKR transaction with its allocation details (if processed).
+//
+// Responses:
+//   - 200: Success with transaction detail
+//   - 404: Transaction not found
+//   - 500: Internal server error
+func (h *IbkrHandler) GetTransaction(w http.ResponseWriter, r *http.Request) {
+	transactionID := chi.URLParam(r, "uuid")
+
+	detail, err := h.ibkrService.GetIbkrTransactionDetail(transactionID)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrIBKRTransactionNotFound) {
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrIBKRTransactionNotFound.Error(), err.Error())
+			return
+		}
+		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToGetIbkrTransaction.Error(), err.Error())
+		return
+	}
+
+	response.RespondJSON(w, http.StatusOK, detail)
+}
+
+// DeleteTransaction handles DELETE /api/ibkr/inbox/{uuid}
+// Removes a pending IBKR transaction. Returns 400 if already processed.
+//
+// Responses:
+//   - 204: Successfully deleted
+//   - 400: Transaction already processed
+//   - 404: Transaction not found
+//   - 500: Internal server error
+func (h *IbkrHandler) DeleteTransaction(w http.ResponseWriter, r *http.Request) {
+	transactionID := chi.URLParam(r, "uuid")
+
+	err := h.ibkrService.DeleteIbkrTransaction(r.Context(), transactionID)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrIBKRTransactionNotFound) {
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrIBKRTransactionNotFound.Error(), err.Error())
+			return
+		}
+		if errors.Is(err, apperrors.ErrIBKRTransactionAlreadyProcessed) {
+			response.RespondError(w, http.StatusBadRequest, apperrors.ErrIBKRTransactionAlreadyProcessed.Error(), err.Error())
+			return
+		}
+		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToDeleteIbkrTransaction.Error(), err.Error())
+		return
+	}
+
+	response.RespondJSON(w, http.StatusNoContent, nil)
+}
+
+// IgnoreTransaction handles POST /api/ibkr/inbox/{uuid}/ignore
+// Marks a pending IBKR transaction as ignored. Returns 400 if already processed.
+//
+// Responses:
+//   - 200: Successfully ignored
+//   - 400: Transaction already processed
+//   - 404: Transaction not found
+//   - 500: Internal server error
+func (h *IbkrHandler) IgnoreTransaction(w http.ResponseWriter, r *http.Request) {
+	transactionID := chi.URLParam(r, "uuid")
+
+	err := h.ibkrService.IgnoreIbkrTransaction(r.Context(), transactionID)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrIBKRTransactionNotFound) {
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrIBKRTransactionNotFound.Error(), err.Error())
+			return
+		}
+		if errors.Is(err, apperrors.ErrIBKRTransactionAlreadyProcessed) {
+			response.RespondError(w, http.StatusBadRequest, apperrors.ErrIBKRTransactionAlreadyProcessed.Error(), err.Error())
+			return
+		}
+		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToIgnoreIbkrTransaction.Error(), err.Error())
+		return
+	}
+
+	response.RespondJSON(w, http.StatusOK, map[string]bool{"success": true})
+}
+
+// AllocateTransaction handles POST /api/ibkr/inbox/{uuid}/allocate
+// Allocates a pending IBKR transaction to portfolios. Allocations are optional — if omitted
+// and default allocation is enabled in config, the defaults are used.
+//
+// Responses:
+//   - 200: Successfully allocated
+//   - 400: Validation error, already processed, or no fund match
+//   - 404: Transaction not found
+//   - 500: Internal server error
+func (h *IbkrHandler) AllocateTransaction(w http.ResponseWriter, r *http.Request) {
+	transactionID := chi.URLParam(r, "uuid")
+
+	req, err := parseJSON[request.AllocateTransactionRequest](r)
+	if err != nil {
+		response.RespondError(w, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
+
+	// Validate allocations only if provided (empty means auto-allocate)
+	if len(req.Allocations) > 0 {
+		if err := validation.ValidateAllocateTransaction(req.Allocations); err != nil {
+			response.RespondError(w, http.StatusBadRequest, "validation failed", err.Error())
+			return
+		}
+	}
+
+	err = h.ibkrService.AllocateIbkrTransaction(r.Context(), transactionID, req.Allocations)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrIBKRTransactionNotFound) {
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrIBKRTransactionNotFound.Error(), err.Error())
+			return
+		}
+		if errors.Is(err, apperrors.ErrIBKRTransactionAlreadyProcessed) ||
+			errors.Is(err, apperrors.ErrIBKRInvalidAllocations) ||
+			errors.Is(err, apperrors.ErrIBKRFundNotMatched) {
+			response.RespondError(w, http.StatusBadRequest, err.Error(), err.Error())
+			return
+		}
+		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToAllocateIbkrTransaction.Error(), err.Error())
+		return
+	}
+
+	response.RespondJSON(w, http.StatusOK, map[string]bool{"success": true})
+}
+
+// BulkAllocate handles POST /api/ibkr/inbox/bulk-allocate
+// Allocates multiple IBKR transactions using the same allocation split.
+// Each transaction is processed independently — partial success is possible.
+//
+// Responses:
+//   - 200: Results with success/failed counts and error details
+//   - 400: Validation error
+func (h *IbkrHandler) BulkAllocate(w http.ResponseWriter, r *http.Request) {
+	req, err := parseJSON[request.BulkAllocateRequest](r)
+	if err != nil {
+		response.RespondError(w, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
+
+	if err := validation.ValidateBulkAllocate(req); err != nil {
+		response.RespondError(w, http.StatusBadRequest, "validation failed", err.Error())
+		return
+	}
+
+	result := h.ibkrService.BulkAllocateIbkrTransactions(r.Context(), req)
+
+	response.RespondJSON(w, http.StatusOK, result)
+}
+
+// ModifyAllocations handles PUT /api/ibkr/inbox/{uuid}/allocations
+// Atomically unallocates and reallocates a processed IBKR transaction with new percentages.
+//
+// Responses:
+//   - 200: Successfully modified
+//   - 400: Validation error or transaction not processed
+//   - 404: Transaction not found
+//   - 500: Internal server error
+func (h *IbkrHandler) ModifyAllocations(w http.ResponseWriter, r *http.Request) {
+	transactionID := chi.URLParam(r, "uuid")
+
+	req, err := parseJSON[request.ModifyAllocationsRequest](r)
+	if err != nil {
+		response.RespondError(w, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
+
+	if err := validation.ValidateAllocateTransaction(req.Allocations); err != nil {
+		response.RespondError(w, http.StatusBadRequest, "validation failed", err.Error())
+		return
+	}
+
+	err = h.ibkrService.ModifyAllocations(r.Context(), transactionID, req.Allocations)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrIBKRTransactionNotFound) {
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrIBKRTransactionNotFound.Error(), err.Error())
+			return
+		}
+		if errors.Is(err, apperrors.ErrIBKRTransactionAlreadyProcessed) {
+			response.RespondError(w, http.StatusBadRequest, apperrors.ErrIBKRTransactionAlreadyProcessed.Error(), err.Error())
+			return
+		}
+		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToModifyAllocations.Error(), err.Error())
+		return
+	}
+
+	response.RespondJSON(w, http.StatusOK, map[string]bool{"success": true})
+}
+
+// UnallocateTransaction handles POST /api/ibkr/inbox/{uuid}/unallocate
+// Reverses the allocation of a processed IBKR transaction, deleting linked Transaction
+// and allocation records and resetting the status to "pending".
+//
+// Responses:
+//   - 200: Successfully unallocated
+//   - 400: Transaction not processed
+//   - 404: Transaction not found
+//   - 500: Internal server error
+func (h *IbkrHandler) UnallocateTransaction(w http.ResponseWriter, r *http.Request) {
+	transactionID := chi.URLParam(r, "uuid")
+
+	err := h.ibkrService.UnallocateIbkrTransaction(r.Context(), transactionID)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrIBKRTransactionNotFound) {
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrIBKRTransactionNotFound.Error(), err.Error())
+			return
+		}
+		if errors.Is(err, apperrors.ErrIBKRTransactionAlreadyProcessed) {
+			response.RespondError(w, http.StatusBadRequest, apperrors.ErrIBKRTransactionAlreadyProcessed.Error(), err.Error())
+			return
+		}
+		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToUnallocateIbkrTransaction.Error(), err.Error())
+		return
+	}
+
+	response.RespondJSON(w, http.StatusOK, map[string]bool{"success": true})
+}
+
+// MatchDividend handles POST /api/ibkr/inbox/{uuid}/match-dividend
+// Links a processed IBKR transaction (DRIP) to pending dividend records.
+// The transaction must be allocated first.
+//
+// Responses:
+//   - 200: Successfully matched
+//   - 400: Validation error, transaction not processed, or dividend already matched
+//   - 404: Transaction or dividend not found
+//   - 500: Internal server error
+func (h *IbkrHandler) MatchDividend(w http.ResponseWriter, r *http.Request) {
+	transactionID := chi.URLParam(r, "uuid")
+
+	req, err := parseJSON[request.MatchDividendRequest](r)
+	if err != nil {
+		response.RespondError(w, http.StatusBadRequest, "invalid request body", err.Error())
+		return
+	}
+
+	if err := validation.ValidateMatchDividend(req); err != nil {
+		response.RespondError(w, http.StatusBadRequest, "validation failed", err.Error())
+		return
+	}
+
+	err = h.ibkrService.MatchDividend(r.Context(), transactionID, req.DividendIDs)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrIBKRTransactionNotFound) {
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrIBKRTransactionNotFound.Error(), err.Error())
+			return
+		}
+		if errors.Is(err, apperrors.ErrDividendNotFound) {
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrDividendNotFound.Error(), err.Error())
+			return
+		}
+		if errors.Is(err, apperrors.ErrIBKRTransactionAlreadyProcessed) {
+			response.RespondError(w, http.StatusBadRequest, err.Error(), err.Error())
+			return
+		}
+		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToMatchDividend.Error(), err.Error())
+		return
+	}
+
+	response.RespondJSON(w, http.StatusOK, map[string]bool{"success": true})
+}

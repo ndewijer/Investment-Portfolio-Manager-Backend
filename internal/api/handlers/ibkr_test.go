@@ -1672,3 +1672,1077 @@ func TestIbkrHandler_TestIbkrConnection(t *testing.T) {
 	})
 
 }
+
+func TestIbkrHandler_GetTransaction(t *testing.T) {
+	setupHandler := func(t *testing.T) (*IbkrHandler, *sql.DB) {
+		t.Helper()
+		db := testutil.SetupTestDB(t)
+		is := testutil.NewTestIbkrService(t, db)
+		return NewIbkrHandler(is), db
+	}
+
+	t.Run("returns pending transaction without allocations", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		ibkrTx := testutil.NewIBKRTransaction().Build(t, db)
+
+		req := testutil.NewRequestWithURLParams(
+			http.MethodGet,
+			"/api/ibkr/inbox/"+ibkrTx.ID,
+			map[string]string{"uuid": ibkrTx.ID},
+		)
+		w := httptest.NewRecorder()
+
+		handler.GetTransaction(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var response model.IBKRTransactionDetail
+		//nolint:errcheck
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if response.ID != ibkrTx.ID {
+			t.Errorf("Expected ID %s, got %s", ibkrTx.ID, response.ID)
+		}
+		if len(response.Allocations) != 0 {
+			t.Errorf("Expected 0 allocations for pending tx, got %d", len(response.Allocations))
+		}
+	})
+
+	t.Run("returns 404 when transaction not found", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		nonExistentID := testutil.MakeID()
+		req := testutil.NewRequestWithURLParams(
+			http.MethodGet,
+			"/api/ibkr/inbox/"+nonExistentID,
+			map[string]string{"uuid": nonExistentID},
+		)
+		w := httptest.NewRecorder()
+
+		handler.GetTransaction(w, req)
+
+		if w.Code != http.StatusNotFound {
+			t.Errorf("Expected 404, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("returns 500 on database error", func(t *testing.T) {
+		handler, db := setupHandler(t)
+		db.Close()
+
+		id := testutil.MakeID()
+		req := testutil.NewRequestWithURLParams(
+			http.MethodGet,
+			"/api/ibkr/inbox/"+id,
+			map[string]string{"uuid": id},
+		)
+		w := httptest.NewRecorder()
+
+		handler.GetTransaction(w, req)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Errorf("Expected 500, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+}
+
+func TestIbkrHandler_DeleteTransaction(t *testing.T) {
+	setupHandler := func(t *testing.T) (*IbkrHandler, *sql.DB) {
+		t.Helper()
+		db := testutil.SetupTestDB(t)
+		is := testutil.NewTestIbkrService(t, db)
+		return NewIbkrHandler(is), db
+	}
+
+	t.Run("deletes pending transaction successfully", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		ibkrTx := testutil.NewIBKRTransaction().Build(t, db)
+
+		req := testutil.NewRequestWithURLParams(
+			http.MethodDelete,
+			"/api/ibkr/inbox/"+ibkrTx.ID,
+			map[string]string{"uuid": ibkrTx.ID},
+		)
+		w := httptest.NewRecorder()
+
+		handler.DeleteTransaction(w, req)
+
+		if w.Code != http.StatusNoContent {
+			t.Errorf("Expected 204, got %d: %s", w.Code, w.Body.String())
+		}
+
+		// Verify deleted from DB
+		var count int
+		err := db.QueryRow(`SELECT COUNT(*) FROM ibkr_transaction WHERE id = ?`, ibkrTx.ID).Scan(&count)
+		if err != nil {
+			t.Fatalf("Failed to count: %v", err)
+		}
+		if count != 0 {
+			t.Errorf("Expected 0 rows after delete, got %d", count)
+		}
+	})
+
+	t.Run("returns 400 when transaction is processed", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		ibkrTx := testutil.NewIBKRTransaction().WithStatus("processed").Build(t, db)
+
+		req := testutil.NewRequestWithURLParams(
+			http.MethodDelete,
+			"/api/ibkr/inbox/"+ibkrTx.ID,
+			map[string]string{"uuid": ibkrTx.ID},
+		)
+		w := httptest.NewRecorder()
+
+		handler.DeleteTransaction(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("returns 404 when transaction not found", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		nonExistentID := testutil.MakeID()
+		req := testutil.NewRequestWithURLParams(
+			http.MethodDelete,
+			"/api/ibkr/inbox/"+nonExistentID,
+			map[string]string{"uuid": nonExistentID},
+		)
+		w := httptest.NewRecorder()
+
+		handler.DeleteTransaction(w, req)
+
+		if w.Code != http.StatusNotFound {
+			t.Errorf("Expected 404, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+}
+
+func TestIbkrHandler_IgnoreTransaction(t *testing.T) {
+	setupHandler := func(t *testing.T) (*IbkrHandler, *sql.DB) {
+		t.Helper()
+		db := testutil.SetupTestDB(t)
+		is := testutil.NewTestIbkrService(t, db)
+		return NewIbkrHandler(is), db
+	}
+
+	t.Run("ignores pending transaction successfully", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		ibkrTx := testutil.NewIBKRTransaction().Build(t, db)
+
+		req := testutil.NewRequestWithURLParams(
+			http.MethodPost,
+			"/api/ibkr/inbox/"+ibkrTx.ID+"/ignore",
+			map[string]string{"uuid": ibkrTx.ID},
+		)
+		w := httptest.NewRecorder()
+
+		handler.IgnoreTransaction(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+
+		// Verify status changed
+		var status string
+		err := db.QueryRow(`SELECT status FROM ibkr_transaction WHERE id = ?`, ibkrTx.ID).Scan(&status)
+		if err != nil {
+			t.Fatalf("Failed to query status: %v", err)
+		}
+		if status != "ignored" {
+			t.Errorf("Expected status 'ignored', got '%s'", status)
+		}
+	})
+
+	t.Run("returns 400 when transaction is processed", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		ibkrTx := testutil.NewIBKRTransaction().WithStatus("processed").Build(t, db)
+
+		req := testutil.NewRequestWithURLParams(
+			http.MethodPost,
+			"/api/ibkr/inbox/"+ibkrTx.ID+"/ignore",
+			map[string]string{"uuid": ibkrTx.ID},
+		)
+		w := httptest.NewRecorder()
+
+		handler.IgnoreTransaction(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("returns 404 when transaction not found", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		nonExistentID := testutil.MakeID()
+		req := testutil.NewRequestWithURLParams(
+			http.MethodPost,
+			"/api/ibkr/inbox/"+nonExistentID+"/ignore",
+			map[string]string{"uuid": nonExistentID},
+		)
+		w := httptest.NewRecorder()
+
+		handler.IgnoreTransaction(w, req)
+
+		if w.Code != http.StatusNotFound {
+			t.Errorf("Expected 404, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+}
+
+//nolint:gocyclo // Comprehensive integration test with multiple subtests
+func TestIbkrHandler_AllocateTransaction(t *testing.T) {
+	setupHandler := func(t *testing.T) (*IbkrHandler, *sql.DB) {
+		t.Helper()
+		db := testutil.SetupTestDB(t)
+		is := testutil.NewTestIbkrService(t, db)
+		return NewIbkrHandler(is), db
+	}
+
+	t.Run("allocates transaction to single portfolio", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		fund := testutil.NewFund().WithISIN("US0378331005").WithSymbol("AAPL").Build(t, db)
+		testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+
+		ibkrTx := testutil.NewIBKRTransaction().
+			WithISIN("US0378331005").WithSymbol("AAPL").
+			WithQuantity(10).WithPrice(150.00).WithTotalAmount(1500.00).WithFees(1.00).
+			Build(t, db)
+
+		body := `{"allocations":[{"portfolioId":"` + portfolio.ID + `","percentage":100}]}`
+		req := testutil.NewRequestWithURLParamsAndBody(
+			http.MethodPost,
+			"/api/ibkr/inbox/"+ibkrTx.ID+"/allocate",
+			map[string]string{"uuid": ibkrTx.ID},
+			body,
+		)
+		w := httptest.NewRecorder()
+
+		handler.AllocateTransaction(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+
+		// Verify status changed to processed
+		var status string
+		err := db.QueryRow(`SELECT status FROM ibkr_transaction WHERE id = ?`, ibkrTx.ID).Scan(&status)
+		if err != nil {
+			t.Fatalf("Failed to query status: %v", err)
+		}
+		if status != "processed" {
+			t.Errorf("Expected status 'processed', got '%s'", status)
+		}
+
+		// Verify allocation records created
+		var allocCount int
+		err = db.QueryRow(`SELECT COUNT(*) FROM ibkr_transaction_allocation WHERE ibkr_transaction_id = ?`, ibkrTx.ID).Scan(&allocCount)
+		if err != nil {
+			t.Fatalf("Failed to count allocations: %v", err)
+		}
+		// Should have 2 allocations: 1 trade + 1 fee (fees=1.00 > 0)
+		if allocCount != 2 {
+			t.Errorf("Expected 2 allocation records (trade+fee), got %d", allocCount)
+		}
+
+		// Verify transaction records created
+		var txCount int
+		err = db.QueryRow(`SELECT COUNT(*) FROM "transaction" t JOIN ibkr_transaction_allocation ita ON t.id = ita.transaction_id WHERE ita.ibkr_transaction_id = ?`, ibkrTx.ID).Scan(&txCount)
+		if err != nil {
+			t.Fatalf("Failed to count transactions: %v", err)
+		}
+		if txCount != 2 {
+			t.Errorf("Expected 2 transaction records, got %d", txCount)
+		}
+	})
+
+	t.Run("allocates to multiple portfolios", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		portfolio1 := testutil.NewPortfolio().Build(t, db)
+		portfolio2 := testutil.NewPortfolio().Build(t, db)
+		fund := testutil.NewFund().WithISIN("US02079K3059").WithSymbol("GOOGL").Build(t, db)
+		testutil.NewPortfolioFund(portfolio1.ID, fund.ID).Build(t, db)
+		testutil.NewPortfolioFund(portfolio2.ID, fund.ID).Build(t, db)
+
+		ibkrTx := testutil.NewIBKRTransaction().
+			WithISIN("US02079K3059").WithSymbol("GOOGL").
+			WithQuantity(10).WithPrice(200.00).WithTotalAmount(2000.00).WithFees(0).
+			Build(t, db)
+
+		body := `{"allocations":[` +
+			`{"portfolioId":"` + portfolio1.ID + `","percentage":60},` +
+			`{"portfolioId":"` + portfolio2.ID + `","percentage":40}` +
+			`]}`
+		req := testutil.NewRequestWithURLParamsAndBody(
+			http.MethodPost,
+			"/api/ibkr/inbox/"+ibkrTx.ID+"/allocate",
+			map[string]string{"uuid": ibkrTx.ID},
+			body,
+		)
+		w := httptest.NewRecorder()
+
+		handler.AllocateTransaction(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+
+		// Verify 2 trade allocations (no fee since fees=0)
+		var allocCount int
+		err := db.QueryRow(`SELECT COUNT(*) FROM ibkr_transaction_allocation WHERE ibkr_transaction_id = ?`, ibkrTx.ID).Scan(&allocCount)
+		if err != nil {
+			t.Fatalf("Failed to count allocations: %v", err)
+		}
+		if allocCount != 2 {
+			t.Errorf("Expected 2 allocation records (no fee), got %d", allocCount)
+		}
+	})
+
+	t.Run("creates portfolio_fund if not exists", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		fund := testutil.NewFund().WithISIN("US5949181045").WithSymbol("MSFT").Build(t, db)
+		// Deliberately NOT creating portfolio_fund — allocate should create it
+
+		ibkrTx := testutil.NewIBKRTransaction().
+			WithISIN("US5949181045").WithSymbol("MSFT").
+			WithQuantity(5).WithPrice(400.00).WithTotalAmount(2000.00).WithFees(0).
+			Build(t, db)
+
+		body := `{"allocations":[{"portfolioId":"` + portfolio.ID + `","percentage":100}]}`
+		req := testutil.NewRequestWithURLParamsAndBody(
+			http.MethodPost,
+			"/api/ibkr/inbox/"+ibkrTx.ID+"/allocate",
+			map[string]string{"uuid": ibkrTx.ID},
+			body,
+		)
+		w := httptest.NewRecorder()
+
+		handler.AllocateTransaction(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+
+		// Verify portfolio_fund was created
+		var pfCount int
+		err := db.QueryRow(`SELECT COUNT(*) FROM portfolio_fund WHERE portfolio_id = ? AND fund_id = ?`,
+			portfolio.ID, fund.ID).Scan(&pfCount)
+		if err != nil {
+			t.Fatalf("Failed to count portfolio_fund: %v", err)
+		}
+		if pfCount != 1 {
+			t.Errorf("Expected portfolio_fund to be created, got %d", pfCount)
+		}
+	})
+
+	t.Run("auto-allocates from config defaults", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		fund := testutil.NewFund().WithISIN("IE00B4L5Y983").WithSymbol("IWDA").Build(t, db)
+		testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+
+		// Set up config with default allocations
+		configID := testutil.MakeID()
+		allocJSON := fmt.Sprintf(`[{"portfolioId":"%s","percentage":100}]`, portfolio.ID)
+		_, err := db.Exec(`
+			INSERT INTO ibkr_config (
+				id, flex_token, flex_query_id, auto_import_enabled, enabled,
+				default_allocation_enabled, default_allocations, created_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+		`, configID, "token", "12345", false, true, true, allocJSON)
+		if err != nil {
+			t.Fatalf("Failed to insert config: %v", err)
+		}
+
+		ibkrTx := testutil.NewIBKRTransaction().
+			WithISIN("IE00B4L5Y983").WithSymbol("IWDA").
+			WithQuantity(20).WithPrice(80.00).WithTotalAmount(1600.00).WithFees(0).
+			Build(t, db)
+
+		// Empty allocations = auto-allocate
+		body := `{"allocations":[]}`
+		req := testutil.NewRequestWithURLParamsAndBody(
+			http.MethodPost,
+			"/api/ibkr/inbox/"+ibkrTx.ID+"/allocate",
+			map[string]string{"uuid": ibkrTx.ID},
+			body,
+		)
+		w := httptest.NewRecorder()
+
+		handler.AllocateTransaction(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var status string
+		err = db.QueryRow(`SELECT status FROM ibkr_transaction WHERE id = ?`, ibkrTx.ID).Scan(&status)
+		if err != nil {
+			t.Fatalf("Failed to query status: %v", err)
+		}
+		if status != "processed" {
+			t.Errorf("Expected status 'processed', got '%s'", status)
+		}
+	})
+
+	t.Run("returns 400 when transaction is already processed", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		ibkrTx := testutil.NewIBKRTransaction().WithStatus("processed").Build(t, db)
+
+		body := `{"allocations":[{"portfolioId":"` + testutil.MakeID() + `","percentage":100}]}`
+		req := testutil.NewRequestWithURLParamsAndBody(
+			http.MethodPost,
+			"/api/ibkr/inbox/"+ibkrTx.ID+"/allocate",
+			map[string]string{"uuid": ibkrTx.ID},
+			body,
+		)
+		w := httptest.NewRecorder()
+
+		handler.AllocateTransaction(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("returns 400 when fund not matched", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		ibkrTx := testutil.NewIBKRTransaction().
+			WithISIN("UNKNOWN_ISIN").WithSymbol("UNKNOWN").
+			Build(t, db)
+
+		body := `{"allocations":[{"portfolioId":"` + testutil.MakeID() + `","percentage":100}]}`
+		req := testutil.NewRequestWithURLParamsAndBody(
+			http.MethodPost,
+			"/api/ibkr/inbox/"+ibkrTx.ID+"/allocate",
+			map[string]string{"uuid": ibkrTx.ID},
+			body,
+		)
+		w := httptest.NewRecorder()
+
+		handler.AllocateTransaction(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("returns 400 when allocations do not sum to 100", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		ibkrTx := testutil.NewIBKRTransaction().Build(t, db)
+
+		body := `{"allocations":[{"portfolioId":"` + testutil.MakeID() + `","percentage":50}]}`
+		req := testutil.NewRequestWithURLParamsAndBody(
+			http.MethodPost,
+			"/api/ibkr/inbox/"+ibkrTx.ID+"/allocate",
+			map[string]string{"uuid": ibkrTx.ID},
+			body,
+		)
+		w := httptest.NewRecorder()
+
+		handler.AllocateTransaction(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400 for invalid allocation sum, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("returns 400 on invalid JSON body", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		ibkrTx := testutil.NewIBKRTransaction().Build(t, db)
+
+		req := testutil.NewRequestWithURLParamsAndBody(
+			http.MethodPost,
+			"/api/ibkr/inbox/"+ibkrTx.ID+"/allocate",
+			map[string]string{"uuid": ibkrTx.ID},
+			`{invalid}`,
+		)
+		w := httptest.NewRecorder()
+
+		handler.AllocateTransaction(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("returns 404 when transaction not found", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		nonExistentID := testutil.MakeID()
+		body := `{"allocations":[{"portfolioId":"` + testutil.MakeID() + `","percentage":100}]}`
+		req := testutil.NewRequestWithURLParamsAndBody(
+			http.MethodPost,
+			"/api/ibkr/inbox/"+nonExistentID+"/allocate",
+			map[string]string{"uuid": nonExistentID},
+			body,
+		)
+		w := httptest.NewRecorder()
+
+		handler.AllocateTransaction(w, req)
+
+		if w.Code != http.StatusNotFound {
+			t.Errorf("Expected 404, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+}
+
+func TestIbkrHandler_BulkAllocate(t *testing.T) {
+	setupHandler := func(t *testing.T) (*IbkrHandler, *sql.DB) {
+		t.Helper()
+		db := testutil.SetupTestDB(t)
+		is := testutil.NewTestIbkrService(t, db)
+		return NewIbkrHandler(is), db
+	}
+
+	t.Run("allocates multiple transactions successfully", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		fund := testutil.NewFund().WithISIN("US0378331005").WithSymbol("AAPL").Build(t, db)
+		testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+
+		tx1 := testutil.NewIBKRTransaction().
+			WithISIN("US0378331005").WithSymbol("AAPL").WithFees(0).
+			Build(t, db)
+		tx2 := testutil.NewIBKRTransaction().
+			WithISIN("US0378331005").WithSymbol("AAPL").WithFees(0).
+			Build(t, db)
+
+		body := `{"transactionIds":["` + tx1.ID + `","` + tx2.ID + `"],` +
+			`"allocations":[{"portfolioId":"` + portfolio.ID + `","percentage":100}]}`
+		req := testutil.NewRequestWithBody(http.MethodPost, "/api/ibkr/inbox/bulk-allocate", body)
+		w := httptest.NewRecorder()
+
+		handler.BulkAllocate(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var response model.BulkAllocateResponse
+		//nolint:errcheck
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if response.Success != 2 {
+			t.Errorf("Expected 2 successes, got %d", response.Success)
+		}
+		if response.Failed != 0 {
+			t.Errorf("Expected 0 failures, got %d", response.Failed)
+		}
+	})
+
+	t.Run("handles partial failure", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		fund := testutil.NewFund().WithISIN("US0378331005").WithSymbol("AAPL").Build(t, db)
+		testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+
+		tx1 := testutil.NewIBKRTransaction().
+			WithISIN("US0378331005").WithSymbol("AAPL").WithFees(0).
+			Build(t, db)
+		// tx2 already processed → will fail
+		tx2 := testutil.NewIBKRTransaction().
+			WithISIN("US0378331005").WithSymbol("AAPL").WithStatus("processed").
+			Build(t, db)
+
+		body := `{"transactionIds":["` + tx1.ID + `","` + tx2.ID + `"],` +
+			`"allocations":[{"portfolioId":"` + portfolio.ID + `","percentage":100}]}`
+		req := testutil.NewRequestWithBody(http.MethodPost, "/api/ibkr/inbox/bulk-allocate", body)
+		w := httptest.NewRecorder()
+
+		handler.BulkAllocate(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var response model.BulkAllocateResponse
+		//nolint:errcheck
+		json.NewDecoder(w.Body).Decode(&response)
+
+		if response.Success != 1 {
+			t.Errorf("Expected 1 success, got %d", response.Success)
+		}
+		if response.Failed != 1 {
+			t.Errorf("Expected 1 failure, got %d", response.Failed)
+		}
+		if len(response.Errors) != 1 {
+			t.Errorf("Expected 1 error message, got %d", len(response.Errors))
+		}
+	})
+
+	t.Run("returns 400 on invalid JSON body", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		req := testutil.NewRequestWithBody(http.MethodPost, "/api/ibkr/inbox/bulk-allocate", `{invalid}`)
+		w := httptest.NewRecorder()
+
+		handler.BulkAllocate(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("returns 400 when no transaction IDs provided", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		body := `{"transactionIds":[],"allocations":[{"portfolioId":"` + testutil.MakeID() + `","percentage":100}]}`
+		req := testutil.NewRequestWithBody(http.MethodPost, "/api/ibkr/inbox/bulk-allocate", body)
+		w := httptest.NewRecorder()
+
+		handler.BulkAllocate(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+}
+
+//nolint:gocyclo // Comprehensive integration test with multiple subtests
+func TestIbkrHandler_UnallocateTransaction(t *testing.T) {
+	setupHandler := func(t *testing.T) (*IbkrHandler, *sql.DB) {
+		t.Helper()
+		db := testutil.SetupTestDB(t)
+		is := testutil.NewTestIbkrService(t, db)
+		return NewIbkrHandler(is), db
+	}
+
+	// allocateHelper sets up a fully allocated IBKR transaction for unallocate/modify tests.
+	allocateHelper := func(t *testing.T, db *sql.DB, handler *IbkrHandler) (string, string) {
+		t.Helper()
+
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		fund := testutil.NewFund().WithISIN("US0378331005").WithSymbol("AAPL").Build(t, db)
+		testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+
+		ibkrTx := testutil.NewIBKRTransaction().
+			WithISIN("US0378331005").WithSymbol("AAPL").
+			WithQuantity(10).WithPrice(150.00).WithTotalAmount(1500.00).WithFees(0).
+			Build(t, db)
+
+		// Allocate it
+		body := `{"allocations":[{"portfolioId":"` + portfolio.ID + `","percentage":100}]}`
+		req := testutil.NewRequestWithURLParamsAndBody(
+			http.MethodPost,
+			"/api/ibkr/inbox/"+ibkrTx.ID+"/allocate",
+			map[string]string{"uuid": ibkrTx.ID},
+			body,
+		)
+		w := httptest.NewRecorder()
+		handler.AllocateTransaction(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("allocateHelper: Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+
+		return ibkrTx.ID, portfolio.ID
+	}
+
+	t.Run("unallocates processed transaction successfully", func(t *testing.T) {
+		handler, db := setupHandler(t)
+		ibkrTxID, _ := allocateHelper(t, db, handler)
+
+		req := testutil.NewRequestWithURLParams(
+			http.MethodPost,
+			"/api/ibkr/inbox/"+ibkrTxID+"/unallocate",
+			map[string]string{"uuid": ibkrTxID},
+		)
+		w := httptest.NewRecorder()
+
+		handler.UnallocateTransaction(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+
+		// Verify status reset to pending
+		var status string
+		err := db.QueryRow(`SELECT status FROM ibkr_transaction WHERE id = ?`, ibkrTxID).Scan(&status)
+		if err != nil {
+			t.Fatalf("Failed to query status: %v", err)
+		}
+		if status != "pending" {
+			t.Errorf("Expected status 'pending', got '%s'", status)
+		}
+
+		// Verify allocations deleted
+		var allocCount int
+		err = db.QueryRow(`SELECT COUNT(*) FROM ibkr_transaction_allocation WHERE ibkr_transaction_id = ?`, ibkrTxID).Scan(&allocCount)
+		if err != nil {
+			t.Fatalf("Failed to count allocations: %v", err)
+		}
+		if allocCount != 0 {
+			t.Errorf("Expected 0 allocations after unallocate, got %d", allocCount)
+		}
+	})
+
+	t.Run("returns 400 when transaction is not processed", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		ibkrTx := testutil.NewIBKRTransaction().Build(t, db) // status=pending
+
+		req := testutil.NewRequestWithURLParams(
+			http.MethodPost,
+			"/api/ibkr/inbox/"+ibkrTx.ID+"/unallocate",
+			map[string]string{"uuid": ibkrTx.ID},
+		)
+		w := httptest.NewRecorder()
+
+		handler.UnallocateTransaction(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("returns 404 when transaction not found", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		nonExistentID := testutil.MakeID()
+		req := testutil.NewRequestWithURLParams(
+			http.MethodPost,
+			"/api/ibkr/inbox/"+nonExistentID+"/unallocate",
+			map[string]string{"uuid": nonExistentID},
+		)
+		w := httptest.NewRecorder()
+
+		handler.UnallocateTransaction(w, req)
+
+		if w.Code != http.StatusNotFound {
+			t.Errorf("Expected 404, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+}
+
+//nolint:gocyclo // Comprehensive integration test with multiple subtests
+func TestIbkrHandler_ModifyAllocations(t *testing.T) {
+	setupHandler := func(t *testing.T) (*IbkrHandler, *sql.DB) {
+		t.Helper()
+		db := testutil.SetupTestDB(t)
+		is := testutil.NewTestIbkrService(t, db)
+		return NewIbkrHandler(is), db
+	}
+
+	t.Run("modifies allocations on processed transaction", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		portfolio1 := testutil.NewPortfolio().Build(t, db)
+		portfolio2 := testutil.NewPortfolio().Build(t, db)
+		fund := testutil.NewFund().WithISIN("US0378331005").WithSymbol("AAPL").Build(t, db)
+		testutil.NewPortfolioFund(portfolio1.ID, fund.ID).Build(t, db)
+		testutil.NewPortfolioFund(portfolio2.ID, fund.ID).Build(t, db)
+
+		ibkrTx := testutil.NewIBKRTransaction().
+			WithISIN("US0378331005").WithSymbol("AAPL").
+			WithQuantity(10).WithPrice(150.00).WithTotalAmount(1500.00).WithFees(0).
+			Build(t, db)
+
+		// First allocate 100% to portfolio1
+		allocBody := `{"allocations":[{"portfolioId":"` + portfolio1.ID + `","percentage":100}]}`
+		allocReq := testutil.NewRequestWithURLParamsAndBody(
+			http.MethodPost,
+			"/api/ibkr/inbox/"+ibkrTx.ID+"/allocate",
+			map[string]string{"uuid": ibkrTx.ID},
+			allocBody,
+		)
+		aw := httptest.NewRecorder()
+		handler.AllocateTransaction(aw, allocReq)
+		if aw.Code != http.StatusOK {
+			t.Fatalf("allocate setup failed: %d: %s", aw.Code, aw.Body.String())
+		}
+
+		// Now modify to 60/40 split
+		modifyBody := `{"allocations":[` +
+			`{"portfolioId":"` + portfolio1.ID + `","percentage":60},` +
+			`{"portfolioId":"` + portfolio2.ID + `","percentage":40}` +
+			`]}`
+		modReq := testutil.NewRequestWithURLParamsAndBody(
+			http.MethodPut,
+			"/api/ibkr/inbox/"+ibkrTx.ID+"/allocations",
+			map[string]string{"uuid": ibkrTx.ID},
+			modifyBody,
+		)
+		mw := httptest.NewRecorder()
+
+		handler.ModifyAllocations(mw, modReq)
+
+		if mw.Code != http.StatusOK {
+			t.Errorf("Expected 200, got %d: %s", mw.Code, mw.Body.String())
+		}
+
+		// Verify status is still processed
+		var status string
+		err := db.QueryRow(`SELECT status FROM ibkr_transaction WHERE id = ?`, ibkrTx.ID).Scan(&status)
+		if err != nil {
+			t.Fatalf("Failed to query status: %v", err)
+		}
+		if status != "processed" {
+			t.Errorf("Expected status 'processed', got '%s'", status)
+		}
+
+		// Verify new allocations exist (2 trade allocs, no fee since fees=0)
+		var allocCount int
+		err = db.QueryRow(`SELECT COUNT(*) FROM ibkr_transaction_allocation WHERE ibkr_transaction_id = ?`, ibkrTx.ID).Scan(&allocCount)
+		if err != nil {
+			t.Fatalf("Failed to count allocations: %v", err)
+		}
+		if allocCount != 2 {
+			t.Errorf("Expected 2 allocation records after modify, got %d", allocCount)
+		}
+	})
+
+	t.Run("returns 400 when transaction is not processed", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		ibkrTx := testutil.NewIBKRTransaction().Build(t, db) // pending
+
+		body := `{"allocations":[{"portfolioId":"` + testutil.MakeID() + `","percentage":100}]}`
+		req := testutil.NewRequestWithURLParamsAndBody(
+			http.MethodPut,
+			"/api/ibkr/inbox/"+ibkrTx.ID+"/allocations",
+			map[string]string{"uuid": ibkrTx.ID},
+			body,
+		)
+		w := httptest.NewRecorder()
+
+		handler.ModifyAllocations(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("returns 400 when allocations do not sum to 100", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		id := testutil.MakeID()
+		body := `{"allocations":[{"portfolioId":"` + testutil.MakeID() + `","percentage":50}]}`
+		req := testutil.NewRequestWithURLParamsAndBody(
+			http.MethodPut,
+			"/api/ibkr/inbox/"+id+"/allocations",
+			map[string]string{"uuid": id},
+			body,
+		)
+		w := httptest.NewRecorder()
+
+		handler.ModifyAllocations(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("returns 400 on invalid JSON body", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		id := testutil.MakeID()
+		req := testutil.NewRequestWithURLParamsAndBody(
+			http.MethodPut,
+			"/api/ibkr/inbox/"+id+"/allocations",
+			map[string]string{"uuid": id},
+			`{invalid}`,
+		)
+		w := httptest.NewRecorder()
+
+		handler.ModifyAllocations(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("returns 404 when transaction not found", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		nonExistentID := testutil.MakeID()
+		body := `{"allocations":[{"portfolioId":"` + testutil.MakeID() + `","percentage":100}]}`
+		req := testutil.NewRequestWithURLParamsAndBody(
+			http.MethodPut,
+			"/api/ibkr/inbox/"+nonExistentID+"/allocations",
+			map[string]string{"uuid": nonExistentID},
+			body,
+		)
+		w := httptest.NewRecorder()
+
+		handler.ModifyAllocations(w, req)
+
+		if w.Code != http.StatusNotFound {
+			t.Errorf("Expected 404, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+}
+
+//nolint:gocyclo // Comprehensive integration test with multiple subtests
+func TestIbkrHandler_MatchDividend(t *testing.T) {
+	setupHandler := func(t *testing.T) (*IbkrHandler, *sql.DB) {
+		t.Helper()
+		db := testutil.SetupTestDB(t)
+		is := testutil.NewTestIbkrService(t, db)
+		return NewIbkrHandler(is), db
+	}
+
+	t.Run("matches dividend to allocated DRIP transaction", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		fund := testutil.NewFund().WithISIN("US0378331005").WithSymbol("AAPL").Build(t, db)
+		pf := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+
+		// Create and allocate IBKR transaction with DRIP note
+		ibkrTx := testutil.NewIBKRTransaction().
+			WithISIN("US0378331005").WithSymbol("AAPL").WithNotes("R").
+			WithQuantity(5).WithPrice(150.00).WithTotalAmount(750.00).WithFees(0).
+			Build(t, db)
+
+		allocBody := `{"allocations":[{"portfolioId":"` + portfolio.ID + `","percentage":100}]}`
+		allocReq := testutil.NewRequestWithURLParamsAndBody(
+			http.MethodPost,
+			"/api/ibkr/inbox/"+ibkrTx.ID+"/allocate",
+			map[string]string{"uuid": ibkrTx.ID},
+			allocBody,
+		)
+		aw := httptest.NewRecorder()
+		handler.AllocateTransaction(aw, allocReq)
+		if aw.Code != http.StatusOK {
+			t.Fatalf("allocate setup failed: %d: %s", aw.Code, aw.Body.String())
+		}
+
+		// Create a pending dividend for matching
+		dividend := testutil.NewDividend(fund.ID, pf.ID).Build(t, db)
+		_, err := db.Exec(`UPDATE dividend SET reinvestment_status = 'PENDING' WHERE id = ?`, dividend.ID)
+		if err != nil {
+			t.Fatalf("Failed to update dividend status: %v", err)
+		}
+
+		// Match the dividend
+		matchBody := `{"dividendIds":["` + dividend.ID + `"]}`
+		matchReq := testutil.NewRequestWithURLParamsAndBody(
+			http.MethodPost,
+			"/api/ibkr/inbox/"+ibkrTx.ID+"/match-dividend",
+			map[string]string{"uuid": ibkrTx.ID},
+			matchBody,
+		)
+		mw := httptest.NewRecorder()
+
+		handler.MatchDividend(mw, matchReq)
+
+		if mw.Code != http.StatusOK {
+			t.Errorf("Expected 200, got %d: %s", mw.Code, mw.Body.String())
+		}
+
+		// Verify dividend was updated
+		var reinvestStatus, reinvestTxID string
+		err = db.QueryRow(`SELECT reinvestment_status, reinvestment_transaction_id FROM dividend WHERE id = ?`, dividend.ID).Scan(&reinvestStatus, &reinvestTxID)
+		if err != nil {
+			t.Fatalf("Failed to query dividend: %v", err)
+		}
+		if reinvestStatus != "COMPLETED" {
+			t.Errorf("Expected reinvestment_status 'COMPLETED', got '%s'", reinvestStatus)
+		}
+		if reinvestTxID == "" {
+			t.Error("Expected reinvestment_transaction_id to be set")
+		}
+	})
+
+	t.Run("returns 400 when transaction is not processed", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		ibkrTx := testutil.NewIBKRTransaction().Build(t, db) // pending
+
+		body := `{"dividendIds":["` + testutil.MakeID() + `"]}`
+		req := testutil.NewRequestWithURLParamsAndBody(
+			http.MethodPost,
+			"/api/ibkr/inbox/"+ibkrTx.ID+"/match-dividend",
+			map[string]string{"uuid": ibkrTx.ID},
+			body,
+		)
+		w := httptest.NewRecorder()
+
+		handler.MatchDividend(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("returns 404 when transaction not found", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		nonExistentID := testutil.MakeID()
+		body := `{"dividendIds":["` + testutil.MakeID() + `"]}`
+		req := testutil.NewRequestWithURLParamsAndBody(
+			http.MethodPost,
+			"/api/ibkr/inbox/"+nonExistentID+"/match-dividend",
+			map[string]string{"uuid": nonExistentID},
+			body,
+		)
+		w := httptest.NewRecorder()
+
+		handler.MatchDividend(w, req)
+
+		if w.Code != http.StatusNotFound {
+			t.Errorf("Expected 404, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("returns 400 on invalid JSON body", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		id := testutil.MakeID()
+		req := testutil.NewRequestWithURLParamsAndBody(
+			http.MethodPost,
+			"/api/ibkr/inbox/"+id+"/match-dividend",
+			map[string]string{"uuid": id},
+			`{invalid}`,
+		)
+		w := httptest.NewRecorder()
+
+		handler.MatchDividend(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("returns 400 when no dividend IDs provided", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		id := testutil.MakeID()
+		body := `{"dividendIds":[]}`
+		req := testutil.NewRequestWithURLParamsAndBody(
+			http.MethodPost,
+			"/api/ibkr/inbox/"+id+"/match-dividend",
+			map[string]string{"uuid": id},
+			body,
+		)
+		w := httptest.NewRecorder()
+
+		handler.MatchDividend(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+}

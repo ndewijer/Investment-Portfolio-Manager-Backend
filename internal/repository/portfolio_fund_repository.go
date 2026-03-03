@@ -376,6 +376,31 @@ func (r *PortfolioFundRepository) CheckUsage(fundID string) ([]model.PortfolioTr
 	return PFTs, nil
 }
 
+// GetPortfolioFundByPortfolioAndFund retrieves a portfolio_fund record by both portfolio and fund IDs.
+// Returns ErrPortfolioFundNotFound if no matching relationship exists.
+func (r *PortfolioFundRepository) GetPortfolioFundByPortfolioAndFund(portfolioID, fundID string) (model.PortfolioFund, error) {
+	query := `
+		SELECT id, portfolio_id, fund_id
+		FROM portfolio_fund
+		WHERE portfolio_id = ? AND fund_id = ?
+	`
+
+	var pf model.PortfolioFund
+	err := r.getQuerier().QueryRow(query, portfolioID, fundID).Scan(
+		&pf.ID,
+		&pf.PortfolioID,
+		&pf.FundID,
+	)
+	if err == sql.ErrNoRows {
+		return model.PortfolioFund{}, apperrors.ErrPortfolioFundNotFound
+	}
+	if err != nil {
+		return model.PortfolioFund{}, fmt.Errorf("failed to query portfolio_fund by portfolio and fund: %w", err)
+	}
+
+	return pf, nil
+}
+
 // InsertPortfolioFund creates a new portfolio_fund relationship between a portfolio and a fund.
 func (r *PortfolioFundRepository) InsertPortfolioFund(ctx context.Context, portfolioID, fundID string) error {
 	query := `
