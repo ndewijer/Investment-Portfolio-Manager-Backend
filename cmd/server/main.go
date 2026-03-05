@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/fernet/fernet-go"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/config"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/database"
@@ -35,7 +36,17 @@ func main() {
 
 	log.Printf("Connected to database: %s", cfg.Database.Path)
 
-	systemService, portfolioService, fundService, materializedService, transactionService, ibkrService, developerService := createRepoAndServices(db)
+	// Decode Fernet encryption key (if configured)
+	var fernetKey *fernet.Key
+	if cfg.EncryptionKey != "" {
+		var err error
+		fernetKey, err = fernet.DecodeKey(cfg.EncryptionKey)
+		if err != nil {
+			log.Fatalf("Invalid IBKR_ENCRYPTION_KEY: %v", err)
+		}
+	}
+
+	systemService, portfolioService, fundService, materializedService, transactionService, ibkrService, developerService := createRepoAndServices(db, fernetKey)
 	// Create router
 	router := api.NewRouter(
 		systemService,
@@ -83,7 +94,7 @@ func main() {
 	log.Println("Server exited")
 }
 
-func createRepoAndServices(db *sql.DB) (
+func createRepoAndServices(db *sql.DB, fernetKey *fernet.Key) (
 	*service.SystemService,
 	*service.PortfolioService,
 	*service.FundService,
@@ -165,6 +176,7 @@ func createRepoAndServices(db *sql.DB) (
 		service.IbkrWithPortfolioFundRepo(pfRepo),
 		service.IbkrWithTransactionRepo(transactionRepo),
 		service.IbkrWithDividendRepo(dividendRepo),
+		service.IbkrWithEncryptionKey(fernetKey),
 	)
 	materializedService := service.NewMaterializedService(
 		service.MaterializedWithMaterializedRepository(materializedRepo),

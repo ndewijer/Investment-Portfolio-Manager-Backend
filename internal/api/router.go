@@ -99,7 +99,7 @@ func NewRouter(
 			})
 
 			r.Route("/update-all-prices", func(r chi.Router) {
-				r.Use(custommiddleware.APIKeyMiddleware)
+				r.Use(custommiddleware.APIKeyMiddleware(cfg.InternalAPIKey))
 				r.Post("/", fundHandler.UpdateAllFundHistory)
 			})
 		})
