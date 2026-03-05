@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/google/uuid"
@@ -100,7 +101,10 @@ func (s *FundService) GetAllFunds() ([]model.Fund, error) {
 // v8 chart endpoint, caches the result, and returns it. Prunes stale unreferenced
 // cache entries on each call.
 func (s *FundService) GetSymbol(symbol string) (*model.Symbol, error) {
-	_, _ = s.fundRepo.PruneStaleSymbols()
+	_, err := s.fundRepo.PruneStaleSymbols()
+	if err != nil {
+		log.Printf("Failed to prune logs: %v", err)
+	}
 
 	sym, err := s.fundRepo.GetSymbol(symbol)
 	if err == nil {
