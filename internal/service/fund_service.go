@@ -96,9 +96,42 @@ func (s *FundService) GetAllFunds() ([]model.Fund, error) {
 }
 
 // GetSymbol retrieves symbol information by ticker symbol.
-// Returns symbol metadata including name, exchange, currency, and ISIN.
+// Checks the local symbol_info cache first. On cache miss, queries the Yahoo Finance
+// v8 chart endpoint, caches the result, and returns it. Prunes stale unreferenced
+// cache entries on each call.
 func (s *FundService) GetSymbol(symbol string) (*model.Symbol, error) {
-	return s.fundRepo.GetSymbol(symbol)
+	_, _ = s.fundRepo.PruneStaleSymbols()
+
+	sym, err := s.fundRepo.GetSymbol(symbol)
+	if err == nil {
+		return sym, nil
+	}
+
+	raw, err := s.yahooClient.QueryYahooFiveDaySymbol(symbol)
+	if err != nil {
+		return nil, fmt.Errorf("yahoo lookup failed: %w", err)
+	}
+	chart, err := s.yahooClient.ParseChart(raw)
+	if err != nil {
+		return nil, fmt.Errorf("parsing yahoo response: %w", err)
+	}
+
+	sym = &model.Symbol{
+		ID:          uuid.New().String(),
+		Symbol:      chart.Symbol,
+		Name:        chart.LongName,
+		Exchange:    chart.ExchangeName,
+		Currency:    chart.Currency,
+		LastUpdated: time.Now().UTC(),
+		DataSource:  "yahoo",
+		IsValid:     true,
+	}
+
+	if err := s.fundRepo.UpsertSymbol(sym); err != nil {
+		return nil, fmt.Errorf("caching symbol: %w", err)
+	}
+
+	return sym, nil
 }
 
 // GetAllPortfolioFundListings retrieves all portfolio-fund relationships with basic metadata.

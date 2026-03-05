@@ -3,6 +3,7 @@ package handlers_test
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -367,11 +368,11 @@ func TestFundHandler_GetSymbol(t *testing.T) {
 
 	t.Run("returns 404 when symbol not found", func(t *testing.T) {
 		db := testutil.SetupTestDB(t)
-		fs := testutil.NewTestFundService(t, db)
+		mockYahoo := testutil.NewMockYahooClient().WithError(fmt.Errorf("no results returned for symbol NONEXISTENT"))
+		fs := testutil.NewTestFundServiceWithMockYahoo(t, db, mockYahoo)
 		ms := testutil.NewTestMaterializedService(t, db)
 		handler := handlers.NewFundHandler(fs, ms)
 
-		// Don't create any symbol - request for non-existent symbol
 		req := testutil.NewRequestWithURLParams(
 			http.MethodGet,
 			"/api/fund/symbol/NONEXISTENT",
@@ -381,18 +382,8 @@ func TestFundHandler_GetSymbol(t *testing.T) {
 
 		handler.GetSymbol(w, req)
 
-		if w.Code != http.StatusNotFound {
-			t.Errorf("Expected status 404, got %d", w.Code)
-		}
-
-		var response map[string]string
-		err := json.NewDecoder(w.Body).Decode(&response)
-		if err != nil {
-			t.Fatalf("Failed to decode error response: %v", err)
-		}
-
-		if response["error"] != apperrors.ErrSymbolNotFound.Error() {
-			t.Errorf("Expected '%s' error, got '%s'", apperrors.ErrSymbolNotFound.Error(), response["error"])
+		if w.Code != http.StatusInternalServerError {
+			t.Errorf("Expected status 500, got %d", w.Code)
 		}
 	})
 

@@ -349,6 +349,43 @@ func (r *FundRepository) GetSymbol(symbol string) (*model.Symbol, error) {
 	return &sb, err
 }
 
+// UpsertSymbol inserts or updates a row in the symbol_info table.
+// On conflict (duplicate symbol), the existing row is updated with the new values.
+func (r *FundRepository) UpsertSymbol(s *model.Symbol) error {
+	query := `
+		INSERT INTO symbol_info (id, symbol, name, exchange, currency, isin, last_updated, data_source, is_valid)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(symbol) DO UPDATE SET
+			name = excluded.name,
+			exchange = excluded.exchange,
+			currency = excluded.currency,
+			last_updated = excluded.last_updated,
+			data_source = excluded.data_source,
+			is_valid = excluded.is_valid
+	`
+	_, err := r.getQuerier().Exec(query,
+		s.ID, s.Symbol, s.Name, s.Exchange, s.Currency, s.Isin,
+		s.LastUpdated.Format(time.RFC3339), s.DataSource, s.IsValid,
+	)
+	return err
+}
+
+// PruneStaleSymbols deletes symbol_info rows older than 24 hours that are not
+// referenced by any fund. This cleans up transient lookup cache entries (e.g.
+// partial typeahead queries) while preserving symbols actively used by funds.
+func (r *FundRepository) PruneStaleSymbols() (int64, error) {
+	query := `
+		DELETE FROM symbol_info
+		WHERE last_updated < datetime('now', '-1 day')
+		AND symbol NOT IN (SELECT symbol FROM fund WHERE symbol IS NOT NULL AND symbol != '')
+	`
+	result, err := r.getQuerier().Exec(query)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 // GetFundBySymbolOrIsin retrieves a fund by matching either its symbol or ISIN.
 // At least one of symbol or isin must be provided.
 //
