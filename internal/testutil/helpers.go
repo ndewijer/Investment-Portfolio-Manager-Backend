@@ -97,6 +97,7 @@ func NewTestFundService(t *testing.T, db *sql.DB) *service.FundService {
 		service.FundWithPortfolioFundRepo(pfRepo),
 		service.FundWithDataLoaderService(dataloaderService),
 		service.FundWithPortfolioRepo(portfolioRepo),
+		service.FundWithYahooClient(NewMockYahooClient()),
 	)
 }
 
