@@ -148,14 +148,15 @@ func NewTestMaterializedService(t *testing.T, db *sql.DB) *service.MaterializedS
 	)
 }
 
-func NewTestIbkrService(t *testing.T, db *sql.DB) *service.IbkrService {
+func NewTestIbkrService(t *testing.T, db *sql.DB, opts ...service.IbkrServiceOption) *service.IbkrService {
 	t.Helper()
-	return NewTestIbkrServiceWithMockIBKR(t, db, ibkr.NewFinanceClient())
+	return NewTestIbkrServiceWithMockIBKR(t, db, ibkr.NewFinanceClient(), opts...)
 }
 
 // NewTestIbkrServiceWithMockIBKR creates an IbkrService with a mock IBKR client for testing.
 // This is useful for testing import operations without making real API calls to IBKR.
-func NewTestIbkrServiceWithMockIBKR(t *testing.T, db *sql.DB, mockIBKR ibkr.Client) *service.IbkrService {
+// Additional IbkrServiceOption values (e.g. IbkrWithEncryptionKey) can be appended via opts.
+func NewTestIbkrServiceWithMockIBKR(t *testing.T, db *sql.DB, mockIBKR ibkr.Client, opts ...service.IbkrServiceOption) *service.IbkrService {
 	t.Helper()
 
 	ibkrRepo := repository.NewIbkrRepository(db)
@@ -164,8 +165,7 @@ func NewTestIbkrServiceWithMockIBKR(t *testing.T, db *sql.DB, mockIBKR ibkr.Clie
 	transactionRepo := repository.NewTransactionRepository(db)
 	dividendRepo := repository.NewDividendRepository(db)
 
-	return service.NewIbkrService(
-		db,
+	base := []service.IbkrServiceOption{
 		service.IbkrWithIbkrRepo(ibkrRepo),
 		service.IbkrWithPortfolioRepo(repository.NewPortfolioRepository(db)),
 		service.IbkrWithFundRepo(fundRepo),
@@ -173,7 +173,9 @@ func NewTestIbkrServiceWithMockIBKR(t *testing.T, db *sql.DB, mockIBKR ibkr.Clie
 		service.IbkrWithTransactionRepo(transactionRepo),
 		service.IbkrWithDividendRepo(dividendRepo),
 		service.IbkrWithClient(mockIBKR),
-	)
+	}
+
+	return service.NewIbkrService(db, append(base, opts...)...)
 }
 
 func NewTestSystemService(t *testing.T, db *sql.DB) *service.SystemService {

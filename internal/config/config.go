@@ -11,9 +11,11 @@ import (
 
 // Config holds all configuration for the application
 type Config struct {
-	Server   ServerConfig
-	Database DatabaseConfig
-	CORS     CORSConfig
+	Server         ServerConfig
+	Database       DatabaseConfig
+	CORS           CORSConfig
+	EncryptionKey  string // IBKR_ENCRYPTION_KEY (fernet, base64-encoded)
+	InternalAPIKey string // INTERNAL_API_KEY
 }
 
 // ServerConfig holds server-specific configuration
@@ -69,6 +71,8 @@ func Load() (*Config, error) {
 		CORS: CORSConfig{
 			AllowedOrigins: getCORSOrigins(),
 		},
+		EncryptionKey:  getEnv("IBKR_ENCRYPTION_KEY", ""),
+		InternalAPIKey: getEnv("INTERNAL_API_KEY", ""),
 	}
 
 	// Combine host and port

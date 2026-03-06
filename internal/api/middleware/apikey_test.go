@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -15,8 +14,6 @@ import (
 //nolint:gocyclo // Comprehensive integration test with multiple subtests
 func TestAPIKeyMiddleware(t *testing.T) {
 	testAPIKey := "test-api-key-12345"
-	os.Setenv("INTERNAL_API_KEY", testAPIKey)
-	defer os.Unsetenv("INTERNAL_API_KEY")
 
 	t.Run("rejects request without API key", func(t *testing.T) {
 		handlerCalled := false
@@ -25,7 +22,7 @@ func TestAPIKeyMiddleware(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		})
 
-		mw := middleware.APIKeyMiddleware(testHandler)
+		mw := middleware.APIKeyMiddleware(testAPIKey)(testHandler)
 
 		req := httptest.NewRequest(http.MethodPost, "/test", nil)
 		rctx := chi.NewRouteContext()
@@ -57,7 +54,7 @@ func TestAPIKeyMiddleware(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		})
 
-		mw := middleware.APIKeyMiddleware(testHandler)
+		mw := middleware.APIKeyMiddleware(testAPIKey)(testHandler)
 
 		req := httptest.NewRequest(http.MethodPost, "/test", nil)
 		rctx := chi.NewRouteContext()
@@ -90,7 +87,7 @@ func TestAPIKeyMiddleware(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		})
 
-		mw := middleware.APIKeyMiddleware(testHandler)
+		mw := middleware.APIKeyMiddleware(testAPIKey)(testHandler)
 
 		req := httptest.NewRequest(http.MethodPost, "/test", nil)
 		rctx := chi.NewRouteContext()
@@ -123,7 +120,7 @@ func TestAPIKeyMiddleware(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		})
 
-		mw := middleware.APIKeyMiddleware(testHandler)
+		mw := middleware.APIKeyMiddleware(testAPIKey)(testHandler)
 
 		req := httptest.NewRequest(http.MethodPost, "/test", nil)
 		rctx := chi.NewRouteContext()
@@ -158,7 +155,7 @@ func TestAPIKeyMiddleware(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		})
 
-		mw := middleware.APIKeyMiddleware(testHandler)
+		mw := middleware.APIKeyMiddleware(testAPIKey)(testHandler)
 
 		req := httptest.NewRequest(http.MethodPost, "/test", nil)
 		rctx := chi.NewRouteContext()
@@ -186,9 +183,7 @@ func TestAPIKeyMiddleware(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		})
 
-		os.Unsetenv("INTERNAL_API_KEY")
-
-		mw := middleware.APIKeyMiddleware(testHandler)
+		mw := middleware.APIKeyMiddleware("")(testHandler)
 
 		req := httptest.NewRequest(http.MethodPost, "/test", nil)
 		rctx := chi.NewRouteContext()

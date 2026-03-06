@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"log"
 	"math"
-	"os"
 	"strings"
 	"time"
 
@@ -33,6 +32,7 @@ type IbkrService struct {
 	pfRepo              *repository.PortfolioFundRepository
 	transactionRepo     *repository.TransactionRepository
 	dividendRepo        *repository.DividendRepository
+	encryptionKey       *fernet.Key
 }
 
 // IbkrServiceOption is a functional option for configuring an IbkrService.
@@ -76,6 +76,11 @@ func IbkrWithTransactionRepo(r *repository.TransactionRepository) IbkrServiceOpt
 // IbkrWithDividendRepo injects the DividendRepository dependency.
 func IbkrWithDividendRepo(r *repository.DividendRepository) IbkrServiceOption {
 	return func(s *IbkrService) { s.dividendRepo = r }
+}
+
+// IbkrWithEncryptionKey injects the pre-decoded Fernet encryption key.
+func IbkrWithEncryptionKey(key *fernet.Key) IbkrServiceOption {
+	return func(s *IbkrService) { s.encryptionKey = key }
 }
 
 // NewIbkrService creates a new IbkrService. Pass IbkrWith* options to inject dependencies.
@@ -361,19 +366,13 @@ func (s *IbkrService) ImportFlexReport(ctx context.Context) (int, int, error) {
 	return len(missingTransactions), len(report) - len(missingTransactions), nil
 }
 
-// decryptToken decrypts a fernet-encrypted IBKR flex token using the key in IBKR_ENCRYPTION_KEY.
-// Returns an error if the env var is unset, the key is malformed, or decryption fails.
+// decryptToken decrypts a fernet-encrypted IBKR flex token using the injected encryption key.
+// Returns an error if the key is nil or decryption fails.
 func (s *IbkrService) decryptToken(token string) (string, error) {
-
-	enckey := os.Getenv("IBKR_ENCRYPTION_KEY")
-	if enckey == "" {
+	if s.encryptionKey == nil {
 		return "", fmt.Errorf("IBKR_ENCRYPTION_KEY not set")
 	}
-	key, err := fernet.DecodeKey(enckey)
-	if err != nil {
-		return "", fmt.Errorf("invalid encryption key: %w", err)
-	}
-	decryptedToken := fernet.VerifyAndDecrypt([]byte(token), 0, []*fernet.Key{key})
+	decryptedToken := fernet.VerifyAndDecrypt([]byte(token), 0, []*fernet.Key{s.encryptionKey})
 	if decryptedToken == nil {
 		return "", fmt.Errorf("decryption failed")
 	}
@@ -381,19 +380,13 @@ func (s *IbkrService) decryptToken(token string) (string, error) {
 	return strings.TrimSpace(string(decryptedToken)), nil
 }
 
-// encryptToken encrypts a plaintext IBKR flex token using fernet with the key in IBKR_ENCRYPTION_KEY.
-// Returns an error if the env var is unset, the key is malformed, or encryption fails.
+// encryptToken encrypts a plaintext IBKR flex token using the injected Fernet key.
+// Returns an error if the key is nil or encryption fails.
 func (s *IbkrService) encryptToken(token string) (string, error) {
-
-	enckey := os.Getenv("IBKR_ENCRYPTION_KEY")
-	if enckey == "" {
+	if s.encryptionKey == nil {
 		return "", fmt.Errorf("IBKR_ENCRYPTION_KEY not set")
 	}
-	key, err := fernet.DecodeKey(enckey)
-	if err != nil {
-		return "", fmt.Errorf("invalid encryption key: %w", err)
-	}
-	encryptedToken, err := fernet.EncryptAndSign([]byte(token), key)
+	encryptedToken, err := fernet.EncryptAndSign([]byte(token), s.encryptionKey)
 	if err != nil {
 		return "", err
 	}

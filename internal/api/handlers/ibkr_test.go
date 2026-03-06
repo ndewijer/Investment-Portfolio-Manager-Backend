@@ -10,8 +10,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/fernet/fernet-go"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/ibkr"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/service"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/testutil"
 )
 
@@ -1032,6 +1034,16 @@ func TestIbkrHandler_GetEligiblePortfolios(t *testing.T) {
 // testFernetKey is a valid 32-byte fernet key (URL-safe base64) used only in tests.
 const testFernetKey = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
 
+// decodedTestFernetKey returns the pre-decoded Fernet key for injection into services.
+func decodedTestFernetKey(t *testing.T) *fernet.Key {
+	t.Helper()
+	k, err := fernet.DecodeKey(testFernetKey)
+	if err != nil {
+		t.Fatalf("failed to decode test fernet key: %v", err)
+	}
+	return k
+}
+
 // validFlexToken is a realistic 25-digit IBKR flex token for testing.
 const validFlexToken = "1079673754867139037835410"
 
@@ -1047,9 +1059,15 @@ func TestIbkrHandler_UpdateIbkrConfig(t *testing.T) {
 		return NewIbkrHandler(is), db
 	}
 
+	setupHandlerWithKey := func(t *testing.T) (*IbkrHandler, *sql.DB) {
+		t.Helper()
+		db := testutil.SetupTestDB(t)
+		is := testutil.NewTestIbkrService(t, db, service.IbkrWithEncryptionKey(decodedTestFernetKey(t)))
+		return NewIbkrHandler(is), db
+	}
+
 	t.Run("creates config when enabled is true", func(t *testing.T) {
-		handler, _ := setupHandler(t)
-		t.Setenv("IBKR_ENCRYPTION_KEY", testFernetKey)
+		handler, _ := setupHandlerWithKey(t)
 
 		req := testutil.NewRequestWithBody(http.MethodPost, "/api/ibkr/config", `{
 			"enabled": true,
@@ -1137,8 +1155,7 @@ func TestIbkrHandler_UpdateIbkrConfig(t *testing.T) {
 	})
 
 	t.Run("partial update preserves existing fields", func(t *testing.T) {
-		handler, db := setupHandler(t)
-		t.Setenv("IBKR_ENCRYPTION_KEY", testFernetKey)
+		handler, db := setupHandlerWithKey(t)
 
 		_, err := db.Exec(`
 			INSERT INTO ibkr_config (
@@ -1175,8 +1192,7 @@ func TestIbkrHandler_UpdateIbkrConfig(t *testing.T) {
 	})
 
 	t.Run("empty flexToken does not overwrite existing token", func(t *testing.T) {
-		handler, db := setupHandler(t)
-		t.Setenv("IBKR_ENCRYPTION_KEY", testFernetKey)
+		handler, db := setupHandlerWithKey(t)
 
 		_, err := db.Exec(`
 			INSERT INTO ibkr_config (
@@ -1213,8 +1229,7 @@ func TestIbkrHandler_UpdateIbkrConfig(t *testing.T) {
 	})
 
 	t.Run("replaces config row when flexQueryId changes", func(t *testing.T) {
-		handler, db := setupHandler(t)
-		t.Setenv("IBKR_ENCRYPTION_KEY", testFernetKey)
+		handler, db := setupHandlerWithKey(t)
 
 		oldID := testutil.MakeID()
 		_, err := db.Exec(`
@@ -1316,7 +1331,6 @@ func TestIbkrHandler_UpdateIbkrConfig(t *testing.T) {
 
 	t.Run("returns 500 when IBKR_ENCRYPTION_KEY is not set", func(t *testing.T) {
 		handler, _ := setupHandler(t)
-		t.Setenv("IBKR_ENCRYPTION_KEY", "")
 
 		req := testutil.NewRequestWithBody(http.MethodPost, "/api/ibkr/config", `{
 			"enabled": true,
