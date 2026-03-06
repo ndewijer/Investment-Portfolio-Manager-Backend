@@ -3,10 +3,13 @@ package main
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -36,11 +39,16 @@ func main() {
 
 	log.Printf("Connected to database: %s", cfg.Database.Path)
 
-	// Decode Fernet encryption key (if configured)
+	// Resolve encryption key (env → file → auto-generate)
+	dataDir := filepath.Dir(cfg.Database.Path)
+	encKeyStr, err := resolveEncryptionKey(cfg.EncryptionKey, dataDir)
+	if err != nil {
+		log.Fatalf("Failed to resolve encryption key: %v", err)
+	}
+
 	var fernetKey *fernet.Key
-	if cfg.EncryptionKey != "" {
-		var err error
-		fernetKey, err = fernet.DecodeKey(cfg.EncryptionKey)
+	if encKeyStr != "" {
+		fernetKey, err = fernet.DecodeKey(encKeyStr)
 		if err != nil {
 			log.Fatalf("Invalid IBKR_ENCRYPTION_KEY: %v", err)
 		}
@@ -92,6 +100,39 @@ func main() {
 	}
 
 	log.Println("Server exited")
+}
+
+// resolveEncryptionKey returns the encryption key string from env, file, or auto-generation.
+// Priority: env var > file > generate-and-write.
+func resolveEncryptionKey(cfgKey, dataDir string) (string, error) {
+	// 1. Env var already loaded into cfgKey
+	if cfgKey != "" {
+		return cfgKey, nil
+	}
+
+	// 2. Try file
+	keyPath := filepath.Join(dataDir, ".ibkr_encryption_key")
+	data, err := os.ReadFile(keyPath)
+	if err == nil {
+		key := strings.TrimSpace(string(data))
+		if key != "" {
+			return key, nil
+		}
+	}
+
+	// 3. Generate new key and write to file
+	var k fernet.Key
+	if err := k.Generate(); err != nil {
+		return "", fmt.Errorf("generate encryption key: %w", err)
+	}
+	encoded := k.Encode()
+
+	if err := os.WriteFile(keyPath, []byte(encoded+"\n"), 0600); err != nil {
+		return "", fmt.Errorf("write encryption key to %s: %w", keyPath, err)
+	}
+	log.Printf("Generated new IBKR encryption key → %s", keyPath)
+
+	return encoded, nil
 }
 
 func createRepoAndServices(db *sql.DB, fernetKey *fernet.Key) (
