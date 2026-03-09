@@ -16,7 +16,7 @@ We need: automatic schema creation on first run + a migration system to track sc
 - Lightweight — fits a single-user portfolio manager
 - Already referenced in `docs/TOOLING_RECOMMENDATIONS.md`
 
-This is independent of the planned sqlc migration (Phase 3) — goose handles schema versioning, sqlc handles query code generation.
+Goose handles schema versioning. go-jet/jet generates type-safe query code from the Goose-migrated schema. See `JET_MIGRATION_PLAN.md` for the Jet plan and `ARCHITECTURE_DECISIONS.md` ADR #3 and #9 for why sqlc was evaluated and not adopted.
 
 ## Implementation
 

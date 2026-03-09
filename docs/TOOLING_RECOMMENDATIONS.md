@@ -284,11 +284,23 @@ mockgen -source=internal/repository/portfolio_repository.go -destination=interna
 
 **Why useful:** Enables testing services without real database.
 
-### 5. goose - Migrations (Covered in SQLC_DECISION_GUIDE)
+### 5. goose - Migrations (See DATABASE_MIGRATIONS.md)
 
 ```bash
 go install github.com/pressly/goose/v3/cmd/goose@latest
 ```
+
+### 6. go-jet/jet - Type-Safe SQL Builder (See JET_MIGRATION_PLAN.md)
+
+```bash
+go install github.com/go-jet/jet/v2/cmd/jet@latest
+```
+
+**What it does:** Generates type-safe Go code (table constants + model types) from an existing database schema. You write SQL queries as Go code using a DSL — column typos become compile errors, scanning is automatic.
+
+**Why chosen over sqlc:** Preserves repository boundaries, no model duplication, SQL-like DSL (not ORM), works with existing `database/sql` transactions. See `ARCHITECTURE_DECISIONS.md` ADR #3.
+
+**Workflow:** Goose runs migrations → Jet generates from the migrated schema → repositories use Jet's DSL.
 
 ---
 

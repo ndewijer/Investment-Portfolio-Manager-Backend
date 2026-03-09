@@ -243,9 +243,7 @@ CGO_ENABLED=1 GOOS=linux GOARCH=amd64 CC=x86_64-linux-musl-gcc go build
 How should we write and execute SQL queries? Python backend uses SQLAlchemy ORM. We need to decide on the Go equivalent.
 
 ### Decision
-**Hybrid Approach:**
-- Phase 1-2: `database/sql` (stdlib)
-- Phase 3: Migrate to `sqlc` + `Atlas`
+**`database/sql` (stdlib) with hand-written repositories** — migrating to **go-jet/jet** for type-safe query building (PoC in progress, see `JET_MIGRATION_PLAN.md`)
 
 ### Alternatives Considered
 
@@ -316,12 +314,15 @@ err := db.Get(&user, "SELECT * FROM users WHERE id = $1", 1)
 
 **Why not chosen:**
 - Similar effort to raw SQL, but less explicit
-- Doesn't solve the main pain points
-- Better to go straight to sqlc for code generation
+- Repositories already encapsulate all `Scan` calls — the main boilerplate sqlx reduces
+- Adding sqlx would be a lateral move, not an improvement
 
 ---
 
-#### C. sqlc (Code Generator)
+#### C. sqlc (Code Generator) — *evaluated and not adopted*
+
+> **Status (2026-03):** After hands-on evaluation in a test project and completing all 72 endpoints with hand-written repositories, we decided not to adopt sqlc. The repository layer with composable `WithTx()` transactions, functional options for DI, and per-entity `model.*` types already provides what sqlc was intended to deliver — without the model duplication (`database.*` vs `model.*`), loss of repository abstraction (monolithic `Queries` struct), or primitive transaction composition that sqlc would introduce.
+
 **What it is:**
 - Generates type-safe Go code from SQL queries
 - Write SQL, get Go functions automatically
@@ -355,14 +356,16 @@ func (q *Queries) GetUser(ctx context.Context, id int64) (User, error) {
 - Requires code generation step
 - One more tool to learn
 - Need to organize SQL queries in files
+- Generates a monolithic `Queries` struct — no per-entity repository boundary
+- Generates its own model types, duplicating existing `model.*` types
+- Transaction composition is primitive compared to `WithTx()` pattern
 
 ---
 
-### Rationale for Hybrid Approach
+### Rationale
 
-**Phase 1-2: Start with `database/sql`**
+**Why `database/sql` with hand-written repositories:**
 
-Why start here:
 ```go
 // You write this:
 row := db.QueryRow("SELECT portfolio_name FROM portfolios WHERE id = ?", id)
@@ -377,36 +380,38 @@ err := row.Scan(&name)
 3. **Learn database/sql patterns:** QueryRow vs Query vs Exec
 4. **Handle NULL values:** Using `sql.NullString`
 5. **Manage transactions manually:** Begin, Commit, Rollback
-6. **Feel the pain:** Motivates why tools like sqlc exist
 
-**Phase 3: Migrate to `sqlc`**
+**Why this became the permanent approach:**
 
-Why migrate later:
-1. **Appreciation:** You'll understand what sqlc does for you
-2. **Productivity:** 72 endpoints = lots of repetitive SQL code
-3. **Type safety:** Catch errors at compile time
-4. **Maintainability:** Schema changes update code automatically
+The original plan was to migrate to sqlc in Phase 3, but the codebase matured with patterns that already provide what sqlc was meant to deliver:
 
-**This approach:**
-- Teaches fundamentals first
-- Introduces productivity tools when you can appreciate them
-- Provides a clear migration path (documented in implementation plan)
+- **Repository pattern with `WithTx()`** — composable cross-repository transactions in a single DB tx, something sqlc's `Queries.WithTx()` handles more primitively
+- **Functional options** for service constructors — clean, extensible DI without a monolithic struct
+- **Per-entity `model.*` types** used across all layers — sqlc would generate its own `database.*` types, creating duplication
+- **Batch data loading** in `portfolio_data_loader.go` — prevents N+1 queries without code generation
+
+After completing all 72 endpoints and evaluating sqlc hands-on, the migration would be a lateral move: trading one set of boilerplate for another, while losing the clean repository boundaries the codebase relies on.
+
+**Next evolution: go-jet/jet** (PoC in progress). Jet provides type-safe SQL building as a Go DSL — eliminating the 44 manual `Scan()` calls and string-literal SQL without the model duplication or loss of repository boundaries that made sqlc unattractive. Combined with `_texttotime=1` (modernc.org/sqlite v1.46.0+), it also eliminates the manual `ParseTime()` and `sql.NullString` date parsing. See `JET_MIGRATION_PLAN.md` for the full plan.
 
 ---
 
-#### D. Atlas (Migration Tool)
+#### D. Atlas (Migration Tool) — *superseded by Goose*
+
+> **Status (2026-03):** With sqlc no longer planned, Atlas loses its primary reason for adoption (schema-driven code generation). Goose (pressly/goose v3) was chosen instead for database migrations — it's simpler, uses plain SQL files with `-- +goose Up/Down` annotations, embeds in the binary via `go:embed`, and is already implemented. See `DATABASE_MIGRATIONS.md` for details.
+
 **What it is:**
 - Database migration tool
 - Generates migrations by comparing schema to database
 
-**Why pair with sqlc:**
+**Original pairing rationale (no longer applicable):**
 - sqlc needs schema definitions
 - Atlas manages schema evolution
-- They complement each other perfectly
+- They complement each other
 
-**Phase 3 stack:**
+**Actual stack chosen:**
 ```
-Atlas (migrations) → Schema → sqlc (code gen) → Your code
+Goose (migrations) → Schema → Jet (code gen) → Repositories → Your code
 ```
 
 ---
@@ -616,10 +621,10 @@ type PortfolioHandler struct {
 - More files to navigate
 - Can feel over-engineered for simple CRUD
 
-**Why not chosen initially:**
-- Service layer is sufficient for Phase 1-2
-- Repository pattern can be added in Phase 3 with sqlc
-- Don't want to over-engineer before understanding needs
+**Why not chosen initially (but later adopted):**
+- Service layer was sufficient for early development
+- Repository pattern was eventually added organically as the codebase grew
+- Now all 8 repositories follow this pattern with composable `WithTx()` transactions
 
 ---
 
@@ -677,9 +682,11 @@ func (s *SystemService) CheckHealth() error {
 }
 ```
 
-**Evolution path:**
-- Phase 1-2: Handler → Service → SQL
-- Phase 3: Handler → Service → Repository → SQL (if needed)
+**Current architecture:**
+```
+Handler → Service → Repository → SQL
+```
+All 8 repositories are implemented with composable `WithTx()` transactions.
 
 ---
 
@@ -1123,11 +1130,16 @@ if err != nil {
 
 ## 9. Hybrid Database Approach
 
+> **Status (2026-03): Decision revised — `database/sql` with hand-written repositories is now the permanent approach.** The original plan was to start with `database/sql` and migrate to sqlc + Atlas in Phase 3. After completing all 72 endpoints, building 8 repositories with composable `WithTx()` transactions, adopting functional options for DI, and evaluating sqlc hands-on in a test project, we concluded the migration would be a lateral move. The patterns that emerged organically (repository boundaries, model types shared across layers, batch data loading) already provide the benefits sqlc was intended to deliver. The content below is preserved as a historical record of the original decision-making process.
+
 ### Context
 We need to balance **learning fundamentals** with **eventual productivity**. Should we start with advanced tools or build up?
 
-### Decision
-**Phased approach:** raw SQL first, then migrate to sqlc + Atlas
+### Decision (Original)
+~~**Phased approach:** raw SQL first, then migrate to sqlc + Atlas~~
+
+### Decision (Revised, 2026-03)
+**`database/sql` (stdlib) with hand-written repositories** — Goose for migrations. Migrating query layer to **go-jet/jet** for type-safe SQL building (PoC in progress).
 
 ### Alternatives Considered
 
@@ -1347,19 +1359,19 @@ func (s *Service) GetPortfolio(id int64) (*Portfolio, error) {
 
 The common theme in all these decisions:
 
-### **Learn Fundamentals First, Then Add Productivity Tools**
+### **Learn Fundamentals First, Then Decide on Tools**
 
-| Layer | Phase 1-2 (Learning) | Phase 3 (Productivity) |
-|-------|---------------------|------------------------|
-| **Web Framework** | Chi (stdlib-like) | Chi (same) |
-| **Database Driver** | modernc.org/sqlite (pure Go) | Same |
-| **Query Layer** | database/sql (manual) | sqlc (generated) |
-| **Migrations** | Manual SQL | Atlas (automated) |
-| **Error Handling** | Explicit checks | Explicit checks (same) |
+| Layer | Choice | Notes |
+|-------|--------|-------|
+| **Web Framework** | Chi (stdlib-like) | Lightweight, middleware ecosystem |
+| **Database Driver** | modernc.org/sqlite (pure Go) | No CGO, cross-compilation |
+| **Query Layer** | database/sql → go-jet/jet (migration in progress) | Type-safe SQL DSL, eliminates manual Scan() and string SQL |
+| **Migrations** | Goose (pressly/goose v3) | Embedded SQL migrations, `-- +goose Up/Down` |
+| **Code Generation** | Jet (go-jet/jet v2) | Table constants + model types generated from Goose-migrated schema |
+| **Error Handling** | Explicit checks + `apperrors` hierarchy | Sentinel errors, `errors.Is()` |
+| **DI** | Functional options | Extensible, no positional-argument fragility |
 
 ### **Why This Matters**
-
-**You're not just building a project, you're learning Go.**
 
 The choices prioritize:
 1. **Understanding** over magic
@@ -1367,12 +1379,13 @@ The choices prioritize:
 3. **Standard library** over frameworks
 4. **Build up** rather than start abstracted
 
-When you finish Phase 3, you'll:
-- ✅ Understand how web servers work in Go
-- ✅ Know database/sql patterns (used in all projects)
-- ✅ Appreciate why tools like sqlc exist
-- ✅ Be able to make informed decisions on future projects
-- ✅ Have working knowledge of production-ready tools
+What we gained from this approach:
+- ✅ Deep understanding of `database/sql` patterns (used in all Go projects)
+- ✅ Repository patterns with composable transactions — emerged organically from need
+- ✅ Functional options for DI — adopted when positional args became fragile
+- ✅ Transferable skills that work on any Go codebase
+- ✅ Evaluated tools (sqlc, GORM, Atlas, Jet) from a position of understanding, not assumption
+- ✅ Adopted Jet for type-safe SQL building — the right tool at the right time
 
 ### **Comparison to "Fast Start" Approach**
 
@@ -1386,11 +1399,11 @@ If we'd chosen Gin + GORM from day 1:
 **Our approach:**
 - ✅ Transferable skills (works with any Go project)
 - ✅ Deep understanding
-- ✅ Smooth transition to productivity tools
+- ✅ Informed tool decisions based on hands-on experience
 - ✅ Can work on any Go codebase
 - ❌ Slightly slower initial development
 
-**The trade-off is worth it for a learning project.**
+**The trade-off was worth it — and the resulting architecture is strong enough to not need the tools originally planned.**
 
 ---
 
@@ -1439,8 +1452,9 @@ As you continue implementing, ask:
 ### Understanding the Tools
 
 - **Chi Router:** https://github.com/go-chi/chi
-- **sqlc:** https://docs.sqlc.dev/
-- **Atlas:** https://atlasgo.io/getting-started
+- **Goose:** https://github.com/pressly/goose
+- **Jet:** https://github.com/go-jet/jet
+- **modernc.org/sqlite:** https://pkg.go.dev/modernc.org/sqlite
 
 ---
 
@@ -1483,13 +1497,13 @@ The `findPortfolioFund()` antipattern in `DividendService` was deleted and repla
 - Service constructors were already being modified frequently; keeping the split would continue forcing double-repository injection.
 - The `findPortfolioFund` antipattern would need to be replicated into IBKR and developer services as they were built.
 
-#### B. Wait until sqlc migration
+#### B. Wait until sqlc migration *(no longer applicable — sqlc not adopted)*
 
 **Pros:**
-- sqlc will generate typed query functions anyway; the repository struct is boilerplate that could be skipped.
+- sqlc would generate typed query functions; the repository struct could theoretically be skipped.
 
 **Cons:**
-- sqlc migration is planned only after all ~72 endpoints are complete. With ~25% remaining (IBKR + developer), leaving the antipattern in place would let it spread into new code.
+- Leaving the antipattern in place would let it spread into new code.
 - Constructor churn was already ongoing; deferring would not reduce it.
 
 #### C. Add a PortfolioFundService
@@ -1517,11 +1531,11 @@ The timing was right because constructor signatures were in flux anyway (recentl
 **Cons:**
 - Constructor updates were required across all affected services and test helpers — a one-time migration cost.
 - Adds another file to the repository layer, increasing total file count.
-- Will be partially superseded by sqlc-generated code, but the conceptual separation will remain valid.
+- Adds another file to navigate when tracing query execution.
 
 ---
 
-Happy learning! The decisions documented here will make more sense as you implement more endpoints. Revisit this document when you're ready for Phase 3 migration.
+The PortfolioFundRepository has proven to be a clean pattern — all 8 repositories now follow this model with composable `WithTx()` transactions.
 
 ---
 
@@ -1587,7 +1601,7 @@ func NewFundService(db *sql.DB, fundRepo *repository.FundRepository, ...) *FundS
 - Long argument lists are error-prone (easy to swap two `*repository.X` values)
 
 **Why not kept:**
-- The constructor had grown to 8–9 positional parameters; the maintenance cost outweighed the clarity
+- The constructor had grown to 8-9 positional parameters; the maintenance cost outweighed the clarity
 
 ---
 
@@ -1695,7 +1709,7 @@ The service is wired in exactly one production call site (`createRepoAndServices
 
 The IBKR Flex report fetch is a slow, multi-step operation: a `SendRequest` call followed by polling until the statement is ready (up to 10 retries with exponential backoff). If two callers trigger an import concurrently — e.g., a scheduled auto-import fires while a manual import is already in flight — both would independently call the IBKR API, which:
 
-- Wastes time (each call can take 10–30 seconds)
+- Wastes time (each call can take 10-30 seconds)
 - Risks rate-limiting or duplicate data ingestion
 - Provides no additional value (the second caller wants the same data as the first)
 

@@ -9,24 +9,20 @@ Transform the Python/Flask backend into a Go-based backend that maintains API co
 
 **Tech Stack:**
 - **Web Framework**: Chi router (stdlib-compatible, middleware ecosystem)
-- **Database (Phase 1-2)**: modernc.org/sqlite + database/sql (learn fundamentals)
-- **Database (Phase 3+)**: modernc.org/sqlite + sqlc + Atlas (modern, production-ready)
+- **Database**: modernc.org/sqlite + database/sql (with `_texttotime=1` for native date parsing)
+- **Query Layer**: go-jet/jet v2 — type-safe SQL builder + code generation from schema (migration in progress)
+- **Migrations**: Goose (pressly/goose v3) with embedded SQL files
 - **API Documentation**: Swaggo (OpenAPI/Swagger generation)
 - **Testing**: Go testing + testify/assert
 - **Logging**: Structured logging with levels and categories
 
 **Development Approach:**
 1. **Phase 1-2**: Start with database/sql (health check + basic CRUD) - Learn raw patterns
-2. **Phase 3**: Migrate to sqlc + Atlas - Modern type-safe code generation
-3. Incrementally add functionality to reach feature parity
-4. Follow Python backend's development principles (service layer, comprehensive testing, structured logging)
-5. Maintain API compatibility for seamless frontend integration
+2. Incrementally add functionality to reach feature parity
+3. Follow Python backend's development principles (service layer, comprehensive testing, structured logging)
+4. Maintain API compatibility for seamless frontend integration
 
-**Why the Hybrid Approach?**
-- Start with database/sql to understand what happens under the hood
-- Appreciate the boilerplate that sqlc eliminates
-- See both approaches in practice (great learning experience)
-- Migrate to sqlc + Atlas for production-ready, type-safe code generation
+> **Note (2026-03):** The original plan included a Phase 3 migration to sqlc + Atlas. After completing all 72 endpoints with hand-written repositories and evaluating sqlc hands-on, we decided against sqlc (model duplication, loss of repository boundaries). Instead, **go-jet/jet** was chosen for type-safe SQL building — it provides compile-time column validation and auto-scanning without replacing the repository pattern. Combined with `_texttotime=1` (modernc.org/sqlite v1.46.0+), it also eliminates manual date parsing. See `JET_MIGRATION_PLAN.md` for the full plan and `ARCHITECTURE_DECISIONS.md` ADR #3 and #9 for the sqlc evaluation rationale.
 
 ---
 
@@ -454,9 +450,11 @@ const (
 
 ---
 
-## Phase 3: Migration to sqlc + Atlas
+## Phase 3: Migration to sqlc + Atlas *(Not Adopted)*
 
-**⚠️ MIGRATION POINT: Switch from database/sql to sqlc + Atlas**
+> **Status (2026-03): This phase was never executed and is no longer planned.** After completing all 72 endpoints with hand-written repositories, we evaluated sqlc hands-on and found it would be a lateral move: trading one set of boilerplate for another while losing the clean repository boundaries, composable `WithTx()` transactions, and shared `model.*` types the codebase relies on. Goose was adopted for migrations instead of Atlas. The content below is preserved as a historical reference of the original plan.
+
+~~**⚠️ MIGRATION POINT: Switch from database/sql to sqlc + Atlas**~~
 
 At this point, you'll have:
 - Working health check endpoint
@@ -464,7 +462,7 @@ At this point, you'll have:
 - Repository layer with manual SQL queries
 - Appreciation for boilerplate code
 
-**Why Migrate Now?**
+~~**Why Migrate Now?**~~
 1. You've seen raw database/sql in action
 2. You understand what sqlc will generate for you
 3. Ready for production-ready patterns
@@ -836,7 +834,9 @@ Investment-Portfolio-Manager-Backend/
 
 ---
 
-## Phase 4: Repository Pattern (Post-Migration)
+## Phase 4: Repository Pattern (Post-Migration) *(Historical — see note)*
+
+> **Status (2026-03): The sqlc-based repository pattern described below was never adopted.** Instead, the codebase evolved with hand-written repositories that use `database/sql` directly, composable `WithTx()` for cross-repository transactions, and functional options for DI. See `REPOSITORY_TRANSACTION_PATTERNS.md` for the actual patterns in use. The content below is preserved for historical reference.
 
 ### 4.1 Repository Interface Pattern (Using sqlc)
 
@@ -1276,12 +1276,14 @@ func (h *PortfolioHandler) GetPortfolio(w http.ResponseWriter, r *http.Request) 
 
 ---
 
-## Phase 5: Testing Strategy (Post-sqlc Migration)
+## Phase 5: Testing Strategy (Post-sqlc Migration) *(Historical — see note)*
 
-**Note:** Testing becomes easier with sqlc because:
-- Generated code is already tested by sqlc
-- You only test business logic
-- Mock the `Querier` interface sqlc generates
+> **Status (2026-03): The sqlc-based testing patterns below were never adopted.** The actual test infrastructure uses builder pattern factories, isolated in-memory SQLite DBs with UUID-named shared memory, and httptest-based handler tests. See `GO_TESTING_GUIDE.md` and `TESTING_QUICK_REFERENCE.md` for the patterns in use. The content below is preserved for historical reference.
+
+~~**Note:** Testing becomes easier with sqlc because:~~
+- ~~Generated code is already tested by sqlc~~
+- ~~You only test business logic~~
+- ~~Mock the `Querier` interface sqlc generates~~
 
 ### 5.1 Repository Tests
 
@@ -1734,8 +1736,8 @@ func RunMigrations(db *sql.DB) error {
 - Python backend can run alongside Go backend on different port for comparison
 - Use this as learning project - prioritize understanding over speed
 - Follow Go idioms: simple, explicit, readable code
-- **Phase 1-2**: Leverage database/sql for deeper understanding of database operations
-- **Phase 3+**: Use sqlc + Atlas for type-safe, production-ready code
+- Goose handles database migrations (Atlas not adopted)
+- go-jet/jet for type-safe SQL building (sqlc evaluated and not adopted — see `JET_MIGRATION_PLAN.md`)
 
 ---
 
