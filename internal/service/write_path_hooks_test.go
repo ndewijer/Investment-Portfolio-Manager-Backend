@@ -422,6 +422,127 @@ func TestDeveloperService_ImportFundPrices_TriggersInvalidation(t *testing.T) {
 }
 
 // =============================================================================
+// FUND SERVICE — WRITE-PATH INVALIDATION HOOKS
+// =============================================================================
+
+// TestFundService_UpdateHistoricalFundPrice_TriggersInvalidation verifies that
+// backfilling historical prices triggers materialized view regeneration from
+// the earliest backfilled date using the fundID.
+// Issue #35 Edge Case 6: Historical price backfills must invalidate from the earliest date.
+func TestFundService_UpdateHistoricalFundPrice_TriggersInvalidation(t *testing.T) {
+	db := testutil.SetupTestDB(t)
+
+	// Create a mock Yahoo client that returns prices for specific dates.
+	// UpdateHistoricalFundPrice computes missing dates between oldest transaction
+	// and yesterday, then filters the Yahoo response to only insert those missing.
+	mockYahoo := testutil.NewMockYahooClient()
+	svc := testutil.NewTestFundServiceWithMockYahoo(t, db, mockYahoo)
+	mock := testutil.NewMockMaterializedInvalidator(1)
+	svc.SetMaterializedInvalidator(mock)
+
+	portfolio := testutil.NewPortfolio().Build(t, db)
+	fund := testutil.NewFund().WithSymbol("TEST").Build(t, db)
+	pf := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+
+	// Transaction on Jan 10 — this sets the oldest date boundary
+	testutil.NewTransaction(pf.ID).
+		WithDate(time.Date(2025, 1, 10, 0, 0, 0, 0, time.UTC)).
+		WithShares(100).
+		WithCostPerShare(10.0).
+		Build(t, db)
+
+	// Pre-existing prices for Jan 10-11 — the gap starts Jan 12
+	testutil.NewFundPrice(fund.ID).
+		WithDate(time.Date(2025, 1, 10, 0, 0, 0, 0, time.UTC)).
+		WithPrice(10.0).
+		Build(t, db)
+	testutil.NewFundPrice(fund.ID).
+		WithDate(time.Date(2025, 1, 11, 0, 0, 0, 0, time.UTC)).
+		WithPrice(10.5).
+		Build(t, db)
+
+	// The mock Yahoo client returns 5 days of prices ending yesterday.
+	// UpdateHistoricalFundPrice will find the gap and insert the missing ones.
+	_, err := svc.UpdateHistoricalFundPrice(context.Background(), fund.ID)
+	if err != nil {
+		t.Fatalf("UpdateHistoricalFundPrice() error: %v", err)
+	}
+
+	if !mock.WaitForCall(2 * time.Second) {
+		t.Fatal("Expected materialized invalidator to be called after UpdateHistoricalFundPrice, but it was not")
+	}
+
+	calls := mock.Calls()
+	if len(calls) != 1 {
+		t.Fatalf("Expected 1 invalidator call, got %d", len(calls))
+	}
+
+	if calls[0].FundID != fund.ID {
+		t.Errorf("Expected fundID %q, got %q", fund.ID, calls[0].FundID)
+	}
+}
+
+// =============================================================================
+// TRANSACTION SERVICE — SELL WITH REALIZED GAINS
+// =============================================================================
+
+// TestTransactionService_SellTransaction_TriggersInvalidation verifies that a
+// sell transaction (which creates a RealizedGainLoss record within the same DB
+// transaction) still triggers materialized view regeneration after commit.
+// Issue #35 Edge Case 7: Sell transactions with realized gains must invalidate.
+func TestTransactionService_SellTransaction_TriggersInvalidation(t *testing.T) {
+	db := testutil.SetupTestDB(t)
+	svc := testutil.NewTestTransactionService(t, db)
+
+	portfolio := testutil.NewPortfolio().Build(t, db)
+	fund := testutil.NewFund().Build(t, db)
+	pf := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+
+	// Create a buy first so there are shares to sell
+	testutil.NewTransaction(pf.ID).
+		WithDate(time.Date(2025, 1, 10, 0, 0, 0, 0, time.UTC)).
+		WithShares(100).
+		WithCostPerShare(10.0).
+		Build(t, db)
+
+	// Wire up mock after the buy (so only the sell triggers it)
+	mock := testutil.NewMockMaterializedInvalidator(1)
+	svc.SetMaterializedInvalidator(mock)
+
+	sellDate := "2025-01-20"
+	_, err := svc.CreateTransaction(context.Background(), request.CreateTransactionRequest{
+		PortfolioFundID: pf.ID,
+		Date:            sellDate,
+		Type:            "sell",
+		Shares:          50,
+		CostPerShare:    15.0, // Selling at profit
+	})
+	if err != nil {
+		t.Fatalf("CreateTransaction(sell) error: %v", err)
+	}
+
+	if !mock.WaitForCall(2 * time.Second) {
+		t.Fatal("Expected materialized invalidator to be called after sell transaction, but it was not")
+	}
+
+	calls := mock.Calls()
+	if len(calls) != 1 {
+		t.Fatalf("Expected 1 invalidator call, got %d", len(calls))
+	}
+
+	expectedDate := time.Date(2025, 1, 20, 0, 0, 0, 0, time.UTC)
+	if !calls[0].StartDate.Equal(expectedDate) {
+		t.Errorf("Expected startDate %v, got %v", expectedDate, calls[0].StartDate)
+	}
+	if calls[0].PortfolioFundID != pf.ID {
+		t.Errorf("Expected portfolioFundID %q, got %q", pf.ID, calls[0].PortfolioFundID)
+	}
+
+	// Verify the RealizedGainLoss record was also created (the whole point of Edge Case 7)
+	testutil.AssertRowCount(t, db, "realized_gain_loss", 1)
+}
+
+// =============================================================================
 // NIL GUARD — NO PANIC WITHOUT INVALIDATOR
 // =============================================================================
 
