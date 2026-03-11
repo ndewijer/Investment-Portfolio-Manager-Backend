@@ -482,3 +482,62 @@ func (r *TransactionRepository) GetSharesOnDate(portfolioFundID string, date tim
 
 	return f, nil
 }
+
+// GetTransactionsByPortfolioFundID retrieves all transactions for a portfolio fund, ordered by date ascending.
+// Used for calculating current position (shares held, cost basis, average cost) via weighted average.
+func (r *TransactionRepository) GetTransactionsByPortfolioFundID(pfID string) ([]model.Transaction, error) {
+	if pfID == "" {
+		return nil, apperrors.ErrInvalidPortfolioID
+	}
+
+	query := `
+		SELECT id, portfolio_fund_id, date, type, shares, cost_per_share, created_at
+		FROM "transaction"
+		WHERE portfolio_fund_id = ?
+		ORDER BY date ASC
+	`
+
+	rows, err := r.getQuerier().Query(query, pfID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query transactions by portfolio fund: %w", err)
+	}
+	defer rows.Close()
+
+	var transactions []model.Transaction
+
+	for rows.Next() {
+		var dateStr, createdAtStr string
+		var t model.Transaction
+
+		err := rows.Scan(
+			&t.ID,
+			&t.PortfolioFundID,
+			&dateStr,
+			&t.Type,
+			&t.Shares,
+			&t.CostPerShare,
+			&createdAtStr,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan transaction: %w", err)
+		}
+
+		t.Date, err = ParseTime(dateStr)
+		if err != nil || t.Date.IsZero() {
+			return nil, fmt.Errorf("failed to parse date: %w", err)
+		}
+
+		t.CreatedAt, err = ParseTime(createdAtStr)
+		if err != nil || t.CreatedAt.IsZero() {
+			return nil, fmt.Errorf("failed to parse created_at: %w", err)
+		}
+
+		transactions = append(transactions, t)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating transactions: %w", err)
+	}
+
+	return transactions, nil
+}

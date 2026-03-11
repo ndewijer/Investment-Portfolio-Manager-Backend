@@ -136,7 +136,7 @@ func resolveEncryptionKey(cfgKey, dataDir string) (string, error) {
 	return encoded, nil
 }
 
-//nolint:funlen // Needs to be in the same function
+//nolint:funlen // Wiring function that creates all repos and services; splitting would obscure the dependency graph.
 func createRepoAndServices(db *sql.DB, fernetKey *fernet.Key) (
 	*service.SystemService,
 	*service.PortfolioService,
@@ -180,6 +180,8 @@ func createRepoAndServices(db *sql.DB, fernetKey *fernet.Key) (
 		db,
 		transactionRepo,
 		pfRepo,
+		realizedGainLossRepo,
+		ibkrRepo,
 	)
 	dividendService := service.NewDividendService(
 		db,
