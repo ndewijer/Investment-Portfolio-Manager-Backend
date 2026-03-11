@@ -783,6 +783,37 @@ func (r *IbkrRepository) GetTransactionIDsByIbkrTransaction(ctx context.Context,
 	return ids, nil
 }
 
+// GetIbkrTransactionIDByTransactionID finds the IBKR transaction ID linked to a given transaction
+// via the allocation table. Returns empty string if no allocation exists (not an error).
+func (r *IbkrRepository) GetIbkrTransactionIDByTransactionID(ctx context.Context, transactionID string) (string, error) {
+	query := `SELECT ibkr_transaction_id FROM ibkr_transaction_allocation WHERE transaction_id = ?`
+
+	var ibkrTxnID string
+	err := r.getQuerier().QueryRowContext(ctx, query, transactionID).Scan(&ibkrTxnID)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("failed to query ibkr allocation by transaction ID: %w", err)
+	}
+
+	return ibkrTxnID, nil
+}
+
+// CountIbkrAllocationsByIbkrTransactionID counts how many allocation records exist for a given IBKR transaction.
+// Used to determine whether reverting status to "pending" is needed when deleting the last allocation.
+func (r *IbkrRepository) CountIbkrAllocationsByIbkrTransactionID(ctx context.Context, ibkrTransactionID string) (int, error) {
+	query := `SELECT COUNT(*) FROM ibkr_transaction_allocation WHERE ibkr_transaction_id = ?`
+
+	var count int
+	err := r.getQuerier().QueryRowContext(ctx, query, ibkrTransactionID).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count ibkr allocations: %w", err)
+	}
+
+	return count, nil
+}
+
 // DeleteIbkrConfig removes the IBKR configuration row from the database.
 // Returns ErrIbkrConfigNotFound if no config exists.
 func (r *IbkrRepository) DeleteIbkrConfig(ctx context.Context) error {

@@ -109,6 +109,14 @@ func (h *TransactionHandler) CreateTransaction(w http.ResponseWriter, r *http.Re
 
 	transaction, err := h.transactionService.CreateTransaction(r.Context(), req)
 	if err != nil {
+		if errors.Is(err, apperrors.ErrInsufficientShares) {
+			response.RespondError(w, http.StatusBadRequest, apperrors.ErrInsufficientShares.Error(), err.Error())
+			return
+		}
+		if errors.Is(err, apperrors.ErrPortfolioFundNotFound) {
+			response.RespondError(w, http.StatusBadRequest, apperrors.ErrPortfolioFundNotFound.Error(), err.Error())
+			return
+		}
 		response.RespondError(w, http.StatusInternalServerError, "failed to create transaction", err.Error())
 		return
 	}
@@ -143,6 +151,10 @@ func (h *TransactionHandler) UpdateTransaction(w http.ResponseWriter, r *http.Re
 	if err != nil {
 		if errors.Is(err, apperrors.ErrTransactionNotFound) {
 			response.RespondError(w, http.StatusNotFound, apperrors.ErrTransactionNotFound.Error(), err.Error())
+			return
+		}
+		if errors.Is(err, apperrors.ErrInsufficientShares) {
+			response.RespondError(w, http.StatusBadRequest, apperrors.ErrInsufficientShares.Error(), err.Error())
 			return
 		}
 

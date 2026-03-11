@@ -395,7 +395,8 @@ func getClientIP(r *http.Request) *string {
 // Error: 400 Bad Request for invalid input or CSV format issues
 // Error: 500 Internal Server Error if import fails
 func (h *DeveloperHandler) ImportFundPrices(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseMultipartForm(10 << 20); err != nil { // 10 MB limit
+	r.Body = http.MaxBytesReader(w, r.Body, 10<<20) // 10 MB limit
+	if err := r.ParseMultipartForm(10 << 20); err != nil {
 		response.RespondError(w, http.StatusBadRequest, "failed to parse form", err.Error())
 		return
 	}
@@ -450,7 +451,8 @@ func (h *DeveloperHandler) ImportFundPrices(w http.ResponseWriter, r *http.Reque
 // Error: 400 Bad Request for invalid input or CSV format issues
 // Error: 500 Internal Server Error if import fails
 func (h *DeveloperHandler) ImportTransactions(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseMultipartForm(10 << 20); err != nil { // 10 MB limit
+	r.Body = http.MaxBytesReader(w, r.Body, 10<<20) // 10 MB limit
+	if err := r.ParseMultipartForm(10 << 20); err != nil {
 		response.RespondError(w, http.StatusBadRequest, "failed to parse form", err.Error())
 		return
 	}
