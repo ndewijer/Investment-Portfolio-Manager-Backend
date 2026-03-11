@@ -56,7 +56,7 @@ After evaluating sqlc (rejected — model duplication, loss of repository bounda
 
 ### `_texttotime` deep dive
 
-Added in modernc.org/sqlite v1.46.0 (2026-02-17). We're already on v1.46.1.
+Added in modernc.org/sqlite v1.46.0 (2026-02-17) via [cznic/sqlite#245](https://gitlab.com/cznic/sqlite/-/work_items/245). We're already on v1.46.1.
 
 **How it works:**
 - `Next()` already converts `DATE`/`DATETIME`/`TIMESTAMP` TEXT columns to `time.Time` (regardless of the flag)
@@ -71,7 +71,9 @@ Added in modernc.org/sqlite v1.46.0 (2026-02-17). We're already on v1.46.1.
 | RFC3339 UTC | `2006-01-02T15:04:05Z` | Yes |
 | RFC3339 offset | `2006-01-02T15:04:05+00:00` | Yes |
 
-**Caveat:** `TIME`-only columns have an inconsistency (ColumnTypeScanType reports `time.Time` but `Next()` delivers `string`). We have no `TIME`-only columns, so this doesn't affect us.
+**Caveat 1:** `TIME`-only columns have an inconsistency (ColumnTypeScanType reports `time.Time` but `Next()` delivers `string`). We have no `TIME`-only columns, so this doesn't affect us.
+
+**Caveat 2: Aggregate functions lose column type information.** `MAX()`, `MIN()`, `COALESCE()`, and other SQL functions/aggregates return results as `string` even when the underlying column is `DATE`/`DATETIME`. The driver only auto-parses direct column reads — aggregate expressions don't carry the column type through to `ColumnTypeScanType()`. This means queries like `SELECT MAX(calculated_at) FROM ...` must still scan into `string`/`sql.NullString` and parse manually. Discovered during materialized view testing (Issue #35) — `GetLatestMaterializedDate` and `GetLatestSourceDates` both use `MAX()` and required manual parsing despite `_texttotime=1` being enabled. Reported upstream: [cznic/sqlite#248](https://gitlab.com/cznic/sqlite/-/work_items/248).
 
 ## Current Pain Points (What Jet Eliminates)
 

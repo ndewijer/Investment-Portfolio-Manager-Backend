@@ -25,7 +25,7 @@ func SetupTestDB(t *testing.T) *sql.DB {
 	// the same data, so transactions see schema and test data without needing
 	// to pin to a single connection. Each test gets a unique name so they
 	// remain fully isolated from one another.
-	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", uuid.New().String())
+	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared&_texttotime=1", uuid.New().String())
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		t.Fatalf("Failed to open test database: %v", err)
@@ -40,7 +40,8 @@ func SetupTestDB(t *testing.T) *sql.DB {
 	pragmas := []string{
 		"PRAGMA foreign_keys = ON",
 		"PRAGMA timezone = 'UTC'",
-		"PRAGMA journal_mode = MEMORY", // Faster for tests
+		"PRAGMA journal_mode = WAL",
+		"PRAGMA busy_timeout = 5000",
 	}
 
 	for _, pragma := range pragmas {

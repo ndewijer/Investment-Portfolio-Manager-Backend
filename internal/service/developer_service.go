@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/csv"
 	"fmt"
+	"log"
 	"strconv"
 	"strings"
 	"time"
@@ -19,11 +20,12 @@ import (
 
 // DeveloperService handles Developer-related business logic operations.
 type DeveloperService struct {
-	db              *sql.DB
-	developerRepo   *repository.DeveloperRepository
-	fundRepo        *repository.FundRepository
-	transactionRepo *repository.TransactionRepository
-	pfRepo          *repository.PortfolioFundRepository
+	db                      *sql.DB
+	developerRepo           *repository.DeveloperRepository
+	fundRepo                *repository.FundRepository
+	transactionRepo         *repository.TransactionRepository
+	pfRepo                  *repository.PortfolioFundRepository
+	materializedInvalidator MaterializedInvalidator
 }
 
 // NewDeveloperService creates a new DeveloperService with the provided repository dependencies.
@@ -43,13 +45,16 @@ func NewDeveloperService(
 	}
 }
 
+// SetMaterializedInvalidator injects the MaterializedInvalidator after construction.
+// This breaks the circular initialization order between DeveloperService and MaterializedService.
+func (s *DeveloperService) SetMaterializedInvalidator(m MaterializedInvalidator) {
+	s.materializedInvalidator = m
+}
+
 // GetLogs retrieves system logs with the specified filters and pagination.
 // Returns a paginated response with cursor for fetching subsequent pages.
 // The context parameter is currently unused but reserved for future cancellation support.
 func (s *DeveloperService) GetLogs(_ context.Context, filters *model.LogFilters) (*model.LogResponse, error) {
-	// Add any business logic validation here if needed
-
-	// Pass filters to repository
 	return s.developerRepo.GetLogs(filters)
 }
 
@@ -214,6 +219,15 @@ func (s *DeveloperService) UpdateFundPrice(
 		return model.FundPrice{}, fmt.Errorf("commit transaction: %w", err)
 	}
 
+	if s.materializedInvalidator != nil {
+		//nolint:gosec // G118: Background context is intentional — goroutine outlives the HTTP request.
+		go func() {
+			if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), fp.Date, nil, fp.FundID, ""); err != nil {
+				log.Printf("failed to regenerate materialized table after manual price update: %v", err)
+			}
+		}()
+	}
+
 	return fp, nil
 }
 
@@ -257,8 +271,10 @@ func (s *DeveloperService) DeleteLogs(ctx context.Context, ipAddress *string, us
 // ImportFundPrices parses a CSV file and upserts fund prices for the given fund.
 // Validates that the fund exists, the file is valid CSV with required headers,
 // and each row has a parseable date and positive price.
+// Triggers materialized view regeneration from the earliest imported date (Issue #35, Edge Case 9).
+//
+//nolint:gocyclo // CSV parsing + validation + batch insert + materialized invalidation
 func (s *DeveloperService) ImportFundPrices(ctx context.Context, fundID string, content []byte) (int, error) {
-	// Validate fund exists
 	if _, err := s.fundRepo.GetFund(fundID); err != nil {
 		return 0, apperrors.ErrFundNotFound
 	}
@@ -271,7 +287,6 @@ func (s *DeveloperService) ImportFundPrices(ctx context.Context, fundID string, 
 		return 0, err
 	}
 
-	// Build column index map
 	colIdx := make(map[string]int, len(headers))
 	for i, h := range headers {
 		colIdx[h] = i
@@ -284,6 +299,7 @@ func (s *DeveloperService) ImportFundPrices(ctx context.Context, fundID string, 
 	defer func() { _ = tx.Rollback() }() //nolint:errcheck
 
 	count := 0
+	var earliestDate time.Time
 	for i, row := range rows {
 		rowNum := i + 2 // 1-indexed, row 1 is headers
 
@@ -295,6 +311,10 @@ func (s *DeveloperService) ImportFundPrices(ctx context.Context, fundID string, 
 		price, err := strconv.ParseFloat(strings.TrimSpace(row[colIdx["price"]]), 64)
 		if err != nil || price <= 0 {
 			return 0, fmt.Errorf("row %d: price must be a positive number, got %q", rowNum, row[colIdx["price"]])
+		}
+
+		if earliestDate.IsZero() || date.Before(earliestDate) {
+			earliestDate = date
 		}
 
 		fp := model.FundPrice{
@@ -315,6 +335,15 @@ func (s *DeveloperService) ImportFundPrices(ctx context.Context, fundID string, 
 
 	if err := tx.Commit(); err != nil {
 		return 0, fmt.Errorf("commit transaction: %w", err)
+	}
+
+	if s.materializedInvalidator != nil && earliestDate != (time.Time{}) {
+		//nolint:gosec // G118: Background context is intentional — goroutine outlives the HTTP request.
+		go func() {
+			if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), earliestDate, nil, fundID, ""); err != nil {
+				log.Printf("failed to regenerate materialized table after price import: %v", err)
+			}
+		}()
 	}
 
 	return count, nil
@@ -365,8 +394,10 @@ func validateTransactionRow(row []string, colIdx map[string]int, rowNum int) (tr
 // ImportTransactions parses a CSV file and inserts transactions for the given portfolio-fund.
 // Validates that the portfolio-fund relationship exists, the file is valid CSV with required
 // headers, and each row has valid values.
+// Triggers materialized view regeneration from the earliest imported date (Issue #35, Edge Case 8).
+//
+//nolint:gocyclo // CSV parsing + validation + batch insert + materialized invalidation
 func (s *DeveloperService) ImportTransactions(ctx context.Context, portfolioFundID string, content []byte) (int, error) {
-	// Validate portfolio-fund exists
 	if _, err := s.pfRepo.GetPortfolioFund(portfolioFundID); err != nil {
 		return 0, apperrors.ErrPortfolioFundNotFound
 	}
@@ -391,12 +422,17 @@ func (s *DeveloperService) ImportTransactions(ctx context.Context, portfolioFund
 	defer func() { _ = tx.Rollback() }() //nolint:errcheck
 
 	count := 0
+	var earliestDate time.Time
 	for i, row := range rows {
 		rowNum := i + 2
 
 		parsed, err := validateTransactionRow(row, colIdx, rowNum)
 		if err != nil {
 			return 0, err
+		}
+
+		if earliestDate.IsZero() || parsed.date.Before(earliestDate) {
+			earliestDate = parsed.date
 		}
 
 		t := &model.Transaction{
@@ -420,6 +456,15 @@ func (s *DeveloperService) ImportTransactions(ctx context.Context, portfolioFund
 
 	if err := tx.Commit(); err != nil {
 		return 0, fmt.Errorf("commit transaction: %w", err)
+	}
+
+	if s.materializedInvalidator != nil && !earliestDate.IsZero() {
+		//nolint:gosec // G118: Background context is intentional — goroutine outlives the HTTP request.
+		go func() {
+			if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), earliestDate, nil, "", portfolioFundID); err != nil {
+				log.Printf("failed to regenerate materialized table after transaction import: %v", err)
+			}
+		}()
 	}
 
 	return count, nil

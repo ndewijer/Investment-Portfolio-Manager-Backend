@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/google/uuid"
@@ -17,11 +18,12 @@ import (
 // This includes sell processing with realized gain/loss tracking, insufficient shares
 // validation, and IBKR allocation cleanup on deletion.
 type TransactionService struct {
-	db                   *sql.DB
-	transactionRepo      *repository.TransactionRepository
-	pfRepo               *repository.PortfolioFundRepository
-	realizedGainLossRepo *repository.RealizedGainLossRepository
-	ibkrRepo             *repository.IbkrRepository
+	db                      *sql.DB
+	transactionRepo         *repository.TransactionRepository
+	pfRepo                  *repository.PortfolioFundRepository
+	realizedGainLossRepo    *repository.RealizedGainLossRepository
+	ibkrRepo                *repository.IbkrRepository
+	materializedInvalidator MaterializedInvalidator
 }
 
 // NewTransactionService creates a new TransactionService with the provided repository dependencies.
@@ -39,6 +41,12 @@ func NewTransactionService(
 		realizedGainLossRepo: realizedGainLossRepo,
 		ibkrRepo:             ibkrRepo,
 	}
+}
+
+// SetMaterializedInvalidator injects the MaterializedInvalidator after construction.
+// This breaks the circular initialization order between TransactionService and MaterializedService.
+func (s *TransactionService) SetMaterializedInvalidator(m MaterializedInvalidator) {
+	s.materializedInvalidator = m
 }
 
 // getOldestTransaction returns the date of the earliest transaction across the given portfolio_fund IDs.
@@ -104,7 +112,6 @@ func (s *TransactionService) CreateTransaction(ctx context.Context, req request.
 		return nil, fmt.Errorf("failed to create transaction: %w", err)
 	}
 
-	// For sell transactions, validate shares and create realized gain/loss record
 	if req.Type == "sell" {
 		if err := s.createRealizedGainLoss(ctx, tx, transaction.ID, transaction); err != nil {
 			return nil, err
@@ -115,7 +122,14 @@ func (s *TransactionService) CreateTransaction(ctx context.Context, req request.
 		return nil, fmt.Errorf("commit transaction: %w", err)
 	}
 
-	// TODO: Wire materialized invalidation once MaterializedInvalidator is available on this branch.
+	if s.materializedInvalidator != nil {
+		//nolint:gosec // G118: Background context is intentional — goroutine outlives the HTTP request.
+		go func() {
+			if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), transaction.Date, nil, "", req.PortfolioFundID); err != nil {
+				log.Printf("failed to regenerate materialized table: %v", err)
+			}
+		}()
+	}
 
 	return transaction, nil
 }
@@ -128,9 +142,15 @@ func (s *TransactionService) CreateTransaction(ctx context.Context, req request.
 //   - If the new type is "sell", validates shares and creates a new RealizedGainLoss record
 //   - If both old and new are "sell", recalculates the RealizedGainLoss record
 //
+// When date or PortfolioFundID changes, materialized view regeneration covers the
+// earlier of old/new dates, and both old and new portfolio-funds are regenerated
+// separately (Issue #35, Edge Case 3).
+//
 // Returns the updated transaction on success.
 // Returns ErrTransactionNotFound if the transaction does not exist.
 // Returns ErrInsufficientShares if selling more shares than currently held.
+//
+//nolint:gocyclo // Update with realized gain/loss lifecycle + old/new date invalidation
 func (s *TransactionService) UpdateTransaction(
 	ctx context.Context,
 	id string,
@@ -149,12 +169,13 @@ func (s *TransactionService) UpdateTransaction(
 	}
 
 	oldType := transaction.Type
+	oldDate := transaction.Date
+	oldPortfolioFundID := transaction.PortfolioFundID
 
 	if err := s.applyTransactionUpdates(tx, &transaction, req); err != nil {
 		return nil, err
 	}
 
-	// Handle realized gain/loss updates when sell type is involved
 	if oldType == "sell" || transaction.Type == "sell" {
 		if oldType == "sell" {
 			if err := s.realizedGainLossRepo.WithTx(tx).DeleteRealizedGainLossByTransactionID(ctx, id); err != nil {
@@ -176,8 +197,26 @@ func (s *TransactionService) UpdateTransaction(
 		return nil, fmt.Errorf("commit transaction: %w", err)
 	}
 
-	// TODO: Wire materialized invalidation once MaterializedInvalidator is available on this branch.
-	// Use transaction.PortfolioFundID (or *req.PortfolioFundID if changed) as the pfID.
+	if s.materializedInvalidator != nil {
+		regenDate := transaction.Date
+		if oldDate.Before(regenDate) {
+			regenDate = oldDate
+		}
+		//nolint:gosec // G118: Background context is intentional — goroutine outlives the HTTP request.
+		go func() {
+			if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), regenDate, nil, "", transaction.PortfolioFundID); err != nil {
+				log.Printf("failed to regenerate materialized table: %v", err)
+			}
+		}()
+		if oldPortfolioFundID != transaction.PortfolioFundID {
+			//nolint:gosec // G118: Background context is intentional — goroutine outlives the HTTP request.
+			go func() {
+				if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), regenDate, nil, "", oldPortfolioFundID); err != nil {
+					log.Printf("failed to regenerate materialized table for old portfolio-fund: %v", err)
+				}
+			}()
+		}
+	}
 
 	return &transaction, nil
 }
@@ -205,27 +244,23 @@ func (s *TransactionService) DeleteTransaction(ctx context.Context, id string) e
 		return err
 	}
 
-	// Clean up realized gain/loss for sell transactions
 	if transaction.Type == "sell" {
 		if err := s.realizedGainLossRepo.WithTx(tx).DeleteRealizedGainLossByTransactionID(ctx, id); err != nil {
 			return fmt.Errorf("failed to delete realized gain/loss: %w", err)
 		}
 	}
 
-	// Handle IBKR allocation cleanup and status reversion
 	ibkrTxnID, err := s.ibkrRepo.WithTx(tx).GetIbkrTransactionIDByTransactionID(ctx, id)
 	if err != nil {
 		return fmt.Errorf("failed to check ibkr allocation: %w", err)
 	}
 
 	if ibkrTxnID != "" {
-		// Count remaining allocations for this IBKR transaction
 		allocCount, err := s.ibkrRepo.WithTx(tx).CountIbkrAllocationsByIbkrTransactionID(ctx, ibkrTxnID)
 		if err != nil {
 			return fmt.Errorf("failed to count ibkr allocations: %w", err)
 		}
 
-		// If this is the last allocation, revert IBKR transaction status to pending
 		if allocCount == 1 {
 			if err := s.ibkrRepo.WithTx(tx).UpdateIbkrTransactionStatus(ctx, ibkrTxnID, "pending", nil); err != nil {
 				return fmt.Errorf("failed to revert ibkr transaction status: %w", err)
@@ -242,7 +277,14 @@ func (s *TransactionService) DeleteTransaction(ctx context.Context, id string) e
 		return fmt.Errorf("commit transaction: %w", err)
 	}
 
-	// TODO: Wire materialized invalidation once MaterializedInvalidator is available on this branch.
+	if s.materializedInvalidator != nil {
+		//nolint:gosec // G118: Background context is intentional — goroutine outlives the HTTP request.
+		go func() {
+			if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), transaction.Date, nil, "", transaction.PortfolioFundID); err != nil {
+				log.Printf("failed to regenerate materialized table: %v", err)
+			}
+		}()
+	}
 
 	return nil
 }

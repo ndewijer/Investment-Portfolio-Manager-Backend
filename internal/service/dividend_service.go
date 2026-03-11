@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/google/uuid"
@@ -14,10 +15,11 @@ import (
 
 // DividendService handles dividend-related business logic operations.
 type DividendService struct {
-	db              *sql.DB
-	dividendRepo    *repository.DividendRepository
-	pfRepo          *repository.PortfolioFundRepository
-	transactionRepo *repository.TransactionRepository
+	db                      *sql.DB
+	dividendRepo            *repository.DividendRepository
+	pfRepo                  *repository.PortfolioFundRepository
+	transactionRepo         *repository.TransactionRepository
+	materializedInvalidator MaterializedInvalidator
 }
 
 // NewDividendService creates a new DividendService with the provided dependencies.
@@ -39,6 +41,12 @@ func NewDividendService(
 		pfRepo:          pfRepo,
 		transactionRepo: transactionRepo,
 	}
+}
+
+// SetMaterializedInvalidator injects the MaterializedInvalidator after construction.
+// This breaks the circular initialization order between DividendService and MaterializedService.
+func (s *DividendService) SetMaterializedInvalidator(m MaterializedInvalidator) {
+	s.materializedInvalidator = m
 }
 
 // GetAllDividends retrieves all dividend records from the database.
@@ -87,7 +95,6 @@ func (s *DividendService) processDividendSharesForDate(dividendMap map[string][]
 		for _, div := range dividend {
 			if div.ExDividendDate.Before(date) || div.ExDividendDate.Equal(date) {
 				if div.ReinvestmentTransactionID != "" {
-					// Find the transaction with this ID
 					for _, transaction := range transactions {
 						if transaction.ID == div.ReinvestmentTransactionID {
 							dividendShares += transaction.Shares
@@ -207,6 +214,15 @@ func (s *DividendService) CreateDividend(ctx context.Context, req request.Create
 		return nil, fmt.Errorf("commit transaction: %w", err)
 	}
 
+	if s.materializedInvalidator != nil {
+		//nolint:gosec // G118: Background context is intentional — goroutine outlives the HTTP request.
+		go func() {
+			if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), dividend.ExDividendDate, nil, "", req.PortfolioFundID); err != nil {
+				log.Printf("failed to regenerate materialized table: %v", err)
+			}
+		}()
+	}
+
 	return dividendToFund(*dividend, portfolioFund), nil
 }
 
@@ -228,8 +244,13 @@ func (s *DividendService) CreateDividend(ctx context.Context, req request.Create
 // If reinvestment info is provided and no reinvestment transaction exists yet, a new one is created.
 // If a reinvestment transaction already exists, it is updated in the same database transaction.
 //
+// When ex_dividend_date changes, materialized view regeneration starts from the earlier of
+// old/new dates to ensure both ranges are recalculated (Issue #35, Edge Case 5).
+//
 // Returns ErrDividendNotFound if the dividend does not exist.
 // Returns an error if date parsing fails or any database operation fails.
+//
+//nolint:gocyclo // Complex update with reinvestment lifecycle + materialized invalidation
 func (s *DividendService) UpdateDividend(
 	ctx context.Context,
 	id string,
@@ -239,6 +260,8 @@ func (s *DividendService) UpdateDividend(
 	if err != nil {
 		return nil, err
 	}
+
+	oldExDividendDate := dividend.ExDividendDate
 
 	if req.PortfolioFundID != nil {
 		dividend.PortfolioFundID = *req.PortfolioFundID
@@ -284,6 +307,19 @@ func (s *DividendService) UpdateDividend(
 
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit transaction: %w", err)
+	}
+
+	if s.materializedInvalidator != nil {
+		regenDate := dividend.ExDividendDate
+		if oldExDividendDate.Before(regenDate) {
+			regenDate = oldExDividendDate
+		}
+		//nolint:gosec // G118: Background context is intentional — goroutine outlives the HTTP request.
+		go func() {
+			if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), regenDate, nil, "", dividend.PortfolioFundID); err != nil {
+				log.Printf("failed to regenerate materialized table: %v", err)
+			}
+		}()
 	}
 
 	return dividendToFund(dividend, portfolioFund), nil
@@ -503,6 +539,15 @@ func (s *DividendService) DeleteDividend(ctx context.Context, id string) error {
 
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit transaction: %w", err)
+	}
+
+	if s.materializedInvalidator != nil {
+		//nolint:gosec // G118: Background context is intentional — goroutine outlives the HTTP request.
+		go func() {
+			if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), dividend.ExDividendDate, nil, "", dividend.PortfolioFundID); err != nil {
+				log.Printf("failed to regenerate materialized table: %v", err)
+			}
+		}()
 	}
 
 	return nil

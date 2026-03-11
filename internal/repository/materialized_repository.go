@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"strings"
@@ -12,11 +13,28 @@ import (
 // MaterializedRepository provides data access methods for the fund_history_materialized table.
 type MaterializedRepository struct {
 	db *sql.DB
+	tx *sql.Tx
 }
 
 // NewMaterializedRepository creates a new repository instance.
 func NewMaterializedRepository(db *sql.DB) *MaterializedRepository {
 	return &MaterializedRepository{db: db}
+}
+
+// WithTx returns a new MaterializedRepository scoped to the provided transaction.
+func (r *MaterializedRepository) WithTx(tx *sql.Tx) *MaterializedRepository {
+	return &MaterializedRepository{
+		db: r.db,
+		tx: tx,
+	}
+}
+
+// getQuerier returns the active transaction if one is set, otherwise the database connection.
+func (r *MaterializedRepository) getQuerier() Querier {
+	if r.tx != nil {
+		return r.tx
+	}
+	return r.db
 }
 
 // GetMaterializedHistory retrieves aggregated portfolio history by querying fund_history_materialized.
@@ -57,7 +75,7 @@ func (r *MaterializedRepository) GetMaterializedHistory(
 
 	query, args := r.buildMaterializedQuery(portfolioIDs, startDate, endDate)
 
-	rows, err := r.db.Query(query, args...)
+	rows, err := r.getQuerier().Query(query, args...)
 	if err != nil {
 		return fmt.Errorf("failed to query fund_history_materialized: %w", err)
 	}
@@ -236,7 +254,7 @@ func (r *MaterializedRepository) GetFundHistoryMaterialized(
 		ORDER BY fh.date ASC, f.name ASC
 	`
 
-	rows, err := r.db.Query(query, portfolioID, startDate.Format("2006-01-02"), endDate.Format("2006-01-02"))
+	rows, err := r.getQuerier().Query(query, portfolioID, startDate.Format("2006-01-02"), endDate.Format("2006-01-02"))
 	if err != nil {
 		return fmt.Errorf("failed to query fund_history_materialized: %w", err)
 	}
@@ -281,4 +299,182 @@ func (r *MaterializedRepository) GetFundHistoryMaterialized(
 	}
 
 	return nil
+}
+
+// GetLatestMaterializedDate returns the most recent date and calculated_at timestamp
+// from the materialized table for the given portfolio IDs. If no rows exist, returns
+// zero-value times and false.
+func (r *MaterializedRepository) GetLatestMaterializedDate(portfolioIDs []string) (latestDate time.Time, latestCalc time.Time, ok bool, err error) {
+	if len(portfolioIDs) == 0 {
+		return time.Time{}, time.Time{}, false, nil
+	}
+
+	placeholders := make([]string, len(portfolioIDs))
+	args := make([]any, len(portfolioIDs))
+	for i, id := range portfolioIDs {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+
+	query := fmt.Sprintf(`
+		SELECT MAX(date), MAX(calculated_at)
+		FROM fund_history_materialized fhm
+		JOIN portfolio_fund pf ON fhm.portfolio_fund_id = pf.id
+		WHERE pf.portfolio_id IN (%s)
+	`, strings.Join(placeholders, ","))
+
+	// MAX() aggregates lose column type information, so _texttotime won't
+	// auto-parse them. Scan into strings and parse manually.
+	var dateStr, calcStr sql.NullString
+	if err := r.getQuerier().QueryRow(query, args...).Scan(&dateStr, &calcStr); err != nil {
+		return time.Time{}, time.Time{}, false, fmt.Errorf("failed to get latest materialized date: %w", err)
+	}
+
+	if !dateStr.Valid || !calcStr.Valid {
+		return time.Time{}, time.Time{}, false, nil
+	}
+
+	latestDate, err = time.Parse("2006-01-02", dateStr.String)
+	if err != nil {
+		return time.Time{}, time.Time{}, false, fmt.Errorf("failed to parse materialized date: %w", err)
+	}
+
+	latestCalc, err = time.Parse("2006-01-02 15:04:05", calcStr.String)
+	if err != nil {
+		return time.Time{}, time.Time{}, false, fmt.Errorf("failed to parse calculated_at: %w", err)
+	}
+
+	return latestDate, latestCalc, true, nil
+}
+
+// GetLatestSourceDates returns the most recent modification timestamps from the three
+// source tables (transaction, fund_price, dividend) for the given portfolio IDs in a
+// single query. fund_price uses MAX(date) since it has no created_at column.
+func (r *MaterializedRepository) GetLatestSourceDates(portfolioIDs []string) (latestTxn, latestPrice, latestDiv time.Time, err error) {
+	if len(portfolioIDs) == 0 {
+		return time.Time{}, time.Time{}, time.Time{}, nil
+	}
+
+	placeholders := make([]string, len(portfolioIDs))
+	args := make([]any, len(portfolioIDs))
+	for i, id := range portfolioIDs {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+
+	inClause := strings.Join(placeholders, ",")
+
+	// All three args sets are the same portfolio IDs, so triple them
+	allArgs := make([]any, 0, len(args)*3)
+	allArgs = append(allArgs, args...)
+	allArgs = append(allArgs, args...)
+	allArgs = append(allArgs, args...)
+
+	// MAX() aggregates lose column type information, so _texttotime won't
+	// auto-parse them. Use COALESCE to empty string and parse manually.
+	query := fmt.Sprintf(`
+		SELECT
+			COALESCE((SELECT MAX(t.created_at) FROM "transaction" t
+				JOIN portfolio_fund pf ON t.portfolio_fund_id = pf.id
+				WHERE pf.portfolio_id IN (%s)), ''),
+			COALESCE((SELECT MAX(fp.date) FROM fund_price fp
+				JOIN portfolio_fund pf ON fp.fund_id = pf.fund_id
+				WHERE pf.portfolio_id IN (%s)), ''),
+			COALESCE((SELECT MAX(d.created_at) FROM dividend d
+				JOIN portfolio_fund pf ON d.portfolio_fund_id = pf.id
+				WHERE pf.portfolio_id IN (%s)), '')
+	`, inClause, inClause, inClause)
+
+	var txnStr, priceStr, divStr string
+	if err := r.getQuerier().QueryRow(query, allArgs...).Scan(&txnStr, &priceStr, &divStr); err != nil {
+		return time.Time{}, time.Time{}, time.Time{}, fmt.Errorf("failed to get latest source dates: %w", err)
+	}
+
+	if txnStr != "" {
+		if parsed, err := time.Parse("2006-01-02 15:04:05", txnStr); err == nil {
+			latestTxn = parsed
+		}
+	}
+	if priceStr != "" {
+		if parsed, err := time.Parse("2006-01-02", priceStr); err == nil {
+			latestPrice = parsed
+		}
+	}
+	if divStr != "" {
+		if parsed, err := time.Parse("2006-01-02 15:04:05", divStr); err == nil {
+			latestDiv = parsed
+		}
+	}
+
+	return latestTxn, latestPrice, latestDiv, nil
+}
+
+// InvalidateMaterializedTable deletes cached entries from the given date forward,
+// scoped to the specified portfolio_fund IDs. If pfIDs is empty, no rows are deleted.
+func (r *MaterializedRepository) InvalidateMaterializedTable(ctx context.Context, date time.Time, pfIDs []string) error {
+	if len(pfIDs) == 0 {
+		return nil
+	}
+
+	placeholders := make([]string, len(pfIDs))
+	args := make([]any, 0, len(pfIDs)+1)
+	args = append(args, date.Format("2006-01-02"))
+	for i, id := range pfIDs {
+		placeholders[i] = "?"
+		args = append(args, id)
+	}
+
+	query := fmt.Sprintf(`
+		DELETE FROM fund_history_materialized
+		WHERE date >= ? AND portfolio_fund_id IN (%s)
+	`, strings.Join(placeholders, ","))
+
+	_, err := r.getQuerier().ExecContext(ctx, query, args...)
+	if err != nil {
+		return fmt.Errorf("failed to delete materialized view records: %w", err)
+	}
+
+	return nil
+}
+
+func (r *MaterializedRepository) InsertMaterializedEntries(ctx context.Context, fundHistoryEntries []model.FundHistoryEntry) error {
+
+	if len(fundHistoryEntries) == 0 {
+		return nil
+	}
+
+	stmt, err := r.getQuerier().PrepareContext(ctx, `
+        INSERT INTO fund_history_materialized (id, portfolio_fund_id, fund_id, date, shares, price, value, cost, realized_gain, unrealized_gain, total_gain_loss, dividends, fees, calculated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `)
+	if err != nil {
+		return fmt.Errorf("failed to prepare statement: %w", err)
+	}
+	defer stmt.Close()
+
+	calculatedAt := time.Now().UTC().Format("2006-01-02 15:04:05")
+	for _, e := range fundHistoryEntries {
+
+		_, err := stmt.ExecContext(ctx,
+			e.ID,
+			e.PortfolioFundID,
+			e.FundID,
+			e.Date.Format("2006-01-02"),
+			e.Shares,
+			e.Price,
+			e.Value,
+			e.Cost,
+			e.RealizedGain,
+			e.UnrealizedGain,
+			e.TotalGainLoss,
+			e.Dividends,
+			e.Fees,
+			calculatedAt,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to insert materialized entry for %s on %s: %w", e.PortfolioFundID, e.Date.Format("2006-01-02"), err)
+		}
+	}
+	return nil
+
 }

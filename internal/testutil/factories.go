@@ -468,6 +468,18 @@ func NewDividend(fundID, portfolioFundID string) *DividendBuilder {
 	}
 }
 
+// WithExDividendDate sets the ex-dividend date.
+func (b *DividendBuilder) WithExDividendDate(date time.Time) *DividendBuilder {
+	b.ExDividendDate = date
+	return b
+}
+
+// WithRecordDate sets the record date.
+func (b *DividendBuilder) WithRecordDate(date time.Time) *DividendBuilder {
+	b.RecordDate = date
+	return b
+}
+
 // WithReinvestmentTransaction sets the reinvestment transaction ID
 func (b *DividendBuilder) WithReinvestmentTransaction(txID string) *DividendBuilder {
 	b.ReinvestmentTransactionID = txID

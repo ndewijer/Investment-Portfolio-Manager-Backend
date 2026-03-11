@@ -10,6 +10,8 @@
 
 # SQLite database files
 *.db
+*.db-wal
+*.db-shm
 
 # Created Binaries
 /bin/*

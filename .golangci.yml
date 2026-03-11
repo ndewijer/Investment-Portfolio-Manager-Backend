@@ -33,6 +33,9 @@ linters:
       - linters:
           - funlen
         path: _test\.go
+      - linters:
+          - staticcheck
+        text: "SA5011"
     paths:
       - third_party$
       - builtin$

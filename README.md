@@ -2,27 +2,28 @@
 
 A personal learning project rebuilding the Investment Portfolio Manager backend in Go. This project is part of my journey to learn Go by reimplementing a production Python/Flask backend that manages investment fund portfolios, transactions, and dividend tracking.
 
-**Important:** This backend is being built **manually by me, not AI-generated**. Every line of code is written to understand Go fundamentals, patterns, and best practices. The implementation follows a phased approach starting with raw `database/sql` to learn the foundations before migrating to modern tools like `sqlc` and Atlas.
+**Important:** This backend is being built **manually by me, not AI-generated**. Every line of code is written to understand Go fundamentals, patterns, and best practices. AI is assisting as a teacher, reviewer but the goal is that I build and then revise based on feedback. The implementation follows a phased approach starting with raw `database/sql` to learn the foundations ~before migrating to modern tools like `sqlc` and Atlas.~ before realizing the project has become so mature sqlc is no longer the right fit. Go figure.
 
 ## Project Status
-🚧 **In Active Development** - 100% complete (72/72 endpoints implemented)
+✅ API Endpoints - **Complete** - 100% complete (72/72 endpoints implemented)
+🚧 Core functionality (see GH Issues) - In progress
 
 This is a ground-up rewrite of the [Investment Portfolio Manager backend](https://github.com/ndewijer/Investment-Portfolio-Manager) from Python/Flask to Go. The goal is to achieve feature parity while learning Go idioms, patterns, and ecosystem.
 
 ### Tech Stack
 
-- **Language:** Go 1.23+
+- **Language:** Go 1.25+
 - **Web Framework:** Chi router (stdlib-compatible)
 - **Database Driver:** modernc.org/sqlite (pure Go, no CGO)
 - **Database Access:**
   - Phase 1-2: `database/sql` (learning fundamentals)
-  - Phase 3+: `sqlc` + Atlas (type-safe code generation)
+  - Phase 3+: `goose` + `jet` (type-safe sql with upgrading functionality)
 - **Testing:** Go testing + testify/assert
 - **Logging:** Structured logging with levels and categories
 
 ## API Implementation Status
 
-This backend aims to replicate all 73 endpoints from the Python backend. Below is the current implementation status:
+This backend aims to replicate all 73 endpoints from the Python backend. This has completed.
 
 ```
 /api
@@ -120,7 +121,7 @@ Overall Progress: 72/72 endpoints (100%)
 
 ### Prerequisites
 
-- Go 1.23 or higher
+- Go 1.25 or higher
 - SQLite database from the Python backend (or create new)
 
 ### Setup
