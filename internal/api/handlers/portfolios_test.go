@@ -108,19 +108,15 @@ func TestPortfolioHandler_Portfolios(t *testing.T) {
 			}
 		}
 
-		// Verify we found both
+		// Verify we found both and data matches
 		if portfolio1 == nil {
 			t.Fatal("Portfolio One not found in response")
+		} else if portfolio1.Name != "Portfolio One" {
+			t.Errorf("Expected first portfolio name 'Portfolio One', got '%s'", portfolio1.Name)
 		}
 		if portfolio2 == nil {
 			t.Fatal("Portfolio Two not found in response")
-		}
-
-		// Verify data matches what we created
-		if portfolio1.Name != "Portfolio One" {
-			t.Errorf("Expected first portfolio name 'Portfolio One', got '%s'", portfolio1.Name)
-		}
-		if portfolio2.Name != "Portfolio Two" {
+		} else if portfolio2.Name != "Portfolio Two" {
 			t.Errorf("Expected second portfolio name 'Portfolio Two', got '%s'", portfolio2.Name)
 		}
 	})
