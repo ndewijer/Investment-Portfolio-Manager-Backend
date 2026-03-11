@@ -21,7 +21,7 @@ func NewMaterializedRepository(db *sql.DB) *MaterializedRepository {
 	return &MaterializedRepository{db: db}
 }
 
-// WithTx returns a new NewMaterializedRepository scoped to the provided transaction.
+// WithTx returns a new MaterializedRepository scoped to the provided transaction.
 func (r *MaterializedRepository) WithTx(tx *sql.Tx) *MaterializedRepository {
 	return &MaterializedRepository{
 		db: r.db,
@@ -75,7 +75,7 @@ func (r *MaterializedRepository) GetMaterializedHistory(
 
 	query, args := r.buildMaterializedQuery(portfolioIDs, startDate, endDate)
 
-	rows, err := r.db.Query(query, args...)
+	rows, err := r.getQuerier().Query(query, args...)
 	if err != nil {
 		return fmt.Errorf("failed to query fund_history_materialized: %w", err)
 	}
@@ -254,7 +254,7 @@ func (r *MaterializedRepository) GetFundHistoryMaterialized(
 		ORDER BY fh.date ASC, f.name ASC
 	`
 
-	rows, err := r.db.Query(query, portfolioID, startDate.Format("2006-01-02"), endDate.Format("2006-01-02"))
+	rows, err := r.getQuerier().Query(query, portfolioID, startDate.Format("2006-01-02"), endDate.Format("2006-01-02"))
 	if err != nil {
 		return fmt.Errorf("failed to query fund_history_materialized: %w", err)
 	}
@@ -452,6 +452,7 @@ func (r *MaterializedRepository) InsertMaterializedEntries(ctx context.Context, 
 	}
 	defer stmt.Close()
 
+	calculatedAt := time.Now().UTC().Format("2006-01-02 15:04:05")
 	for _, e := range fundHistoryEntries {
 
 		_, err := stmt.ExecContext(ctx,
@@ -468,7 +469,7 @@ func (r *MaterializedRepository) InsertMaterializedEntries(ctx context.Context, 
 			e.TotalGainLoss,
 			e.Dividends,
 			e.Fees,
-			time.Now().UTC().Format("2006-01-02 15:04:05"),
+			calculatedAt,
 		)
 		if err != nil {
 			return fmt.Errorf("failed to insert materialized entry for %s on %s: %w", e.PortfolioFundID, e.Date.Format("2006-01-02"), err)

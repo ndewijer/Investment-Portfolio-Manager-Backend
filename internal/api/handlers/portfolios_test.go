@@ -1286,7 +1286,7 @@ func TestPortfolioHandler_PortfolioHistory(t *testing.T) {
 		}
 
 		// Pre-populate materialized cache
-		err := ms.RegenerateMaterializedTable(context.Background(), txDate, portfolio.ID, "", "")
+		err := ms.RegenerateMaterializedTable(context.Background(), txDate, []string{portfolio.ID}, "", "")
 		if err != nil {
 			t.Fatalf("RegenerateMaterializedTable() error: %v", err)
 		}

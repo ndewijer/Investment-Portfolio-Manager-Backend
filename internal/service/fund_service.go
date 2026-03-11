@@ -521,7 +521,7 @@ func (s *FundService) UpdateCurrentFundPrice(ctx context.Context, fundID string)
 	if s.materializedInvalidator != nil {
 		//nolint:gosec // G118: Background context is intentional — goroutine outlives the HTTP request.
 		go func() {
-			if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), fundPrice.Date, "", fundPrice.FundID, ""); err != nil {
+			if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), fundPrice.Date, nil, fundPrice.FundID, ""); err != nil {
 				log.Printf("failed to regenerate materialized table: %v", err)
 			}
 		}()
@@ -703,7 +703,7 @@ func (s *FundService) UpdateHistoricalFundPrice(ctx context.Context, fundID stri
 	if s.materializedInvalidator != nil {
 		//nolint:gosec // G118: Background context is intentional — goroutine outlives the HTTP request.
 		go func() {
-			if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), oldestPrice.Date, "", oldestPrice.FundID, ""); err != nil {
+			if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), oldestPrice.Date, nil, oldestPrice.FundID, ""); err != nil {
 				log.Printf("failed to regenerate materialized table: %v", err)
 			}
 		}()
@@ -721,7 +721,7 @@ func (s *FundService) UpdateHistoricalFundPrice(ctx context.Context, fundID stri
 //
 // Returns:
 //   - AllFundUpdateResponse containing detailed results for each fund (successes and errors)
-//   - error is nil if at least one fund was sucncessfully updated (partial success)
+//   - error is nil if at least one fund was successfully updated (partial success)
 //   - error is non-nil only if:
 //   - No funds exist in the database (returns apperrors.ErrFundNotFound)
 //   - GetAllFunds fails

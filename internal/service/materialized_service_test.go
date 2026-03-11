@@ -50,7 +50,7 @@ func TestMaterializedService_RegenerateMaterializedTable(t *testing.T) {
 		err := svc.RegenerateMaterializedTable(
 			context.Background(),
 			txDate,
-			portfolio.ID, "", "",
+			[]string{portfolio.ID}, "", "",
 		)
 		if err != nil {
 			t.Fatalf("RegenerateMaterializedTable() returned unexpected error: %v", err)
@@ -84,7 +84,7 @@ func TestMaterializedService_RegenerateMaterializedTable(t *testing.T) {
 		err := svc.RegenerateMaterializedTable(
 			context.Background(),
 			txDate,
-			"", fund.ID, "",
+			nil, fund.ID, "",
 		)
 		if err != nil {
 			t.Fatalf("RegenerateMaterializedTable(fundID) returned unexpected error: %v", err)
@@ -111,7 +111,7 @@ func TestMaterializedService_RegenerateMaterializedTable(t *testing.T) {
 		err := svc.RegenerateMaterializedTable(
 			context.Background(),
 			txDate,
-			"", "", pf.ID,
+			nil, "", pf.ID,
 		)
 		if err != nil {
 			t.Fatalf("RegenerateMaterializedTable(portfolioFundID) returned unexpected error: %v", err)
@@ -130,7 +130,7 @@ func TestMaterializedService_RegenerateMaterializedTable(t *testing.T) {
 		err := svc.RegenerateMaterializedTable(
 			context.Background(),
 			time.Now(),
-			"", "", "",
+			nil, "", "",
 		)
 		if err == nil {
 			t.Error("Expected error when no ID provided, got nil")
@@ -156,11 +156,11 @@ func TestMaterializedService_RegenerateMaterializedTable(t *testing.T) {
 		testutil.NewFundPrice(fund2.ID).WithDate(txDate).WithPrice(20.0).Build(t, db)
 
 		// Populate both portfolios
-		err := svc.RegenerateMaterializedTable(context.Background(), txDate, p1.ID, "", "")
+		err := svc.RegenerateMaterializedTable(context.Background(), txDate, []string{p1.ID}, "", "")
 		if err != nil {
 			t.Fatalf("regen p1: %v", err)
 		}
-		err = svc.RegenerateMaterializedTable(context.Background(), txDate, p2.ID, "", "")
+		err = svc.RegenerateMaterializedTable(context.Background(), txDate, []string{p2.ID}, "", "")
 		if err != nil {
 			t.Fatalf("regen p2: %v", err)
 		}
@@ -168,7 +168,7 @@ func TestMaterializedService_RegenerateMaterializedTable(t *testing.T) {
 		countBefore := testutil.CountRows(t, db, "fund_history_materialized")
 
 		// Regenerate only portfolio 1 — should not touch portfolio 2's rows
-		err = svc.RegenerateMaterializedTable(context.Background(), txDate, p1.ID, "", "")
+		err = svc.RegenerateMaterializedTable(context.Background(), txDate, []string{p1.ID}, "", "")
 		if err != nil {
 			t.Fatalf("re-regen p1: %v", err)
 		}
@@ -235,7 +235,7 @@ func TestMaterializedService_GetPortfolioHistoryWithFallback(t *testing.T) {
 		}
 
 		// Populate cache
-		err := svc.RegenerateMaterializedTable(context.Background(), txDate, portfolio.ID, "", "")
+		err := svc.RegenerateMaterializedTable(context.Background(), txDate, []string{portfolio.ID}, "", "")
 		if err != nil {
 			t.Fatalf("RegenerateMaterializedTable() error: %v", err)
 		}
@@ -357,7 +357,7 @@ func TestMaterializedService_GetFundHistoryWithFallback(t *testing.T) {
 		}
 
 		// Populate cache
-		err := svc.RegenerateMaterializedTable(context.Background(), txDate, portfolio.ID, "", "")
+		err := svc.RegenerateMaterializedTable(context.Background(), txDate, []string{portfolio.ID}, "", "")
 		if err != nil {
 			t.Fatalf("RegenerateMaterializedTable() error: %v", err)
 		}
@@ -457,7 +457,7 @@ func TestMaterializedService_StaleDetection(t *testing.T) {
 		}
 
 		// Populate cache
-		err := svc.RegenerateMaterializedTable(context.Background(), txDate, portfolio.ID, "", "")
+		err := svc.RegenerateMaterializedTable(context.Background(), txDate, []string{portfolio.ID}, "", "")
 		if err != nil {
 			t.Fatalf("RegenerateMaterializedTable() error: %v", err)
 		}
@@ -518,7 +518,7 @@ func TestMaterializedService_StaleDetection(t *testing.T) {
 		}
 
 		// Populate cache up to Jan 18
-		err := svc.RegenerateMaterializedTable(context.Background(), txDate, portfolio.ID, "", "")
+		err := svc.RegenerateMaterializedTable(context.Background(), txDate, []string{portfolio.ID}, "", "")
 		if err != nil {
 			t.Fatalf("RegenerateMaterializedTable() error: %v", err)
 		}
@@ -557,7 +557,7 @@ func TestMaterializedService_StaleDetection(t *testing.T) {
 		}
 
 		// Populate cache
-		err := svc.RegenerateMaterializedTable(context.Background(), txDate, portfolio.ID, "", "")
+		err := svc.RegenerateMaterializedTable(context.Background(), txDate, []string{portfolio.ID}, "", "")
 		if err != nil {
 			t.Fatalf("RegenerateMaterializedTable() error: %v", err)
 		}

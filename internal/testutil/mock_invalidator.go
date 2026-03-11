@@ -9,7 +9,7 @@ import (
 // InvalidatorCall records a single call to RegenerateMaterializedTable.
 type InvalidatorCall struct {
 	StartDate       time.Time
-	PortfolioID     string
+	PortfolioIDs    []string
 	FundID          string
 	PortfolioFundID string
 }
@@ -33,11 +33,11 @@ func NewMockMaterializedInvalidator(expectedCalls int) *MockMaterializedInvalida
 }
 
 // RegenerateMaterializedTable implements service.MaterializedInvalidator.
-func (m *MockMaterializedInvalidator) RegenerateMaterializedTable(_ context.Context, startDate time.Time, portfolioID, fundID, portfolioFundID string) error {
+func (m *MockMaterializedInvalidator) RegenerateMaterializedTable(_ context.Context, startDate time.Time, portfolioIDs []string, fundID, portfolioFundID string) error {
 	m.mu.Lock()
 	m.calls = append(m.calls, InvalidatorCall{
 		StartDate:       startDate,
-		PortfolioID:     portfolioID,
+		PortfolioIDs:    portfolioIDs,
 		FundID:          fundID,
 		PortfolioFundID: portfolioFundID,
 	})
