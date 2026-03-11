@@ -173,11 +173,3 @@ func TestPortfolioService_GetAllPortfolios_TableDriven(t *testing.T) {
 		})
 	}
 }
-
-// TODO: Add more tests as you implement more service methods:
-// - TestPortfolioService_GetPortfolio
-// - TestPortfolioService_CreatePortfolio
-// - TestPortfolioService_UpdatePortfolio
-// - TestPortfolioService_DeletePortfolio
-// - TestPortfolioService_ArchivePortfolio
-// etc.

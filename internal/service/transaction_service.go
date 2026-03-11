@@ -124,6 +124,7 @@ func (s *TransactionService) CreateTransaction(ctx context.Context, req request.
 	}
 
 	if s.materializedInvalidator != nil {
+		//nolint:gosec // G118: Background context is intentional — goroutine outlives the HTTP request.
 		go func() {
 			if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), transaction.Date, "", "", req.PortfolioFundID); err != nil {
 				log.Printf("failed to regenerate materialized table: %v", err)
@@ -191,6 +192,7 @@ func (s *TransactionService) UpdateTransaction(
 	}
 
 	if s.materializedInvalidator != nil {
+		//nolint:gosec // G118: Background context is intentional — goroutine outlives the HTTP request.
 		go func() {
 			if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), transaction.Date, "", "", transaction.PortfolioFundID); err != nil {
 				log.Printf("failed to regenerate materialized table: %v", err)
@@ -262,6 +264,7 @@ func (s *TransactionService) DeleteTransaction(ctx context.Context, id string) e
 	}
 
 	if s.materializedInvalidator != nil {
+		//nolint:gosec // G118: Background context is intentional — goroutine outlives the HTTP request.
 		go func() {
 			if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), transaction.Date, "", "", transaction.PortfolioFundID); err != nil {
 				log.Printf("failed to regenerate materialized table: %v", err)

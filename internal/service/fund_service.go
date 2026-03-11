@@ -519,6 +519,7 @@ func (s *FundService) UpdateCurrentFundPrice(ctx context.Context, fundID string)
 	}
 
 	if s.materializedInvalidator != nil {
+		//nolint:gosec // G118: Background context is intentional — goroutine outlives the HTTP request.
 		go func() {
 			if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), fundPrice.Date, "", fundPrice.FundID, ""); err != nil {
 				log.Printf("failed to regenerate materialized table: %v", err)
@@ -625,6 +626,8 @@ func (s *FundService) filterMissingPrices(indicators []yahoo.Indicators, missing
 //     or Yahoo Finance query fails
 //
 // Note: This method triggers materialized view regeneration after a successful price insert (Issue #35).
+//
+//nolint:gocyclo // Multi-step pipeline: validate, load, diff, fetch, filter, insert, invalidate
 func (s *FundService) UpdateHistoricalFundPrice(ctx context.Context, fundID string) (int, error) {
 	fund, err := s.GetFund(fundID)
 	if err != nil {
@@ -698,6 +701,7 @@ func (s *FundService) UpdateHistoricalFundPrice(ctx context.Context, fundID stri
 		return a.Date.Compare(b.Date)
 	})
 	if s.materializedInvalidator != nil {
+		//nolint:gosec // G118: Background context is intentional — goroutine outlives the HTTP request.
 		go func() {
 			if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), oldestPrice.Date, "", oldestPrice.FundID, ""); err != nil {
 				log.Printf("failed to regenerate materialized table: %v", err)

@@ -690,6 +690,7 @@ func (s *MaterializedService) processTransactionsForDate(transactionsMap map[str
 	}, nil
 }
 
+//nolint:gocyclo // Core regen: resolve portfolios, calculate, collect pfIDs, invalidate+insert in tx
 func (s *MaterializedService) RegenerateMaterializedTable(ctx context.Context, startDate time.Time, portfolioID, fundID, portfolioFundID string) error {
 
 	// Resolve which portfolios need regeneration

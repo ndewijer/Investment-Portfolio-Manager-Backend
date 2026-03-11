@@ -391,13 +391,19 @@ func (r *MaterializedRepository) GetLatestSourceDates(portfolioIDs []string) (la
 	}
 
 	if txnStr != "" {
-		latestTxn, _ = time.Parse("2006-01-02 15:04:05", txnStr)
+		if parsed, err := time.Parse("2006-01-02 15:04:05", txnStr); err == nil {
+			latestTxn = parsed
+		}
 	}
 	if priceStr != "" {
-		latestPrice, _ = time.Parse("2006-01-02", priceStr)
+		if parsed, err := time.Parse("2006-01-02", priceStr); err == nil {
+			latestPrice = parsed
+		}
 	}
 	if divStr != "" {
-		latestDiv, _ = time.Parse("2006-01-02 15:04:05", divStr)
+		if parsed, err := time.Parse("2006-01-02 15:04:05", divStr); err == nil {
+			latestDiv = parsed
+		}
 	}
 
 	return latestTxn, latestPrice, latestDiv, nil

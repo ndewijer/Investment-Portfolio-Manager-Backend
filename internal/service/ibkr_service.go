@@ -869,6 +869,7 @@ func (s *IbkrService) UnallocateIbkrTransaction(ctx context.Context, transaction
 
 	if s.materializedInvalidator != nil && len(portfolioIDs) > 0 {
 		for _, pid := range portfolioIDs {
+			//nolint:gosec // G118: Background context is intentional — goroutine outlives the HTTP request.
 			go func() {
 				if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), ibkrTx.TransactionDate, pid, "", ""); err != nil {
 					log.Printf("failed to regenerate materialized table for portfolio %s: %v", pid, err)
@@ -916,6 +917,7 @@ func (s *IbkrService) ModifyAllocations(ctx context.Context, transactionID strin
 	s.triggerRegenFromAllocations(transactionID, ibkrTx.TransactionDate)
 	if s.materializedInvalidator != nil {
 		for _, pid := range oldPortfolioIDs {
+			//nolint:gosec // G118: Background context is intentional — goroutine outlives the HTTP request.
 			go func() {
 				if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), ibkrTx.TransactionDate, pid, "", ""); err != nil {
 					log.Printf("failed to regenerate materialized table for portfolio %s: %v", pid, err)

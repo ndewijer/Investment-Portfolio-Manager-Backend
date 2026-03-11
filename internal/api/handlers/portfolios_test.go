@@ -1,6 +1,7 @@
 package handlers_test
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"io"
@@ -1064,9 +1065,9 @@ func TestPortfolioHandler_GetPortfolio(t *testing.T) {
 //
 // WHY: This endpoint returns historical portfolio valuations over a date range.
 // It's essential for performance charts and trend analysis in the frontend.
+// Tests cover both the on-the-fly fallback path and the materialized view fast path.
 //
-// TODO: Add tests for materialized view fast path once materialized view population is implemented.
-// Currently only tests the on-the-fly calculation fallback path.
+//nolint:gocyclo // Test function with multiple sub-tests
 func TestPortfolioHandler_PortfolioHistory(t *testing.T) {
 	setupHandler := func(t *testing.T) (*handlers.PortfolioHandler, *sql.DB) {
 		t.Helper()
@@ -1264,6 +1265,55 @@ func TestPortfolioHandler_PortfolioHistory(t *testing.T) {
 
 		if w.Code != http.StatusOK {
 			t.Errorf("Expected 200 for single day range, got %d", w.Code)
+		}
+	})
+
+	// Materialized view fast path: pre-populated cache serves data without on-demand calculation
+	t.Run("serves from materialized view when cache is fresh", func(t *testing.T) {
+		handler, db := setupHandler(t)
+		ms := testutil.NewTestMaterializedService(t, db)
+
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		fund := testutil.NewFund().Build(t, db)
+		pf := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+
+		txDate := time.Date(2024, 6, 15, 0, 0, 0, 0, time.UTC)
+		endDate := time.Date(2024, 6, 17, 0, 0, 0, 0, time.UTC)
+
+		testutil.NewTransaction(pf.ID).WithDate(txDate).WithShares(100).WithCostPerShare(10.0).Build(t, db)
+		for d := txDate; !d.After(endDate); d = d.AddDate(0, 0, 1) {
+			testutil.NewFundPrice(fund.ID).WithDate(d).WithPrice(10.0).Build(t, db)
+		}
+
+		// Pre-populate materialized cache
+		err := ms.RegenerateMaterializedTable(context.Background(), txDate, portfolio.ID, "", "")
+		if err != nil {
+			t.Fatalf("RegenerateMaterializedTable() error: %v", err)
+		}
+
+		req := testutil.NewRequestWithQueryParams(
+			http.MethodGet,
+			"/api/portfolio/history",
+			map[string]string{
+				"start_date": "2024-06-15",
+				"end_date":   "2024-06-17",
+			},
+		)
+		w := httptest.NewRecorder()
+
+		handler.PortfolioHistory(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected 200 for materialized fast path, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var response []model.PortfolioHistory
+		if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+			t.Fatalf("Failed to decode response: %v", err)
+		}
+
+		if len(response) == 0 {
+			t.Error("Expected materialized view to return data, got empty")
 		}
 	})
 

@@ -216,6 +216,7 @@ func (s *DividendService) CreateDividend(ctx context.Context, req request.Create
 	}
 
 	if s.materializedInvalidator != nil {
+		//nolint:gosec // G118: Background context is intentional — goroutine outlives the HTTP request.
 		go func() {
 			if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), dividend.ExDividendDate, "", "", req.PortfolioFundID); err != nil {
 				log.Printf("failed to regenerate materialized table: %v", err)
@@ -246,6 +247,8 @@ func (s *DividendService) CreateDividend(ctx context.Context, req request.Create
 //
 // Returns ErrDividendNotFound if the dividend does not exist.
 // Returns an error if date parsing fails or any database operation fails.
+//
+//nolint:gocyclo // Complex update with reinvestment lifecycle + materialized invalidation
 func (s *DividendService) UpdateDividend(
 	ctx context.Context,
 	id string,
@@ -311,6 +314,7 @@ func (s *DividendService) UpdateDividend(
 		if oldExDividendDate.Before(regenDate) {
 			regenDate = oldExDividendDate
 		}
+		//nolint:gosec // G118: Background context is intentional — goroutine outlives the HTTP request.
 		go func() {
 			if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), regenDate, "", "", dividend.PortfolioFundID); err != nil {
 				log.Printf("failed to regenerate materialized table: %v", err)
@@ -538,6 +542,7 @@ func (s *DividendService) DeleteDividend(ctx context.Context, id string) error {
 	}
 
 	if s.materializedInvalidator != nil {
+		//nolint:gosec // G118: Background context is intentional — goroutine outlives the HTTP request.
 		go func() {
 			if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), dividend.ExDividendDate, "", "", dividend.PortfolioFundID); err != nil {
 				log.Printf("failed to regenerate materialized table: %v", err)

@@ -223,6 +223,7 @@ func (s *DeveloperService) UpdateFundPrice(
 	}
 
 	if s.materializedInvalidator != nil {
+		//nolint:gosec // G118: Background context is intentional — goroutine outlives the HTTP request.
 		go func() {
 			if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), fp.Date, "", fp.FundID, ""); err != nil {
 				log.Printf("failed to regenerate materialized table after manual price update: %v", err)
@@ -270,9 +271,7 @@ func (s *DeveloperService) DeleteLogs(ctx context.Context, ipAddress *string, us
 	return nil
 }
 
-// ImportFundPrices parses a CSV file and upserts fund prices for the given fund.
-// Validates that the fund exists, the file is valid CSV with required headers,
-// and each row has a parseable date and positive price.
+//nolint:gocyclo // CSV parsing + validation + batch insert + materialized invalidation
 func (s *DeveloperService) ImportFundPrices(ctx context.Context, fundID string, content []byte) (int, error) {
 	// Validate fund exists
 	if _, err := s.fundRepo.GetFund(fundID); err != nil {
@@ -340,6 +339,7 @@ func (s *DeveloperService) ImportFundPrices(ctx context.Context, fundID string, 
 
 	// Issue #35 Edge Case 9: CSV price import triggers regeneration from earliest imported date
 	if s.materializedInvalidator != nil && earliestDate != (time.Time{}) {
+		//nolint:gosec // G118: Background context is intentional — goroutine outlives the HTTP request.
 		go func() {
 			if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), earliestDate, "", fundID, ""); err != nil {
 				log.Printf("failed to regenerate materialized table after price import: %v", err)
@@ -392,9 +392,7 @@ func validateTransactionRow(row []string, colIdx map[string]int, rowNum int) (tr
 	}, nil
 }
 
-// ImportTransactions parses a CSV file and inserts transactions for the given portfolio-fund.
-// Validates that the portfolio-fund relationship exists, the file is valid CSV with required
-// headers, and each row has valid values.
+//nolint:gocyclo // CSV parsing + validation + batch insert + materialized invalidation
 func (s *DeveloperService) ImportTransactions(ctx context.Context, portfolioFundID string, content []byte) (int, error) {
 	// Validate portfolio-fund exists
 	if _, err := s.pfRepo.GetPortfolioFund(portfolioFundID); err != nil {
@@ -459,6 +457,7 @@ func (s *DeveloperService) ImportTransactions(ctx context.Context, portfolioFund
 
 	// Issue #35 Edge Case 8: CSV transaction import triggers regeneration from earliest imported date
 	if s.materializedInvalidator != nil && !earliestDate.IsZero() {
+		//nolint:gosec // G118: Background context is intentional — goroutine outlives the HTTP request.
 		go func() {
 			if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), earliestDate, "", "", portfolioFundID); err != nil {
 				log.Printf("failed to regenerate materialized table after transaction import: %v", err)

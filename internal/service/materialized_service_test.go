@@ -302,6 +302,8 @@ func TestMaterializedService_GetPortfolioHistoryWithFallback(t *testing.T) {
 //
 // WHY: Fund history provides per-fund granularity within a portfolio.
 // The fallback logic mirrors portfolio history but operates at fund level.
+//
+//nolint:gocyclo // Test function with multiple sub-tests
 func TestMaterializedService_GetFundHistoryWithFallback(t *testing.T) {
 	t.Run("falls back to on-demand when materialized table is empty", func(t *testing.T) {
 		db := testutil.SetupTestDB(t)
@@ -434,6 +436,8 @@ func TestMaterializedService_GetFundHistoryWithFallback(t *testing.T) {
 //
 // WHY: Stale detection is the safety net that ensures users never see outdated data.
 // It must correctly detect all three types of staleness (Issue #35 Edge Cases 1-3).
+//
+//nolint:gocyclo // Test function with multiple sub-tests
 func TestMaterializedService_StaleDetection(t *testing.T) {
 	t.Run("detects stale cache when new transaction added (Issue #35 Edge Case 1)", func(t *testing.T) {
 		db := testutil.SetupTestDB(t)
