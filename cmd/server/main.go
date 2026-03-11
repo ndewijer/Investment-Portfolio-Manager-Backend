@@ -54,13 +54,14 @@ func main() {
 		}
 	}
 
-	systemService, portfolioService, fundService, materializedService, transactionService, ibkrService, developerService := createRepoAndServices(db, fernetKey)
+	systemService, portfolioService, fundService, materializedService, dividendService, transactionService, ibkrService, developerService := createRepoAndServices(db, fernetKey)
 	// Create router
 	router := api.NewRouter(
 		systemService,
 		portfolioService,
 		fundService,
 		materializedService,
+		dividendService,
 		transactionService,
 		ibkrService,
 		developerService,
@@ -135,11 +136,13 @@ func resolveEncryptionKey(cfgKey, dataDir string) (string, error) {
 	return encoded, nil
 }
 
+//nolint:funlen // Needs to be in the same function
 func createRepoAndServices(db *sql.DB, fernetKey *fernet.Key) (
 	*service.SystemService,
 	*service.PortfolioService,
 	*service.FundService,
 	*service.MaterializedService,
+	*service.DividendService,
 	*service.TransactionService,
 	*service.IbkrService,
 	*service.DeveloperService,
@@ -219,22 +222,28 @@ func createRepoAndServices(db *sql.DB, fernetKey *fernet.Key) (
 		service.IbkrWithDividendRepo(dividendRepo),
 		service.IbkrWithEncryptionKey(fernetKey),
 	)
-	materializedService := service.NewMaterializedService(
+	materializedService := service.NewMaterializedService(db,
 		service.MaterializedWithMaterializedRepository(materializedRepo),
 		service.MaterializedWithPortfolioRepository(portfolioRepo),
 		service.MaterializedWithFundRepository(fundRepo),
-		service.MaterializedWithTransactionService(transactionService),
 		service.MaterializedWithFundService(fundService),
 		service.MaterializedWithDividendService(dividendService),
 		service.MaterializedWithRealizedGainLossService(realizedGainLossService),
 		service.MaterializedWithDataLoaderService(dataloaderService),
 		service.MaterializedWithPortfolioService(portfolioService),
+		service.MaterializedWithPortfolioFundRepository(pfRepo),
 	)
+	fundService.SetMaterializedInvalidator(materializedService)
+	transactionService.SetMaterializedInvalidator(materializedService)
+	dividendService.SetMaterializedInvalidator(materializedService)
+	ibkrService.SetMaterializedInvalidator(materializedService)
+	developerService.SetMaterializedInvalidator(materializedService)
 
 	return systemService,
 		portfolioService,
 		fundService,
 		materializedService,
+		dividendService,
 		transactionService,
 		ibkrService,
 		developerService

@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/csv"
 	"fmt"
+	"log"
 	"strconv"
 	"strings"
 	"time"
@@ -19,11 +20,12 @@ import (
 
 // DeveloperService handles Developer-related business logic operations.
 type DeveloperService struct {
-	db              *sql.DB
-	developerRepo   *repository.DeveloperRepository
-	fundRepo        *repository.FundRepository
-	transactionRepo *repository.TransactionRepository
-	pfRepo          *repository.PortfolioFundRepository
+	db                      *sql.DB
+	developerRepo           *repository.DeveloperRepository
+	fundRepo                *repository.FundRepository
+	transactionRepo         *repository.TransactionRepository
+	pfRepo                  *repository.PortfolioFundRepository
+	materializedInvalidator MaterializedInvalidator
 }
 
 // NewDeveloperService creates a new DeveloperService with the provided repository dependencies.
@@ -41,6 +43,12 @@ func NewDeveloperService(
 		transactionRepo: transactionRepo,
 		pfRepo:          pfRepo,
 	}
+}
+
+// SetMaterializedInvalidator injects the MaterializedInvalidator after construction.
+// This breaks the circular initialization order between DeveloperService and MaterializedService.
+func (s *DeveloperService) SetMaterializedInvalidator(m MaterializedInvalidator) {
+	s.materializedInvalidator = m
 }
 
 // GetLogs retrieves system logs with the specified filters and pagination.
@@ -214,6 +222,14 @@ func (s *DeveloperService) UpdateFundPrice(
 		return model.FundPrice{}, fmt.Errorf("commit transaction: %w", err)
 	}
 
+	if s.materializedInvalidator != nil {
+		go func() {
+			if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), fp.Date, "", fp.FundID, ""); err != nil {
+				log.Printf("failed to regenerate materialized table after manual price update: %v", err)
+			}
+		}()
+	}
+
 	return fp, nil
 }
 
@@ -284,6 +300,7 @@ func (s *DeveloperService) ImportFundPrices(ctx context.Context, fundID string, 
 	defer func() { _ = tx.Rollback() }() //nolint:errcheck
 
 	count := 0
+	var earliestDate time.Time
 	for i, row := range rows {
 		rowNum := i + 2 // 1-indexed, row 1 is headers
 
@@ -295,6 +312,10 @@ func (s *DeveloperService) ImportFundPrices(ctx context.Context, fundID string, 
 		price, err := strconv.ParseFloat(strings.TrimSpace(row[colIdx["price"]]), 64)
 		if err != nil || price <= 0 {
 			return 0, fmt.Errorf("row %d: price must be a positive number, got %q", rowNum, row[colIdx["price"]])
+		}
+
+		if earliestDate.IsZero() || date.Before(earliestDate) {
+			earliestDate = date
 		}
 
 		fp := model.FundPrice{
@@ -315,6 +336,15 @@ func (s *DeveloperService) ImportFundPrices(ctx context.Context, fundID string, 
 
 	if err := tx.Commit(); err != nil {
 		return 0, fmt.Errorf("commit transaction: %w", err)
+	}
+
+	// Issue #35 Edge Case 9: CSV price import triggers regeneration from earliest imported date
+	if s.materializedInvalidator != nil && earliestDate != (time.Time{}) {
+		go func() {
+			if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), earliestDate, "", fundID, ""); err != nil {
+				log.Printf("failed to regenerate materialized table after price import: %v", err)
+			}
+		}()
 	}
 
 	return count, nil
@@ -391,12 +421,17 @@ func (s *DeveloperService) ImportTransactions(ctx context.Context, portfolioFund
 	defer func() { _ = tx.Rollback() }() //nolint:errcheck
 
 	count := 0
+	var earliestDate time.Time
 	for i, row := range rows {
 		rowNum := i + 2
 
 		parsed, err := validateTransactionRow(row, colIdx, rowNum)
 		if err != nil {
 			return 0, err
+		}
+
+		if earliestDate.IsZero() || parsed.date.Before(earliestDate) {
+			earliestDate = parsed.date
 		}
 
 		t := &model.Transaction{
@@ -420,6 +455,15 @@ func (s *DeveloperService) ImportTransactions(ctx context.Context, portfolioFund
 
 	if err := tx.Commit(); err != nil {
 		return 0, fmt.Errorf("commit transaction: %w", err)
+	}
+
+	// Issue #35 Edge Case 8: CSV transaction import triggers regeneration from earliest imported date
+	if s.materializedInvalidator != nil && !earliestDate.IsZero() {
+		go func() {
+			if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), earliestDate, "", "", portfolioFundID); err != nil {
+				log.Printf("failed to regenerate materialized table after transaction import: %v", err)
+			}
+		}()
 	}
 
 	return count, nil

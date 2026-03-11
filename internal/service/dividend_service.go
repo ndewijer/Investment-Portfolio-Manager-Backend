@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/google/uuid"
@@ -14,10 +15,11 @@ import (
 
 // DividendService handles dividend-related business logic operations.
 type DividendService struct {
-	db              *sql.DB
-	dividendRepo    *repository.DividendRepository
-	pfRepo          *repository.PortfolioFundRepository
-	transactionRepo *repository.TransactionRepository
+	db                      *sql.DB
+	dividendRepo            *repository.DividendRepository
+	pfRepo                  *repository.PortfolioFundRepository
+	transactionRepo         *repository.TransactionRepository
+	materializedInvalidator MaterializedInvalidator
 }
 
 // NewDividendService creates a new DividendService with the provided dependencies.
@@ -39,6 +41,12 @@ func NewDividendService(
 		pfRepo:          pfRepo,
 		transactionRepo: transactionRepo,
 	}
+}
+
+// SetMaterializedInvalidator injects the MaterializedInvalidator after construction.
+// This breaks the circular initialization order between DividendService and MaterializedService.
+func (s *DividendService) SetMaterializedInvalidator(m MaterializedInvalidator) {
+	s.materializedInvalidator = m
 }
 
 // GetAllDividends retrieves all dividend records from the database.
@@ -207,6 +215,14 @@ func (s *DividendService) CreateDividend(ctx context.Context, req request.Create
 		return nil, fmt.Errorf("commit transaction: %w", err)
 	}
 
+	if s.materializedInvalidator != nil {
+		go func() {
+			if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), dividend.ExDividendDate, "", "", req.PortfolioFundID); err != nil {
+				log.Printf("failed to regenerate materialized table: %v", err)
+			}
+		}()
+	}
+
 	return dividendToFund(*dividend, portfolioFund), nil
 }
 
@@ -239,6 +255,9 @@ func (s *DividendService) UpdateDividend(
 	if err != nil {
 		return nil, err
 	}
+
+	// Capture old ex-dividend date before update (Issue #35 Edge Case 5: date changes)
+	oldExDividendDate := dividend.ExDividendDate
 
 	if req.PortfolioFundID != nil {
 		dividend.PortfolioFundID = *req.PortfolioFundID
@@ -284,6 +303,19 @@ func (s *DividendService) UpdateDividend(
 
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit transaction: %w", err)
+	}
+
+	if s.materializedInvalidator != nil {
+		// Issue #35 Edge Case 5: When ex_dividend_date changes, regenerate from the earlier date
+		regenDate := dividend.ExDividendDate
+		if oldExDividendDate.Before(regenDate) {
+			regenDate = oldExDividendDate
+		}
+		go func() {
+			if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), regenDate, "", "", dividend.PortfolioFundID); err != nil {
+				log.Printf("failed to regenerate materialized table: %v", err)
+			}
+		}()
 	}
 
 	return dividendToFund(dividend, portfolioFund), nil
@@ -503,6 +535,14 @@ func (s *DividendService) DeleteDividend(ctx context.Context, id string) error {
 
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit transaction: %w", err)
+	}
+
+	if s.materializedInvalidator != nil {
+		go func() {
+			if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), dividend.ExDividendDate, "", "", dividend.PortfolioFundID); err != nil {
+				log.Printf("failed to regenerate materialized table: %v", err)
+			}
+		}()
 	}
 
 	return nil

@@ -20,6 +20,7 @@ func NewRouter(
 	portfolioService *service.PortfolioService,
 	fundService *service.FundService,
 	materializedService *service.MaterializedService,
+	dividendService *service.DividendService,
 	transactionService *service.TransactionService,
 	ibkrService *service.IbkrService,
 	developerService *service.DeveloperService,
@@ -105,7 +106,7 @@ func NewRouter(
 		})
 
 		r.Route("/dividend", func(r chi.Router) {
-			dividendHandler := handlers.NewDividendHandler(materializedService.DividendService())
+			dividendHandler := handlers.NewDividendHandler(dividendService)
 			r.Get("/", dividendHandler.GetAllDividend)
 			r.Post("/", dividendHandler.CreateDividend)
 

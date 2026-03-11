@@ -1,12 +1,25 @@
 package service
 
 import (
+	"context"
+	"database/sql"
+	"fmt"
+	"log"
 	"sort"
+	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/repository"
 )
+
+// MaterializedInvalidator defines the interface for invalidating and regenerating materialized data.
+// Services that modify source data (transactions, dividends, etc.) depend on this interface
+// rather than on *MaterializedService directly, breaking the cyclic dependency.
+type MaterializedInvalidator interface {
+	RegenerateMaterializedTable(ctx context.Context, startDate time.Time, portfolioID, fundID, portfolioFundID string) error
+}
 
 // TransactionMetrics aggregates calculated metrics from processing transactions for a specific date.
 // It is used internally by processTransactionsForDate to return all computed values in a single struct.
@@ -22,15 +35,28 @@ type TransactionMetrics struct {
 // It coordinates between materialized views and on-demand calculations to provide
 // portfolio and fund history data with fallback capabilities.
 type MaterializedService struct {
+	db                      *sql.DB
 	materializedRepo        *repository.MaterializedRepository
 	portfolioRepo           *repository.PortfolioRepository
 	fundRepo                *repository.FundRepository
-	transactionService      *TransactionService
 	fundService             *FundService
 	dividendService         *DividendService
 	realizedGainLossService *RealizedGainLossService
 	dataLoaderService       *DataLoaderService
 	portfolioService        *PortfolioService
+	pfRepo                  *repository.PortfolioFundRepository
+
+	// regenMu protects regenInFlight from concurrent access.
+	regenMu sync.Mutex
+	// regenInFlight tracks which portfolio IDs currently have a background
+	// regeneration job running and the startDate they're regenerating from.
+	// If a new request arrives with an earlier startDate, the existing entry
+	// is updated so the next job picks up the earlier date.
+	regenInFlight map[string]time.Time
+	// regenWriteMu serializes all background regen writes. SQLite only
+	// supports one writer at a time; without this, concurrent API requests
+	// each launching regen goroutines cause SQLITE_BUSY.
+	regenWriteMu sync.Mutex
 }
 
 // MaterializedServiceOption is a functional option for configuring a MaterializedService.
@@ -50,11 +76,6 @@ func MaterializedWithPortfolioRepository(r *repository.PortfolioRepository) Mate
 // MaterializedWithFundRepository injects the FundRepository dependency.
 func MaterializedWithFundRepository(r *repository.FundRepository) MaterializedServiceOption {
 	return func(s *MaterializedService) { s.fundRepo = r }
-}
-
-// MaterializedWithTransactionService injects the TransactionService dependency.
-func MaterializedWithTransactionService(ss *TransactionService) MaterializedServiceOption {
-	return func(s *MaterializedService) { s.transactionService = ss }
 }
 
 // MaterializedWithFundService injects the FundService dependency.
@@ -82,11 +103,16 @@ func MaterializedWithPortfolioService(ss *PortfolioService) MaterializedServiceO
 	return func(s *MaterializedService) { s.portfolioService = ss }
 }
 
+// MaterializedWithFundRepository injects the FundRepository dependency.
+func MaterializedWithPortfolioFundRepository(r *repository.PortfolioFundRepository) MaterializedServiceOption {
+	return func(s *MaterializedService) { s.pfRepo = r }
+}
+
 // NewMaterializedService creates a new MaterializedService. Pass MaterializedWith* options to
 // inject dependencies. Only the options relevant to the calling context need to be provided;
 // unset fields remain nil and will panic if the corresponding method is called.
-func NewMaterializedService(opts ...MaterializedServiceOption) *MaterializedService {
-	s := &MaterializedService{}
+func NewMaterializedService(db *sql.DB, opts ...MaterializedServiceOption) *MaterializedService {
+	s := &MaterializedService{db: db}
 	for _, opt := range opts {
 		opt(s)
 	}
@@ -277,23 +303,39 @@ func (s *MaterializedService) GetPortfolioHistoryWithFallback(
 	portfolioID string,
 ) ([]model.PortfolioHistory, error) {
 
-	// Step 1: Try materialized view first (fast path)
-	materialized, err := s.GetPortfolioHistoryMaterialized(startDate, endDate, portfolioID)
+	// Resolve portfolio IDs for stale detection
+	portfolios, err := s.portfolioService.GetPortfoliosForRequest(portfolioID)
+	if err != nil {
+		return nil, err
+	}
+	portfolioIDs := make([]string, len(portfolios))
+	for i, p := range portfolios {
+		portfolioIDs[i] = p.ID
+	}
 
-	// Step 2: Check if materialized data is complete
-	if err == nil && len(materialized) > 0 {
-		// Verify the data covers the full requested range
-		lastDate, parseErr := time.Parse("2006-01-02", materialized[len(materialized)-1].Date)
-		if parseErr == nil && !lastDate.UTC().Before(endDate) {
-			// Materialized view covers the requested range
+	// Step 1: Check if cache is stale (checks all 3 data sources)
+	stale := s.checkStaleData(portfolioIDs, endDate)
+
+	// Step 2: If not stale, try materialized view (fast path)
+	if !stale {
+		materialized, mErr := s.GetPortfolioHistoryMaterialized(startDate, endDate, portfolioID)
+		if mErr == nil && len(materialized) > 0 {
+			log.Printf("portfolio history: serving from materialized view (%d entries)", len(materialized))
 			return materialized, nil
 		}
-		// Data is incomplete (stale or partial) - fall through to on-demand
 	}
 
 	// Step 3: Fallback to on-demand calculation
-	// (Materialized view is empty, stale, or query failed)
-	return s.GetPortfolioHistory(startDate, endDate, portfolioID)
+	log.Printf("portfolio history: cache stale or empty, falling back to on-demand calculation")
+	result, err := s.GetPortfolioHistory(startDate, endDate, portfolioID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Step 4: Trigger background regeneration so next read is fast
+	s.triggerBackgroundRegeneration(portfolioIDs, startDate)
+
+	return result, nil
 }
 
 // =============================================================================
@@ -445,33 +487,168 @@ func (s *MaterializedService) GetFundHistoryWithFallback(
 	startDate, endDate time.Time,
 ) ([]model.FundHistoryResponse, error) {
 
-	// Step 1: Try materialized view first (fast path)
-	materialized, err := s.GetFundHistoryMaterialized(portfolioID, startDate, endDate)
+	// Step 1: Check if cache is stale (checks all 3 data sources)
+	stale := s.checkStaleData([]string{portfolioID}, endDate)
 
-	// Step 2: Check if materialized data is complete
-	if err == nil && len(materialized) > 0 {
-		// Verify the data covers the full requested range
-		lastDate := materialized[len(materialized)-1].Date
-		if !lastDate.Before(endDate) {
-			// Materialized view covers the requested range
+	// Step 2: If not stale, try materialized view (fast path)
+	if !stale {
+		materialized, mErr := s.GetFundHistoryMaterialized(portfolioID, startDate, endDate)
+		if mErr == nil && len(materialized) > 0 {
+			log.Printf("fund history: serving from materialized view (%d entries, portfolio %s)", len(materialized), portfolioID)
 			return materialized, nil
 		}
-		// Data is incomplete (stale or partial) - fall through to on-demand
 	}
 
 	// Step 3: Fallback to on-demand calculation
-	// (Materialized view is empty, stale, or query failed)
-	return s.calculateFundHistoryOnFly(portfolioID, startDate, endDate)
+	log.Printf("fund history: cache stale or empty, falling back to on-demand calculation (portfolio %s)", portfolioID)
+	result, err := s.calculateFundHistoryOnFly(portfolioID, startDate, endDate)
+	if err != nil {
+		return nil, err
+	}
+
+	// Step 4: Trigger background regeneration so next read is fast
+	s.triggerBackgroundRegeneration([]string{portfolioID}, startDate)
+
+	return result, nil
+}
+
+// =============================================================================
+// STALE DETECTION & BACKGROUND REGENERATION
+// =============================================================================
+
+// checkStaleData determines whether the materialized cache is stale for the given portfolios
+// by checking all three data sources: transactions, fund prices, and dividends (Issue #35).
+//
+// The cache is considered stale if:
+//  1. No materialized data exists at all (empty cache)
+//  2. The materialized date coverage doesn't reach endDate
+//  3. Any source data was modified after the last cache calculation
+//     - Issue #35 Edge Case 1: Backdated transactions (newer created_at)
+//     - Issue #35 Edge Case 2: Price updates without transactions (newer price date)
+//     - Issue #35 Edge Case 3: Dividend recording without transactions (newer created_at)
+//
+// Returns true if the cache is stale and should be regenerated.
+func (s *MaterializedService) checkStaleData(portfolioIDs []string, endDate time.Time) bool {
+	matDate, matCalc, ok, err := s.materializedRepo.GetLatestMaterializedDate(portfolioIDs)
+	if err != nil {
+		log.Printf("stale check: error getting materialized date: %v", err)
+		return true // Assume stale on error
+	}
+	if !ok {
+		return true // No materialized data at all
+	}
+
+	// Check date coverage
+	if matDate.Before(endDate) {
+		return true
+	}
+
+	// Check all three source data tables
+	latestTxn, latestPrice, latestDiv, err := s.materializedRepo.GetLatestSourceDates(portfolioIDs)
+	if err != nil {
+		log.Printf("stale check: error getting source dates: %v", err)
+		return true
+	}
+
+	// Transaction created_at is a datetime - compare directly against calculated_at
+	if !latestTxn.IsZero() && latestTxn.After(matCalc) {
+		return true
+	}
+
+	// Price date is a date - if latest price date > materialized date coverage, it's stale
+	if !latestPrice.IsZero() && latestPrice.After(matDate) {
+		return true
+	}
+
+	// Dividend created_at is a datetime - compare against calculated_at
+	if !latestDiv.IsZero() && latestDiv.After(matCalc) {
+		return true
+	}
+
+	return false
+}
+
+// triggerBackgroundRegeneration starts a background goroutine to regenerate the
+// materialized table for the given portfolios. Uses regenInFlight to prevent
+// duplicate jobs for the same portfolio.
+//
+// If a regeneration job is already running for a portfolio and the new request has
+// an earlier startDate, the tracked date is updated. The running job will finish,
+// then a follow-up job will be launched covering the earlier date range.
+// If the new request has a later or equal startDate, it is dropped (already covered).
+func (s *MaterializedService) triggerBackgroundRegeneration(portfolioIDs []string, startDate time.Time) {
+	s.regenMu.Lock()
+	if s.regenInFlight == nil {
+		s.regenInFlight = make(map[string]time.Time)
+	}
+
+	var toStart []string
+	for _, pid := range portfolioIDs {
+		existing, running := s.regenInFlight[pid]
+		if running {
+			// Job already in flight — update to earlier date if needed
+			if startDate.Before(existing) {
+				log.Printf("regen: portfolio %s — superseding with earlier date %s (was %s)", pid, startDate.Format("2006-01-02"), existing.Format("2006-01-02"))
+				s.regenInFlight[pid] = startDate
+			} else {
+				log.Printf("regen: portfolio %s — skipped, already in flight from %s", pid, existing.Format("2006-01-02"))
+			}
+			continue
+		}
+		s.regenInFlight[pid] = startDate
+		toStart = append(toStart, pid)
+	}
+	s.regenMu.Unlock()
+
+	for _, pid := range toStart {
+		log.Printf("regen: portfolio %s — queued from %s", pid, startDate.Format("2006-01-02"))
+		go s.runRegenLoop(pid)
+	}
+}
+
+// runRegenLoop runs regeneration for a portfolio, then checks if a follow-up job
+// with an earlier startDate was requested while it was running. Repeats until no
+// earlier date is pending.
+func (s *MaterializedService) runRegenLoop(portfolioID string) {
+	for {
+		s.regenMu.Lock()
+		startDate, ok := s.regenInFlight[portfolioID]
+		if !ok {
+			s.regenMu.Unlock()
+			return
+		}
+		s.regenMu.Unlock()
+
+		log.Printf("regen: portfolio %s — starting from %s", portfolioID, startDate.Format("2006-01-02"))
+		s.regenWriteMu.Lock()
+		start := time.Now()
+		err := s.RegenerateMaterializedTable(
+			context.Background(), startDate, portfolioID, "", "",
+		)
+		s.regenWriteMu.Unlock()
+		if err != nil {
+			log.Printf("regen: portfolio %s — failed after %s: %v", portfolioID, time.Since(start).Round(time.Millisecond), err)
+		} else {
+			log.Printf("regen: portfolio %s — completed in %s", portfolioID, time.Since(start).Round(time.Millisecond))
+		}
+
+		s.regenMu.Lock()
+		current := s.regenInFlight[portfolioID]
+		if !current.Before(startDate) {
+			// No earlier date was requested while we were running — done
+			delete(s.regenInFlight, portfolioID)
+			s.regenMu.Unlock()
+			return
+		}
+		// An earlier date was requested — loop again with the new date
+		log.Printf("regen: portfolio %s — follow-up needed from %s (was %s)", portfolioID, current.Format("2006-01-02"), startDate.Format("2006-01-02"))
+		s.regenMu.Unlock()
+	}
 }
 
 // =============================================================================
 // HELPER METHODS
 // =============================================================================
-
-// DividendService returns the DividendService for use in handlers that need dividend-specific operations.
-func (s *MaterializedService) DividendService() *DividendService {
-	return s.dividendService
-}
 
 // processTransactionsForDate calculates portfolio metrics as of the specified date.
 // This is a local helper that delegates to FundService for per-fund calculations.
@@ -511,4 +688,89 @@ func (s *MaterializedService) processTransactionsForDate(transactionsMap map[str
 		TotalDividends: totalDividends,
 		TotalFees:      totalFees,
 	}, nil
+}
+
+func (s *MaterializedService) RegenerateMaterializedTable(ctx context.Context, startDate time.Time, portfolioID, fundID, portfolioFundID string) error {
+
+	// Resolve which portfolios need regeneration
+	var portfolioIDs []string
+	if portfolioID != "" {
+		portfolioIDs = append(portfolioIDs, portfolioID)
+	} else if fundID != "" {
+		pfs, err := s.pfRepo.GetPortfolioFundsbyFundID(fundID)
+		if err != nil {
+			return err
+		}
+		seen := make(map[string]bool)
+		for _, v := range pfs {
+			if !seen[v.PortfolioID] {
+				portfolioIDs = append(portfolioIDs, v.PortfolioID)
+				seen[v.PortfolioID] = true
+			}
+		}
+	} else if portfolioFundID != "" {
+		pf, err := s.pfRepo.GetPortfolioFund(portfolioFundID)
+		if err != nil {
+			return err
+		}
+		portfolioIDs = append(portfolioIDs, pf.PortfolioID)
+	} else {
+		return fmt.Errorf("RegenerateMaterializedTable: at least one of portfolioID, fundID, or portfolioFundID must be provided")
+	}
+
+	// Calculate new entries before starting the transaction (read-heavy, no writes)
+	endDate := time.Now().UTC()
+	var allEntries []model.FundHistoryResponse
+
+	for _, pid := range portfolioIDs {
+		entries, err := s.calculateFundHistoryOnFly(pid, startDate, endDate)
+		if err != nil {
+			return err
+		}
+		allEntries = append(allEntries, entries...)
+	}
+
+	fundHistoryEntries := make([]model.FundHistoryEntry, 0, len(allEntries))
+	for _, v := range allEntries {
+		// Propagate the response-level date to each fund entry, since
+		// calculateFundEntry doesn't set FundHistoryEntry.Date itself.
+		for i := range v.Funds {
+			v.Funds[i].Date = v.Date
+		}
+		fundHistoryEntries = append(fundHistoryEntries, v.Funds...)
+	}
+
+	// Collect unique portfolio_fund_ids for scoped invalidation
+	pfIDSet := make(map[string]bool)
+	for i := range fundHistoryEntries {
+		if fundHistoryEntries[i].ID == "" {
+			fundHistoryEntries[i].ID = uuid.New().String()
+		}
+		pfIDSet[fundHistoryEntries[i].PortfolioFundID] = true
+	}
+	pfIDs := make([]string, 0, len(pfIDSet))
+	for id := range pfIDSet {
+		pfIDs = append(pfIDs, id)
+	}
+
+	// Invalidate + insert within a single transaction
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }() //nolint:errcheck // Rollback is a no-op after Commit; error is intentionally ignored.
+
+	if err := s.materializedRepo.WithTx(tx).InvalidateMaterializedTable(ctx, startDate, pfIDs); err != nil {
+		return err
+	}
+
+	if err := s.materializedRepo.WithTx(tx).InsertMaterializedEntries(ctx, fundHistoryEntries); err != nil {
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit transaction: %w", err)
+	}
+
+	return nil
 }

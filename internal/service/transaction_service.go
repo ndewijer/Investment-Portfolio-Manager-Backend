@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/google/uuid"
@@ -14,9 +15,10 @@ import (
 
 // TransactionService handles fund-related business logic operations.
 type TransactionService struct {
-	db              *sql.DB
-	transactionRepo *repository.TransactionRepository
-	pfRepo          *repository.PortfolioFundRepository
+	db                      *sql.DB
+	transactionRepo         *repository.TransactionRepository
+	pfRepo                  *repository.PortfolioFundRepository
+	materializedInvalidator MaterializedInvalidator
 }
 
 // NewTransactionService creates a new TransactionService with the provided repository dependencies.
@@ -28,6 +30,12 @@ func NewTransactionService(
 		transactionRepo: transactionRepo,
 		pfRepo:          pfRepo,
 	}
+}
+
+// SetMaterializedInvalidator injects the MaterializedInvalidator after construction.
+// This breaks the circular initialization order between TransactionService and MaterializedService.
+func (s *TransactionService) SetMaterializedInvalidator(m MaterializedInvalidator) {
+	s.materializedInvalidator = m
 }
 
 // GetOldestTransaction returns the date of the earliest transaction across the given portfolio_fund IDs.
@@ -95,6 +103,14 @@ func (s *TransactionService) CreateTransaction(ctx context.Context, req request.
 		return nil, fmt.Errorf("commit transaction: %w", err)
 	}
 
+	if s.materializedInvalidator != nil {
+		go func() {
+			if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), transaction.Date, "", "", req.PortfolioFundID); err != nil {
+				log.Printf("failed to regenerate materialized table: %v", err)
+			}
+		}()
+	}
+
 	return transaction, nil
 }
 
@@ -154,6 +170,14 @@ func (s *TransactionService) UpdateTransaction(
 		return nil, fmt.Errorf("commit transaction: %w", err)
 	}
 
+	if s.materializedInvalidator != nil {
+		go func() {
+			if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), transaction.Date, "", "", *req.PortfolioFundID); err != nil {
+				log.Printf("failed to regenerate materialized table: %v", err)
+			}
+		}()
+	}
+
 	return &transaction, nil
 }
 
@@ -170,7 +194,7 @@ func (s *TransactionService) DeleteTransaction(ctx context.Context, id string) e
 	}
 	defer func() { _ = tx.Rollback() }() //nolint:errcheck // Rollback is a no-op after Commit; error is intentionally ignored.
 
-	_, err = s.transactionRepo.WithTx(tx).GetTransactionByID(id)
+	transaction, err := s.transactionRepo.WithTx(tx).GetTransactionByID(id)
 	if err != nil {
 		return err
 	}
@@ -183,5 +207,14 @@ func (s *TransactionService) DeleteTransaction(ctx context.Context, id string) e
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit transaction: %w", err)
 	}
+
+	if s.materializedInvalidator != nil {
+		go func() {
+			if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), transaction.Date, "", "", transaction.PortfolioFundID); err != nil {
+				log.Printf("failed to regenerate materialized table: %v", err)
+			}
+		}()
+	}
+
 	return nil
 }

@@ -139,12 +139,22 @@ func NewTestMaterializedService(t *testing.T, db *sql.DB) *service.MaterializedS
 		service.DataLoaderWithRealizedGainLossService(realizedGainLossService),
 	)
 	portfolioService := service.NewPortfolioService(db, portfolioRepo, pfRepo)
+	fundService := service.NewFundService(db,
+		service.FundWithFundRepo(fundRepo),
+		service.FundWithPortfolioFundRepo(pfRepo),
+		service.FundWithDataLoaderService(dataloaderService),
+		service.FundWithPortfolioRepo(portfolioRepo),
+		service.FundWithYahooClient(NewMockYahooClient()),
+	)
 
-	return service.NewMaterializedService(
+	return service.NewMaterializedService(db,
 		service.MaterializedWithMaterializedRepository(materializedRepo),
-
 		service.MaterializedWithDataLoaderService(dataloaderService),
 		service.MaterializedWithPortfolioService(portfolioService),
+		service.MaterializedWithPortfolioFundRepository(pfRepo),
+		service.MaterializedWithFundService(fundService),
+		service.MaterializedWithDividendService(dividendService),
+		service.MaterializedWithRealizedGainLossService(realizedGainLossService),
 	)
 }
 

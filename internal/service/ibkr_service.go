@@ -23,16 +23,17 @@ import (
 
 // IbkrService handles IBKR (Interactive Brokers) integration business logic operations.
 type IbkrService struct {
-	db                  *sql.DB
-	ibkrRepo            *repository.IbkrRepository
-	portfolioRepo       *repository.PortfolioRepository
-	fundRepository      *repository.FundRepository
-	developerRepository *repository.DeveloperRepository
-	ibkrClient          ibkr.Client
-	pfRepo              *repository.PortfolioFundRepository
-	transactionRepo     *repository.TransactionRepository
-	dividendRepo        *repository.DividendRepository
-	encryptionKey       *fernet.Key
+	db                      *sql.DB
+	ibkrRepo                *repository.IbkrRepository
+	portfolioRepo           *repository.PortfolioRepository
+	fundRepository          *repository.FundRepository
+	developerRepository     *repository.DeveloperRepository
+	ibkrClient              ibkr.Client
+	pfRepo                  *repository.PortfolioFundRepository
+	transactionRepo         *repository.TransactionRepository
+	dividendRepo            *repository.DividendRepository
+	encryptionKey           *fernet.Key
+	materializedInvalidator MaterializedInvalidator
 }
 
 // IbkrServiceOption is a functional option for configuring an IbkrService.
@@ -92,6 +93,12 @@ func NewIbkrService(db *sql.DB, opts ...IbkrServiceOption) *IbkrService {
 		opt(s)
 	}
 	return s
+}
+
+// SetMaterializedInvalidator injects the MaterializedInvalidator after construction.
+// This breaks the circular initialization order between IbkrService and MaterializedService.
+func (s *IbkrService) SetMaterializedInvalidator(m MaterializedInvalidator) {
+	s.materializedInvalidator = m
 }
 
 // GetIbkrConfig retrieves the IBKR integration configuration.
@@ -761,6 +768,11 @@ func (s *IbkrService) AllocateIbkrTransaction(ctx context.Context, transactionID
 	}
 	defer func() { _ = dbTx.Rollback() }() //nolint:errcheck
 
+	ibkrTx, err := s.ibkrRepo.WithTx(dbTx).GetIbkrTransaction(transactionID)
+	if err != nil {
+		return err
+	}
+
 	if err := s.allocateIbkrTransactionTx(ctx, dbTx, transactionID, allocations); err != nil {
 		return err
 	}
@@ -768,6 +780,8 @@ func (s *IbkrService) AllocateIbkrTransaction(ctx context.Context, transactionID
 	if err := dbTx.Commit(); err != nil {
 		return fmt.Errorf("commit transaction: %w", err)
 	}
+
+	s.triggerRegenFromAllocations(transactionID, ibkrTx.TransactionDate)
 
 	return nil
 }
@@ -831,6 +845,14 @@ func (s *IbkrService) unallocateIbkrTransactionTx(ctx context.Context, dbTx *sql
 // Deletes all linked Transaction and IBKRTransactionAllocation records, then resets
 // the status to "pending".
 func (s *IbkrService) UnallocateIbkrTransaction(ctx context.Context, transactionID string) error {
+	ibkrTx, err := s.ibkrRepo.GetIbkrTransaction(transactionID)
+	if err != nil {
+		return err
+	}
+
+	// Collect portfolio IDs before unallocation deletes them
+	portfolioIDs := s.collectPortfolioIDsFromAllocations(transactionID)
+
 	dbTx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
@@ -845,12 +867,30 @@ func (s *IbkrService) UnallocateIbkrTransaction(ctx context.Context, transaction
 		return fmt.Errorf("commit transaction: %w", err)
 	}
 
+	if s.materializedInvalidator != nil && len(portfolioIDs) > 0 {
+		for _, pid := range portfolioIDs {
+			go func() {
+				if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), ibkrTx.TransactionDate, pid, "", ""); err != nil {
+					log.Printf("failed to regenerate materialized table for portfolio %s: %v", pid, err)
+				}
+			}()
+		}
+	}
+
 	return nil
 }
 
 // ModifyAllocations atomically unallocates and reallocates an IBKR transaction with new allocation percentages.
 // Both operations run in a single DB transaction for atomicity.
 func (s *IbkrService) ModifyAllocations(ctx context.Context, transactionID string, allocations []request.AllocationEntry) error {
+	ibkrTx, err := s.ibkrRepo.GetIbkrTransaction(transactionID)
+	if err != nil {
+		return err
+	}
+
+	// Collect old portfolio IDs before unallocation deletes them
+	oldPortfolioIDs := s.collectPortfolioIDsFromAllocations(transactionID)
+
 	dbTx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
@@ -870,6 +910,18 @@ func (s *IbkrService) ModifyAllocations(ctx context.Context, transactionID strin
 
 	if err := dbTx.Commit(); err != nil {
 		return fmt.Errorf("commit transaction: %w", err)
+	}
+
+	// Regen both old portfolios (which lost data) and new ones (which gained it)
+	s.triggerRegenFromAllocations(transactionID, ibkrTx.TransactionDate)
+	if s.materializedInvalidator != nil {
+		for _, pid := range oldPortfolioIDs {
+			go func() {
+				if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), ibkrTx.TransactionDate, pid, "", ""); err != nil {
+					log.Printf("failed to regenerate materialized table for portfolio %s: %v", pid, err)
+				}
+			}()
+		}
 	}
 
 	return nil
@@ -1070,5 +1122,44 @@ func (s *IbkrService) MatchDividend(ctx context.Context, transactionID string, d
 		return fmt.Errorf("commit transaction: %w", err)
 	}
 
+	// Regen using the portfolio IDs from the allocations
+	s.triggerRegenFromAllocations(transactionID, ibkrTx.TransactionDate)
+
 	return nil
+}
+
+// collectPortfolioIDsFromAllocations returns the unique portfolio IDs linked to
+// an IBKR transaction via its allocations. Used to know which portfolios are
+// affected before an unallocation deletes the records.
+func (s *IbkrService) collectPortfolioIDsFromAllocations(ibkrTransactionID string) []string {
+	allocs, err := s.ibkrRepo.GetIbkrTransactionAllocations(ibkrTransactionID)
+	if err != nil {
+		log.Printf("failed to get allocations for regen: %v", err)
+		return nil
+	}
+	seen := make(map[string]bool)
+	var pids []string
+	for _, a := range allocs {
+		if !seen[a.PortfolioID] {
+			seen[a.PortfolioID] = true
+			pids = append(pids, a.PortfolioID)
+		}
+	}
+	return pids
+}
+
+// triggerRegenFromAllocations looks up the portfolio IDs from an IBKR transaction's
+// allocations and triggers a materialized view regeneration for each one.
+func (s *IbkrService) triggerRegenFromAllocations(ibkrTransactionID string, txDate time.Time) {
+	if s.materializedInvalidator == nil {
+		return
+	}
+	portfolioIDs := s.collectPortfolioIDsFromAllocations(ibkrTransactionID)
+	for _, pid := range portfolioIDs {
+		go func() {
+			if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), txDate, pid, "", ""); err != nil {
+				log.Printf("failed to regenerate materialized table for portfolio %s: %v", pid, err)
+			}
+		}()
+	}
 }

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -26,6 +27,7 @@ type FundService struct {
 	dataLoaderService       *DataLoaderService
 	portfolioRepo           *repository.PortfolioRepository
 	yahooClient             yahoo.Client
+	materializedInvalidator MaterializedInvalidator
 }
 
 // FundServiceOption is a functional option for configuring a FundService.
@@ -82,6 +84,12 @@ func NewFundService(db *sql.DB, opts ...FundServiceOption) *FundService {
 		opt(s)
 	}
 	return s
+}
+
+// SetMaterializedInvalidator injects the MaterializedInvalidator after construction.
+// This breaks the circular initialization order between FundService and MaterializedService.
+func (s *FundService) SetMaterializedInvalidator(m MaterializedInvalidator) {
+	s.materializedInvalidator = m
 }
 
 // GetFund retrieves fund from the database.
@@ -459,8 +467,7 @@ func (s *FundService) DeleteFund(ctx context.Context, id string) error {
 //   - bool: true if a new price was inserted, false if price already existed
 //   - error: If the fund doesn't exist, has no symbol, or Yahoo Finance query fails
 //
-// Note: This method does not invalidate materialized views. See issue #35 for planned
-// materialized view invalidation support.
+// Note: This method triggers materialized view regeneration after a successful price insert (Issue #35).
 func (s *FundService) UpdateCurrentFundPrice(ctx context.Context, fundID string) (model.FundPrice, bool, error) {
 	fund, err := s.GetFund(fundID)
 	if err != nil {
@@ -511,7 +518,16 @@ func (s *FundService) UpdateCurrentFundPrice(ctx context.Context, fundID string)
 		return model.FundPrice{}, false, err
 	}
 
+	if s.materializedInvalidator != nil {
+		go func() {
+			if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), fundPrice.Date, "", fundPrice.FundID, ""); err != nil {
+				log.Printf("failed to regenerate materialized table: %v", err)
+			}
+		}()
+	}
+
 	return fundPrice, true, nil
+
 }
 
 // checkExistingPrice checks if a price already exists for the given date.
@@ -608,8 +624,7 @@ func (s *FundService) filterMissingPrices(indicators []yahoo.Indicators, missing
 //   - error: If the fund doesn't exist, has no symbol, has no transactions,
 //     or Yahoo Finance query fails
 //
-// Note: This method does not invalidate materialized views. See issue #35 for planned
-// materialized view invalidation support.
+// Note: This method triggers materialized view regeneration after a successful price insert (Issue #35).
 func (s *FundService) UpdateHistoricalFundPrice(ctx context.Context, fundID string) (int, error) {
 	fund, err := s.GetFund(fundID)
 	if err != nil {
@@ -679,6 +694,17 @@ func (s *FundService) UpdateHistoricalFundPrice(ctx context.Context, fundID stri
 		return 0, fmt.Errorf("commit transaction: %w", err)
 	}
 
+	oldestPrice := slices.MinFunc(missingFundPrices, func(a, b model.FundPrice) int {
+		return a.Date.Compare(b.Date)
+	})
+	if s.materializedInvalidator != nil {
+		go func() {
+			if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), oldestPrice.Date, "", oldestPrice.FundID, ""); err != nil {
+				log.Printf("failed to regenerate materialized table: %v", err)
+			}
+		}()
+	}
+
 	return len(missingFundPrices), nil
 }
 
@@ -691,7 +717,7 @@ func (s *FundService) UpdateHistoricalFundPrice(ctx context.Context, fundID stri
 //
 // Returns:
 //   - AllFundUpdateResponse containing detailed results for each fund (successes and errors)
-//   - error is nil if at least one fund was successfully updated (partial success)
+//   - error is nil if at least one fund was sucncessfully updated (partial success)
 //   - error is non-nil only if:
 //   - No funds exist in the database (returns apperrors.ErrFundNotFound)
 //   - GetAllFunds fails
