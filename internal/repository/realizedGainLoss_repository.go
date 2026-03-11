@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"strings"
@@ -10,14 +11,31 @@ import (
 )
 
 // RealizedGainLossRepository provides data access methods for the realized_gain_loss table.
-// It handles retrieving records of gains and losses from sold positions.
+// It handles creating, retrieving, and deleting records of gains and losses from sold positions.
 type RealizedGainLossRepository struct {
 	db *sql.DB
+	tx *sql.Tx
 }
 
 // NewRealizedGainLossRepository creates a new RealizedGainLossRepository with the provided database connection.
 func NewRealizedGainLossRepository(db *sql.DB) *RealizedGainLossRepository {
 	return &RealizedGainLossRepository{db: db}
+}
+
+// WithTx returns a new RealizedGainLossRepository scoped to the provided transaction.
+func (s *RealizedGainLossRepository) WithTx(tx *sql.Tx) *RealizedGainLossRepository {
+	return &RealizedGainLossRepository{
+		db: s.db,
+		tx: tx,
+	}
+}
+
+// getQuerier returns the active transaction if one is set, otherwise the database connection.
+func (s *RealizedGainLossRepository) getQuerier() Querier {
+	if s.tx != nil {
+		return s.tx
+	}
+	return s.db
 }
 
 // GetRealizedGainLossByPortfolio retrieves all realized gain/loss records for the given portfolios within the specified date range.
@@ -59,7 +77,7 @@ func (s *RealizedGainLossRepository) GetRealizedGainLossByPortfolio(portfolio []
 	realizedGainLossdArgs = append(realizedGainLossdArgs, startDate.Format("2006-01-02"))
 	realizedGainLossdArgs = append(realizedGainLossdArgs, endDate.Format("2006-01-02"))
 
-	rows, err := s.db.Query(realizedGainLossQuery, realizedGainLossdArgs...)
+	rows, err := s.getQuerier().Query(realizedGainLossQuery, realizedGainLossdArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query realizedGainLoss table: %w", err)
 	}
@@ -105,4 +123,45 @@ func (s *RealizedGainLossRepository) GetRealizedGainLossByPortfolio(portfolio []
 	}
 
 	return realizedGainLosssByPortfolio, nil
+}
+
+// InsertRealizedGainLoss creates a new realized gain/loss record in the database.
+// All fields including ID must be set before calling this method.
+func (s *RealizedGainLossRepository) InsertRealizedGainLoss(ctx context.Context, r *model.RealizedGainLoss) error {
+	query := `
+		INSERT INTO realized_gain_loss (id, portfolio_id, fund_id, transaction_id, transaction_date,
+			shares_sold, cost_basis, sale_proceeds, realized_gain_loss, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`
+
+	_, err := s.getQuerier().ExecContext(ctx, query,
+		r.ID,
+		r.PortfolioID,
+		r.FundID,
+		r.TransactionID,
+		r.TransactionDate.Format("2006-01-02"),
+		r.SharesSold,
+		r.CostBasis,
+		r.SaleProceeds,
+		r.RealizedGainLoss,
+		r.CreatedAt.Format("2006-01-02 15:04:05"),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to insert realized gain/loss: %w", err)
+	}
+
+	return nil
+}
+
+// DeleteRealizedGainLossByTransactionID removes the realized gain/loss record associated with a transaction.
+// Returns nil if no record exists for the given transaction ID (idempotent).
+func (s *RealizedGainLossRepository) DeleteRealizedGainLossByTransactionID(ctx context.Context, transactionID string) error {
+	query := `DELETE FROM realized_gain_loss WHERE transaction_id = ?`
+
+	_, err := s.getQuerier().ExecContext(ctx, query, transactionID)
+	if err != nil {
+		return fmt.Errorf("failed to delete realized gain/loss by transaction ID: %w", err)
+	}
+
+	return nil
 }

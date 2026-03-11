@@ -430,6 +430,52 @@ func TestTransactionHandler_CreateTransaction(t *testing.T) {
 		}
 	})
 
+	t.Run("returns 400 on insufficient shares for sell", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		fund := testutil.NewFund().Build(t, db)
+		pf := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+
+		body := `{
+			"portfolioFundId": "` + pf.ID + `",
+			"date": "2024-01-15",
+			"type": "sell",
+			"shares": 100.0,
+			"costPerShare": 10.0
+		}`
+
+		req := testutil.NewRequestWithBody(http.MethodPost, "/api/transaction", body)
+		w := httptest.NewRecorder()
+
+		handler.CreateTransaction(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("returns 400 on non-existent portfolio fund", func(t *testing.T) {
+		handler, _ := setupHandler(t)
+
+		body := `{
+			"portfolioFundId": "` + testutil.MakeID() + `",
+			"date": "2024-01-15",
+			"type": "buy",
+			"shares": 50.0,
+			"costPerShare": 100.50
+		}`
+
+		req := testutil.NewRequestWithBody(http.MethodPost, "/api/transaction", body)
+		w := httptest.NewRecorder()
+
+		handler.CreateTransaction(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
 	t.Run("returns 500 on database error", func(t *testing.T) {
 		handler, db := setupHandler(t)
 
@@ -514,6 +560,9 @@ func TestTransactionHandler_UpdateTransaction(t *testing.T) {
 		portfolio := testutil.NewPortfolio().Build(t, db)
 		fund := testutil.NewFund().Build(t, db)
 		pf := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+		// Create a buy transaction first so there are shares available to sell
+		testutil.NewTransaction(pf.ID).WithShares(200).Build(t, db)
+		// This is the transaction we'll change to sell
 		tx := testutil.NewTransaction(pf.ID).Build(t, db)
 
 		body := `{
@@ -626,6 +675,35 @@ func TestTransactionHandler_UpdateTransaction(t *testing.T) {
 
 		body := `{
 			"date": "15-01-2024"
+		}`
+
+		req := testutil.NewRequestWithURLParamsAndBody(
+			http.MethodPut,
+			"/api/transaction/"+tx.ID,
+			map[string]string{"uuid": tx.ID},
+			body,
+		)
+		w := httptest.NewRecorder()
+
+		handler.UpdateTransaction(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("returns 400 on insufficient shares when changing to sell", func(t *testing.T) {
+		handler, db := setupHandler(t)
+
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		fund := testutil.NewFund().Build(t, db)
+		pf := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+		// Buy 10 shares, then try to change a 50-share buy to sell
+		testutil.NewTransaction(pf.ID).WithShares(10).Build(t, db)
+		tx := testutil.NewTransaction(pf.ID).WithShares(50).Build(t, db)
+
+		body := `{
+			"type": "sell"
 		}`
 
 		req := testutil.NewRequestWithURLParamsAndBody(
