@@ -90,12 +90,15 @@ func TestFundHandler_GetAllFunds(t *testing.T) {
 
 		if fund1 == nil {
 			t.Fatal("Fund One not found in response")
-		} else if fund1.Name != "AAPL" {
-			t.Errorf("Expected first portfolio name 'AAPL', got '%s'", fund1.Name)
 		}
 		if fund2 == nil {
-			t.Fatal("Fund Two not found in response")
-		} else if fund2.Name != "GOOGL" {
+			t.Fatal("Fund2 Two not found in response")
+		}
+
+		if fund1.Name != "AAPL" {
+			t.Errorf("Expected first portfolio name 'AAPL', got '%s'", fund1.Name)
+		}
+		if fund2.Name != "GOOGL" {
 			t.Errorf("Expected second portfolio name 'GOOGL', got '%s'", fund2.Name)
 		}
 	})
