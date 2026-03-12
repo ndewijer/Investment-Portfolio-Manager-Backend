@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -319,7 +320,8 @@ func (s *MaterializedService) GetPortfolioHistoryWithFallback(
 	if !stale {
 		materialized, mErr := s.GetPortfolioHistoryMaterialized(startDate, endDate, portfolioID)
 		if mErr == nil && len(materialized) > 0 {
-			log.Printf("portfolio history: serving from materialized view (%d entries)", len(materialized))
+			log.Printf("portfolio history: serving from materialized view (%d dates) — %s",
+				len(materialized), summarisePortfolioResult(materialized))
 			return materialized, nil
 		}
 		log.Printf("portfolio history: materialized view returned 0 entries (err=%v), falling back", mErr)
@@ -331,7 +333,8 @@ func (s *MaterializedService) GetPortfolioHistoryWithFallback(
 		return nil, err
 	}
 
-	log.Printf("portfolio history: on-demand calculation returned %d date entries", len(result))
+	log.Printf("portfolio history: on-demand calculation returned %d dates — %s",
+		len(result), summarisePortfolioResult(result))
 
 	s.triggerBackgroundRegeneration(portfolioIDs, startDate)
 
@@ -805,4 +808,26 @@ func (s *MaterializedService) RegenerateMaterializedTable(ctx context.Context, s
 	}
 
 	return nil
+}
+
+// summarisePortfolioResult builds a compact log string showing each portfolio's name
+// and how many date entries it appears in, e.g. "3 portfolios: Savings (366), ISA (366), SIPP (200)".
+func summarisePortfolioResult(history []model.PortfolioHistory) string {
+	counts := make(map[string]int)   // id → count
+	names := make(map[string]string) // id → name
+	for _, h := range history {
+		for _, p := range h.Portfolios {
+			counts[p.ID]++
+			names[p.ID] = p.Name
+		}
+	}
+	if len(counts) == 0 {
+		return "0 portfolios"
+	}
+	parts := make([]string, 0, len(counts))
+	for id, n := range counts {
+		parts = append(parts, fmt.Sprintf("%s (%d dates)", names[id], n))
+	}
+	sort.Strings(parts)
+	return fmt.Sprintf("%d portfolio(s): %s", len(counts), strings.Join(parts, ", "))
 }
