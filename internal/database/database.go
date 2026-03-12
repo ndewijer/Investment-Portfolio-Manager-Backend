@@ -57,6 +57,13 @@ func Open(dbPath string) (*sql.DB, error) {
 		return nil, fmt.Errorf("failed to enable WAL mode: %w", err)
 	}
 
+	// Checkpoint the WAL back to the main DB file every 100 pages (~400 KB)
+	// instead of the default 1000. Keeps the WAL small and ensures changes
+	// are visible to external readers (e.g. DB browser) without long delays.
+	if _, err := db.Exec("PRAGMA wal_autocheckpoint = 100"); err != nil {
+		return nil, fmt.Errorf("failed to set wal_autocheckpoint: %w", err)
+	}
+
 	// Set busy timeout so concurrent writers queue instead of failing
 	// immediately with SQLITE_BUSY. 5 seconds is generous for background jobs.
 	if _, err := db.Exec("PRAGMA busy_timeout = 5000"); err != nil {

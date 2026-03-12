@@ -1,6 +1,7 @@
 package service
 
 import (
+	"log"
 	"slices"
 	"time"
 
@@ -211,6 +212,8 @@ func (s *MaterializedService) calculatePortfolioSummaryForDate(
 
 	for _, portfolio := range portfolios {
 		if len(txByPortfolio[portfolio.ID]) == 0 {
+			log.Printf("calculatePortfolioSummaryForDate [%s]: skipping portfolio %s (%s) — no transactions loaded",
+				date.Format("2006-01-02"), portfolio.ID, portfolio.Name)
 			continue
 		}
 
@@ -394,6 +397,14 @@ func (s *MaterializedService) calculateFundsForDate(
 		)
 		if err != nil {
 			return nil, err
+		}
+
+		// Skip dates where no shares are held — this excludes both dates
+		// before the first buy transaction and dates after a full sell.
+		// Without this guard, zero-share entries for every day since
+		// 1970-01-01 would be written to the materialized table.
+		if entry.Shares == 0 {
+			continue
 		}
 
 		funds = append(funds, entry)

@@ -311,6 +311,9 @@ func (s *MaterializedService) GetPortfolioHistoryWithFallback(
 		portfolioIDs[i] = p.ID
 	}
 
+	log.Printf("portfolio history: resolved %d portfolio(s) %v for range %s–%s",
+		len(portfolios), portfolioIDs, startDate.Format("2006-01-02"), endDate.Format("2006-01-02"))
+
 	stale := s.checkStaleData(portfolioIDs, endDate)
 
 	if !stale {
@@ -319,6 +322,7 @@ func (s *MaterializedService) GetPortfolioHistoryWithFallback(
 			log.Printf("portfolio history: serving from materialized view (%d entries)", len(materialized))
 			return materialized, nil
 		}
+		log.Printf("portfolio history: materialized view returned 0 entries (err=%v), falling back", mErr)
 	}
 
 	log.Printf("portfolio history: cache stale or empty, falling back to on-demand calculation")
@@ -326,6 +330,8 @@ func (s *MaterializedService) GetPortfolioHistoryWithFallback(
 	if err != nil {
 		return nil, err
 	}
+
+	log.Printf("portfolio history: on-demand calculation returned %d date entries", len(result))
 
 	s.triggerBackgroundRegeneration(portfolioIDs, startDate)
 
@@ -521,39 +527,55 @@ func (s *MaterializedService) GetFundHistoryWithFallback(
 func (s *MaterializedService) checkStaleData(portfolioIDs []string, endDate time.Time) bool {
 	matDate, matCalc, ok, err := s.materializedRepo.GetLatestMaterializedDate(portfolioIDs)
 	if err != nil {
-		log.Printf("stale check: error getting materialized date: %v", err)
+		log.Printf("stale check [%v]: error getting materialized date: %v — treating as stale", portfolioIDs, err)
 		return true // Assume stale on error
 	}
 	if !ok {
+		log.Printf("stale check [%v]: no materialized data found — stale", portfolioIDs)
 		return true // No materialized data at all
 	}
 
+	log.Printf("stale check [%v]: materialized coverage up to %s, calculated_at %s, endDate requested %s",
+		portfolioIDs, matDate.Format("2006-01-02"), matCalc.Format(time.RFC3339), endDate.Format("2006-01-02"))
+
 	// Check date coverage (truncate to date-only since matDate is midnight UTC)
 	if matDate.Before(endDate.Truncate(24 * time.Hour)) {
+		log.Printf("stale check [%v]: stale — coverage ends %s, need %s",
+			portfolioIDs, matDate.Format("2006-01-02"), endDate.Format("2006-01-02"))
 		return true
 	}
 
 	latestTxn, latestPrice, latestDiv, err := s.materializedRepo.GetLatestSourceDates(portfolioIDs)
 	if err != nil {
-		log.Printf("stale check: error getting source dates: %v", err)
+		log.Printf("stale check [%v]: error getting source dates: %v — treating as stale", portfolioIDs, err)
 		return true
 	}
 
+	log.Printf("stale check [%v]: source dates — txn %s, price %s, div %s",
+		portfolioIDs, latestTxn.Format(time.RFC3339), latestPrice.Format("2006-01-02"), latestDiv.Format(time.RFC3339))
+
 	// Transaction created_at is a datetime - compare directly against calculated_at
 	if !latestTxn.IsZero() && latestTxn.After(matCalc) {
+		log.Printf("stale check [%v]: stale — latest txn %s is after calculated_at %s",
+			portfolioIDs, latestTxn.Format(time.RFC3339), matCalc.Format(time.RFC3339))
 		return true
 	}
 
 	// Price date is a date - if latest price date > materialized date coverage, it's stale
 	if !latestPrice.IsZero() && latestPrice.After(matDate) {
+		log.Printf("stale check [%v]: stale — latest price date %s is after materialized coverage %s",
+			portfolioIDs, latestPrice.Format("2006-01-02"), matDate.Format("2006-01-02"))
 		return true
 	}
 
 	// Dividend created_at is a datetime - compare against calculated_at
 	if !latestDiv.IsZero() && latestDiv.After(matCalc) {
+		log.Printf("stale check [%v]: stale — latest dividend %s is after calculated_at %s",
+			portfolioIDs, latestDiv.Format(time.RFC3339), matCalc.Format(time.RFC3339))
 		return true
 	}
 
+	log.Printf("stale check [%v]: fresh", portfolioIDs)
 	return false
 }
 
