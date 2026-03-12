@@ -133,15 +133,16 @@ func TestMigrate_DefaultSettings(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		var value string
-		err := db.QueryRow(`SELECT value FROM system_setting WHERE "key" = ?`, tc.key).Scan(&value)
-		if err != nil {
-			t.Errorf("system_setting key %q not found: %v", tc.key, err)
-			continue
-		}
-		if value != tc.expectedValue {
-			t.Errorf("system_setting[%q]: expected %q, got %q", tc.key, tc.expectedValue, value)
-		}
+		t.Run(tc.key, func(t *testing.T) {
+			var value string
+			err := db.QueryRow(`SELECT value FROM system_setting WHERE "key" = ?`, tc.key).Scan(&value)
+			if err != nil {
+				t.Fatalf("system_setting key %q not found: %v", tc.key, err)
+			}
+			if value != tc.expectedValue {
+				t.Errorf("expected %q, got %q", tc.expectedValue, value)
+			}
+		})
 	}
 }
 

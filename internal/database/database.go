@@ -29,8 +29,6 @@ func Open(dbPath string) (*sql.DB, error) {
 		dsn += "?_texttotime=1"
 	}
 
-	// Ensure
-
 	// Open database connection
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
