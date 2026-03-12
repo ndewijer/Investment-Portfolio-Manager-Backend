@@ -162,7 +162,7 @@ func TestMigrate_SchemaMatchesGoldenFile(t *testing.T) {
 		if err := os.MkdirAll("testdata", 0o750); err != nil {
 			t.Fatalf("mkdir testdata: %v", err)
 		}
-		if err := os.WriteFile(goldenPath, []byte(actual), 0o644); err != nil {
+		if err := os.WriteFile(goldenPath, []byte(actual), 0o600); err != nil {
 			t.Fatalf("write golden file: %v", err)
 		}
 		t.Logf("golden file updated: %s", goldenPath)
