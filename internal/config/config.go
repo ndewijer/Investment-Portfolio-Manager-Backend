@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/joho/godotenv"
@@ -13,6 +14,7 @@ import (
 type Config struct {
 	Server         ServerConfig
 	Database       DatabaseConfig
+	Log            LogConfig
 	CORS           CORSConfig
 	EncryptionKey  string // IBKR_ENCRYPTION_KEY (fernet, base64-encoded)
 	InternalAPIKey string // INTERNAL_API_KEY
@@ -28,6 +30,11 @@ type ServerConfig struct {
 // DatabaseConfig holds database-specific configuration
 type DatabaseConfig struct {
 	Path string
+}
+
+// LogConfig holds log-specific configuration
+type LogConfig struct {
+	Dir string
 }
 
 // CORSConfig holds CORS-specific configuration
@@ -62,11 +69,14 @@ func Load() (*Config, error) {
 
 	config := &Config{
 		Server: ServerConfig{
-			Port: getEnv("SERVER_PORT", "5001"),
-			Host: getEnv("SERVER_HOST", "localhost"),
+			Port: getEnv("SERVER_PORT", "5000"),
+			Host: getEnv("SERVER_HOST", "0.0.0.0"),
 		},
 		Database: DatabaseConfig{
-			Path: getEnv("DB_PATH", "./data/portfolio_manager.db"),
+			Path: getDBPath(),
+		},
+		Log: LogConfig{
+			Dir: getEnv("LOG_DIR", "./data/logs"),
 		},
 		CORS: CORSConfig{
 			AllowedOrigins: getCORSOrigins(),
@@ -79,6 +89,16 @@ func Load() (*Config, error) {
 	config.Server.Addr = fmt.Sprintf("%s:%s", config.Server.Host, config.Server.Port)
 
 	return config, nil
+}
+
+// getDBPath resolves the database file path.
+// DB_DIR (set by Docker) takes precedence: DB_DIR/portfolio_manager.db.
+// Falls back to DB_PATH, then the default local path.
+func getDBPath() string {
+	if dir := os.Getenv("DB_DIR"); dir != "" {
+		return filepath.Join(dir, "portfolio_manager.db")
+	}
+	return getEnv("DB_PATH", "./data/portfolio_manager.db")
 }
 
 // getEnv gets an environment variable or returns a default value
