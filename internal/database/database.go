@@ -3,10 +3,20 @@ package database
 import (
 	"database/sql"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	_ "modernc.org/sqlite" // SQLite driver
 )
+
+func EnsureDir(dbPath string) error {
+	dir := filepath.Dir(dbPath)
+	if dir == "" || dir == "." {
+		return nil
+	}
+	return os.MkdirAll(dir, 0o750)
+}
 
 // Open opens a connection to the SQLite database
 func Open(dbPath string) (*sql.DB, error) {

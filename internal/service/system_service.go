@@ -2,6 +2,9 @@ package service
 
 import (
 	"database/sql"
+	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/database"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
@@ -51,10 +54,19 @@ func (s *SystemService) CheckVersion() (model.VersionInfo, error) {
 	}, nil
 }
 
-// getDbVersion retrieves the current database schema version from the alembic_version table.
+// getDbVersion retrieves the current database schema version.
+// It queries goose_db_version first; for legacy Python-migrated DBs it falls back to alembic_version.
 func (s *SystemService) getDbVersion() (string, error) {
+	var versionID int64
+	err := s.db.QueryRow(
+		"SELECT version_id FROM goose_db_version WHERE is_applied = 1 ORDER BY id DESC LIMIT 1",
+	).Scan(&versionID)
+	if err == nil {
+		return fmt.Sprintf("%d", versionID), nil
+	}
+	// Fallback for legacy Python DBs
 	var versionNum string
-	err := s.db.QueryRow("SELECT version_num FROM alembic_version").Scan(&versionNum)
+	err = s.db.QueryRow("SELECT version_num FROM alembic_version").Scan(&versionNum)
 	if err != nil {
 		return "", err
 	}
@@ -73,81 +85,28 @@ func (s *SystemService) checkFeatureAvailability(dbVersion string) map[string]bo
 
 	_ = dbVersion
 
-	// Parse version and set features
-	// (version parsing logic here)
-	// Currently not yet needed as we're always going to be on the latest version
-	// due to the GO backend still being in development.
-
-	// The original python code:
-	// # Parse version and check feature availability
-	// try:
-	// 	if db_version != "unknown":
-	// 		# Remove 'v' prefix if present and split version
-	// 		version_clean = db_version.lstrip("v")
-	// 		parts = version_clean.split(".")
-	// 		major, minor, patch = int(parts[0]), int(parts[1]), int(parts[2])
-
-	// 		# Version 1.1.1+: Realized gains/losses
-	// 		if (
-	// 			major > 1
-	// 			or (major == 1 and minor > 1)
-	// 			or (major == 1 and minor == 1 and patch >= 1)
-	// 		):
-	// 			features["realized_gain_loss"] = True
-
-	// 		# Check for version 1.1.0+ with specific logic
-	// 		if minor > 1 or (minor == 1 and patch >= 1):
-	// 			features["realized_gain_loss"] = True
-
-	// 		# Version 1.3.0+: IBKR integration
-	// 		if major > 1 or (major == 1 and minor >= 3):
-	// 			features["ibkr_integration"] = True
-
-	// 		# Version 1.4.0+: Materialized view performance optimization
-	// 		if major > 1 or (major == 1 and minor >= 4):
-	// 			features["materialized_view_performance"] = True
-
 	return features
 }
 
-// checkPendingMigrations checks if there are pending database migrations.
-// Returns whether a migration is needed and an optional message describing the migration.
+// checkPendingMigrations checks if the database schema is behind the application version.
+// App version "1.6.3" maps to schema version 163 (dots removed). If the app schema version
+// is higher than the applied DB schema version, a migration is needed.
 func (s *SystemService) checkPendingMigrations(dbVersion, appVersion string) (bool, string) {
+	appSchemaVersion, err := strconv.Atoi(strings.ReplaceAll(appVersion, ".", ""))
+	if err != nil {
+		// Non-numeric version (e.g. "dev") — cannot compare
+		return false, ""
+	}
 
-	_ = dbVersion
-	_ = appVersion
-	// Function also not yet implemented. This will be required once we have a db schema upgrade method implemented.
-	// For Python we use Alembic but that's not going to be a thing yet.
+	dbSchemaVersion, err := strconv.Atoi(dbVersion)
+	if err != nil {
+		// DB version is unknown or a legacy alembic hex string — cannot compare
+		return false, ""
+	}
 
-	// The original python code:
-	// try:
-	// # Get the Alembic configuration
-	// migrations_dir = os.path.join(os.path.dirname(__file__), "../../migrations")
-	// alembic_cfg = Config(os.path.join(migrations_dir, "alembic.ini"))
-	// alembic_cfg.set_main_option("script_location", migrations_dir)
-	// # Set path_separator to suppress warning
-	// alembic_cfg.set_main_option("path_separator", os.pathsep)
+	if appSchemaVersion > dbSchemaVersion {
+		return true, fmt.Sprintf("Database schema version %s is behind app version %s; run migrations to upgrade", dbVersion, appVersion)
+	}
 
-	// # Get script directory
-	// script = ScriptDirectory.from_config(alembic_cfg)
-
-	// # Get current revision from database
-	// with db.engine.connect() as connection:
-	// 	context = MigrationContext.configure(connection)
-	// 	current_rev = context.get_current_revision()
-
-	// 	# Get head revision (latest available migration)
-	// 	head_rev = script.get_current_head()
-
-	// 	# If current revision is None, database needs to be initialized
-	// 	if current_rev is None:
-	// 		return True, "Database not initialized"
-
-	// 	# If current revision doesn't match head, there are pending migrations
-	// 	if current_rev != head_rev:
-	// 		return True, None
-
-	// 	# No pending migrations
-	// 	return False, None
 	return false, ""
 }

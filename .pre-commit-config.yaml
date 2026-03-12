@@ -33,3 +33,10 @@ repos:
         language: system
         pass_filenames: false
         types: [go]
+
+      - id: check-golden-schema-sync
+        name: golden_schema.sql must be updated when migrations change
+        language: script
+        entry: scripts/check-golden-schema.sh
+        pass_filenames: false
+        files: ^internal/database/(migrations/|testdata/golden_schema\.sql)

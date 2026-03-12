@@ -24,18 +24,22 @@ import (
 )
 
 func main() {
-	// Load configuration
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatalf("Failed to load configuration: %v", err)
 	}
 
-	// Open database connection
+	if err := database.EnsureDir(cfg.Database.Path); err != nil {
+		log.Fatalf("Failed to ensure database directory: %v", err)
+	}
 	db, err := database.Open(cfg.Database.Path)
 	if err != nil {
 		log.Fatalf("Failed to open database: %v", err)
 	}
 	defer db.Close()
+	if err := database.Migrate(db); err != nil {
+		log.Fatalf("Failed to run database migrations: %v", err)
+	}
 
 	log.Printf("Connected to database: %s", cfg.Database.Path)
 
