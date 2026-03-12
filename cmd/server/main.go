@@ -30,12 +30,16 @@ func main() {
 		log.Fatalf("Failed to load configuration: %v", err)
 	}
 
+	database.EnsureDir(cfg.Database.Path)
 	// Open database connection
 	db, err := database.Open(cfg.Database.Path)
 	if err != nil {
 		log.Fatalf("Failed to open database: %v", err)
 	}
 	defer db.Close()
+	if err := database.Migrate(db); err != nil {
+		log.Fatalf("Failed to run database migrations: %v", err)
+	}
 
 	log.Printf("Connected to database: %s", cfg.Database.Path)
 

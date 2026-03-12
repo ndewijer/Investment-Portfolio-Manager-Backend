@@ -2,6 +2,7 @@ package service
 
 import (
 	"database/sql"
+	"fmt"
 
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/database"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
@@ -53,8 +54,16 @@ func (s *SystemService) CheckVersion() (model.VersionInfo, error) {
 
 // getDbVersion retrieves the current database schema version from the alembic_version table.
 func (s *SystemService) getDbVersion() (string, error) {
+	var versionID int64
+	err := s.db.QueryRow(
+		"SELECT version_id FROM goose_db_version ORDER BY id DESC LIMIT 1",
+	).Scan(&versionID)
+	if err == nil {
+		return fmt.Sprintf("%d", versionID), nil
+	}
+	// Fallback for legacy Python DBs
 	var versionNum string
-	err := s.db.QueryRow("SELECT version_num FROM alembic_version").Scan(&versionNum)
+	err = s.db.QueryRow("SELECT version_num FROM alembic_version").Scan(&versionNum)
 	if err != nil {
 		return "", err
 	}
