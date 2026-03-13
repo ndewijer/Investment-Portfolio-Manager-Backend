@@ -136,7 +136,7 @@ func (data *PortfolioData) MapRealizedGainsByPF(portfolioID string) map[string][
 //	// Use data.TransactionsByPF, data.DividendsByPF, etc.
 func (s *DataLoaderService) LoadForPortfolios(
 	portfolios []model.Portfolio,
-	startDate, endDate time.Time,
+	_, endDate time.Time,
 ) (*PortfolioData, error) {
 
 	if len(portfolios) == 0 {
