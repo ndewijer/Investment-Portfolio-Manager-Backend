@@ -3,8 +3,6 @@ package service
 import (
 	"database/sql"
 	"fmt"
-	"strconv"
-	"strings"
 
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/database"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
@@ -38,7 +36,7 @@ func (s *SystemService) CheckVersion() (model.VersionInfo, error) {
 	}
 
 	features := s.checkFeatureAvailability(dbVersion)
-	migrationNeeded, migrationMsg := s.checkPendingMigrations(dbVersion, appVersion)
+	migrationNeeded, migrationMsg := s.checkPendingMigrations(dbVersion)
 
 	var msgPtr *string
 	if migrationMsg != "" {
@@ -88,25 +86,21 @@ func (s *SystemService) checkFeatureAvailability(dbVersion string) map[string]bo
 	return features
 }
 
-// checkPendingMigrations checks if the database schema is behind the application version.
-// App version "1.6.3" maps to schema version 163 (dots removed). If the app schema version
-// is higher than the applied DB schema version, a migration is needed.
-func (s *SystemService) checkPendingMigrations(dbVersion, appVersion string) (bool, string) {
-	appSchemaVersion, err := strconv.Atoi(strings.ReplaceAll(appVersion, ".", ""))
+// checkPendingMigrations checks whether any migration files exist that have not
+// yet been applied to the database. This mirrors the Python Alembic approach:
+// compare head migration file version against current DB version, rather than
+// comparing app version numbers (which would produce false positives when an
+// app version ships without a new migration file).
+func (s *SystemService) checkPendingMigrations(dbVersion string) (bool, string) {
+	pending, err := database.HasPendingMigrations(s.db)
 	if err != nil {
-		// Non-numeric version (e.g. "dev") — cannot compare
 		return false, ""
 	}
-
-	dbSchemaVersion, err := strconv.Atoi(dbVersion)
-	if err != nil {
-		// DB version is unknown or a legacy alembic hex string — cannot compare
-		return false, ""
+	if pending {
+		return true, fmt.Sprintf(
+			"Database Migration Needed — Database schema version %s has unapplied migrations; run migrations to upgrade",
+			dbVersion,
+		)
 	}
-
-	if appSchemaVersion > dbSchemaVersion {
-		return true, fmt.Sprintf("Database schema version %s is behind app version %s; run migrations to upgrade", dbVersion, appVersion)
-	}
-
 	return false, ""
 }
