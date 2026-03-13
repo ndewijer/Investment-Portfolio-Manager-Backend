@@ -109,6 +109,7 @@ CREATE TABLE IF NOT EXISTS system_setting (
 );
 
 -- Default system settings
+-- https://vic.demuzere.be/articles/generating-uuids-in-sqlite/
 INSERT OR IGNORE INTO system_setting (id, "key", value, updated_at)
 VALUES ((select CONCAT(
   HEX(RANDOMBLOB(4)),
