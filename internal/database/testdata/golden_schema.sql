@@ -51,7 +51,7 @@ CREATE TABLE fund_history_materialized (
     total_gain_loss FLOAT NOT NULL,
     dividends FLOAT NOT NULL,
     fees FLOAT NOT NULL,
-    calculated_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    calculated_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL, sale_proceeds FLOAT NOT NULL DEFAULT 0, original_cost FLOAT NOT NULL DEFAULT 0,
     FOREIGN KEY(portfolio_fund_id) REFERENCES portfolio_fund(id) ON DELETE CASCADE,
     CONSTRAINT uq_portfolio_fund_date UNIQUE (portfolio_fund_id, date)
 )

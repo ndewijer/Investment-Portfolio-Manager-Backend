@@ -70,6 +70,8 @@ type FundHistoryEntry struct {
 	TotalGainLoss   float64   `json:"totalGainLoss"`   // Total gain/loss (realized + unrealized)
 	Dividends       float64   `json:"dividends"`       // Dividends received
 	Fees            float64   `json:"fees"`            // Fees paid
+	SaleProceeds    float64   `json:"saleProceeds"`    // Cumulative sale proceeds
+	OriginalCost    float64   `json:"originalCost"`    // Cumulative original cost of sold positions
 }
 
 // FundHistoryResponse represents the JSON response for fund history endpoint.

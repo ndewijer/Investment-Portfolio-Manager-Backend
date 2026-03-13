@@ -3,6 +3,7 @@ package database
 import (
 	"database/sql"
 	"embed"
+	"fmt"
 	"io/fs"
 	"strconv"
 	"strings"
@@ -13,6 +14,9 @@ import (
 //go:embed migrations/*.sql
 var migrations embed.FS
 
+//go:embed testdata/golden_schema.sql
+var goldenSchema string
+
 // Migrate runs all pending migrations.
 // On a fresh DB this creates the full schema.
 // On an existing DB it applies only new migrations.
@@ -22,6 +26,50 @@ func Migrate(db *sql.DB) error {
 		return err
 	}
 	return goose.Up(db, "migrations")
+}
+
+// ApplyGoldenSchema creates all tables and indexes by executing the golden schema DDL directly.
+// This is much faster than running goose migrations (no goose overhead, no version tracking)
+// and is intended for test databases that need a fresh schema quickly.
+// It does NOT insert seed data or populate goose_db_version.
+func ApplyGoldenSchema(db *sql.DB) error {
+	// The golden schema is dumped from sqlite_master ORDER BY name, so indexes
+	// may appear before their parent tables. Execute CREATE TABLE/CREATE INDEX
+	// in two passes to avoid "no such table" errors.
+	var tables, indexes []string
+	for _, stmt := range strings.Split(goldenSchema, "\n\n") {
+		stmt = strings.TrimSpace(stmt)
+		if stmt == "" {
+			continue
+		}
+		if strings.HasPrefix(stmt, "CREATE INDEX") {
+			indexes = append(indexes, stmt)
+		} else if strings.HasPrefix(stmt, "CREATE TABLE sqlite_") {
+			// Skip internal SQLite tables (e.g. sqlite_sequence) — created automatically
+			continue
+		} else {
+			tables = append(tables, stmt)
+		}
+	}
+	for _, stmt := range tables {
+		if _, err := db.Exec(stmt); err != nil {
+			return fmt.Errorf("golden schema exec failed on %q: %w", truncate(stmt, 80), err)
+		}
+	}
+	for _, stmt := range indexes {
+		if _, err := db.Exec(stmt); err != nil {
+			return fmt.Errorf("golden schema exec failed on %q: %w", truncate(stmt, 80), err)
+		}
+	}
+	return nil
+}
+
+// truncate returns at most n characters of s, appending "…" if truncated.
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "…"
 }
 
 // HasPendingMigrations reports whether any migration files in the embedded FS

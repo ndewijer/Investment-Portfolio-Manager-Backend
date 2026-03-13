@@ -65,12 +65,7 @@ func (h *PortfolioHandler) GetPortfolio(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	startDate, err := time.Parse("2006-01-02", "1970-01-01")
-	if err != nil {
-		panic("impossible: hardcoded date failed to parse: " + err.Error())
-	}
-	endDate := time.Now().UTC()
-	history, err := h.materializedService.GetPortfolioHistoryWithFallback(startDate, endDate, portfolioID)
+	summaries, err := h.materializedService.GetPortfolioSummaryWithFallback(portfolioID)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrPortfolioNotFound) {
 			response.RespondError(w, http.StatusNotFound, apperrors.ErrPortfolioNotFound.Error(), err.Error())
@@ -81,8 +76,7 @@ func (h *PortfolioHandler) GetPortfolio(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Should return exactly one portfolio
-	if len(history) == 0 || len(history[0].Portfolios) == 0 {
+	if len(summaries) == 0 {
 		// Portfolio exists but has no transactions - return zero values
 		//nolint:errcheck // Portfolio validation already performed by earlier steps
 		portfolio, _ := h.portfolioService.GetPortfolio(portfolioID)
@@ -96,7 +90,7 @@ func (h *PortfolioHandler) GetPortfolio(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Return the single portfolio summary
-	response.RespondJSON(w, http.StatusOK, history[len(history)-1].Portfolios[0])
+	response.RespondJSON(w, http.StatusOK, summaries[0])
 }
 
 // PortfolioSummary handles GET requests to retrieve current portfolio summaries.
@@ -108,23 +102,14 @@ func (h *PortfolioHandler) GetPortfolio(w http.ResponseWriter, r *http.Request) 
 // Error: 500 Internal Server Error if calculation fails
 func (h *PortfolioHandler) PortfolioSummary(w http.ResponseWriter, _ *http.Request) {
 
-	startDate, err := time.Parse("2006-01-02", "1970-01-01")
-	if err != nil {
-		panic("impossible: hardcoded date failed to parse: " + err.Error())
-	}
-	endDate := time.Now().UTC()
-	portfolioSummary, err := h.materializedService.GetPortfolioHistoryWithFallback(startDate, endDate, "")
+	summaries, err := h.materializedService.GetPortfolioSummaryWithFallback("")
 	if err != nil {
 
 		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToGetPortfolioSummary.Error(), err.Error())
 		return
 	}
-	if len(portfolioSummary) == 0 {
-		response.RespondJSON(w, http.StatusOK, []model.PortfolioSummary{})
-		return
-	}
 
-	response.RespondJSON(w, http.StatusOK, portfolioSummary[len(portfolioSummary)-1].Portfolios)
+	response.RespondJSON(w, http.StatusOK, summaries)
 }
 
 // PortfolioHistory handles GET requests to retrieve historical portfolio valuations.

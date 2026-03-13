@@ -179,13 +179,16 @@ func (s *MaterializedService) GetPortfolioHistoryMaterialized(requestedStartDate
 		return nil, err
 	}
 
-	result := []model.PortfolioHistory{}
-	for date := requestedStartDate; !date.After(requestedEndDate); date = date.AddDate(0, 0, 1) {
-		historyKey := date.Format("2006-01-02")
-		records, exists := historyMap[historyKey]
-		if !exists {
-			continue
-		}
+	// Iterate over actual results (sorted keys) instead of every calendar day
+	dateKeys := make([]string, 0, len(historyMap))
+	for key := range historyMap {
+		dateKeys = append(dateKeys, key)
+	}
+	sort.Strings(dateKeys)
+
+	result := make([]model.PortfolioHistory, 0, len(dateKeys))
+	for _, historyKey := range dateKeys {
+		records := historyMap[historyKey]
 
 		summaries := make([]model.PortfolioSummary, len(records))
 		for i, record := range records {
@@ -341,6 +344,77 @@ func (s *MaterializedService) GetPortfolioHistoryWithFallback(
 	return result, nil
 }
 
+// GetPortfolioSummaryWithFallback retrieves portfolio summaries for the latest date only.
+// This is optimized for the Summary and GetPortfolio endpoints which only need current state,
+// avoiding loading the entire history. If the materialized cache is stale, it falls back to
+// computing the full history and returning the last entry.
+//
+// Parameters:
+//   - portfolioID: Optional portfolio ID. If empty, returns all active portfolios.
+//
+// Returns portfolio summaries for the most recent available date.
+func (s *MaterializedService) GetPortfolioSummaryWithFallback(portfolioID string) ([]model.PortfolioSummary, error) {
+	portfolios, err := s.portfolioService.GetPortfoliosForRequest(portfolioID)
+	if err != nil {
+		return nil, err
+	}
+	portfolioIDs := make([]string, len(portfolios))
+	portfolioNames := make(map[string]string, len(portfolios))
+	portfolioDescription := make(map[string]string, len(portfolios))
+	for i, p := range portfolios {
+		portfolioIDs[i] = p.ID
+		portfolioNames[p.ID] = p.Name
+		portfolioDescription[p.ID] = p.Description
+	}
+
+	endDate := time.Now().UTC()
+	stale := s.checkStaleData(portfolioIDs, endDate)
+
+	if !stale {
+		var summaries []model.PortfolioSummary
+		err := s.materializedRepo.GetPortfolioSummaryLatest(
+			portfolioIDs,
+			func(record model.PortfolioHistoryMaterialized) error {
+				summaries = append(summaries, model.PortfolioSummary{
+					ID:                      record.PortfolioID,
+					Name:                    portfolioNames[record.PortfolioID],
+					Description:             portfolioDescription[record.PortfolioID],
+					TotalValue:              record.Value,
+					TotalCost:               record.Cost,
+					TotalDividends:          record.TotalDividends,
+					TotalUnrealizedGainLoss: record.UnrealizedGain,
+					TotalRealizedGainLoss:   record.RealizedGain,
+					TotalSaleProceeds:       record.TotalSaleProceeds,
+					TotalOriginalCost:       record.TotalOriginalCost,
+					TotalGainLoss:           record.TotalGainLoss,
+					IsArchived:              record.IsArchived,
+				})
+				return nil
+			},
+		)
+		if err == nil && len(summaries) > 0 {
+			log.Printf("portfolio summary: serving from materialized view (latest-only, %d portfolios)", len(summaries))
+			return summaries, nil
+		}
+		log.Printf("portfolio summary: materialized latest returned 0 entries (err=%v), falling back", err)
+	}
+
+	// Fallback: compute full history and take the last entry
+	log.Printf("portfolio summary: cache stale or empty, falling back to on-demand calculation")
+	startDate, _ := time.Parse("2006-01-02", "1970-01-01")
+	history, err := s.GetPortfolioHistory(startDate, endDate, portfolioID)
+	if err != nil {
+		return nil, err
+	}
+
+	s.triggerBackgroundRegeneration(portfolioIDs, startDate)
+
+	if len(history) == 0 {
+		return []model.PortfolioSummary{}, nil
+	}
+	return history[len(history)-1].Portfolios, nil
+}
+
 // =============================================================================
 // FUND HISTORY METHODS
 // =============================================================================
@@ -456,6 +530,13 @@ func (s *MaterializedService) calculateFundHistoryOnFly(portfolioID string, star
 	if len(data.PFIDs) == 0 {
 		return []model.FundHistoryResponse{}, nil
 	}
+
+	// Clamp startDate to the oldest transaction date to avoid iterating
+	// over thousands of empty calendar days before any data exists.
+	if !data.OldestTransactionDate.IsZero() && startDate.Before(data.OldestTransactionDate) {
+		startDate = data.OldestTransactionDate
+	}
+	startDate = time.Date(startDate.Year(), startDate.Month(), startDate.Day(), 0, 0, 0, 0, time.UTC)
 
 	realizedGainsByPF := data.MapRealizedGainsByPF(portfolioID)
 
