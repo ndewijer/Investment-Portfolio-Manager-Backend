@@ -41,9 +41,9 @@ func (s *RealizedGainLossService) processRealizedGainLossForDate(realizedGainLos
 			totalRealizedGainLoss += r.RealizedGainLoss
 			totalSaleProceeds += r.SaleProceeds
 			totalCostBasis += r.CostBasis
-		} else {
-			break
 		}
+		// No break: records are sorted by transaction_date but we iterate all to guard
+		// against any insertion-order anomalies from imports or backfills.
 	}
 
 	return totalRealizedGainLoss, totalSaleProceeds, totalCostBasis, nil
