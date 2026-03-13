@@ -188,7 +188,12 @@ func (r *MaterializedRepository) buildMaterializedQuery(portfolioIDs []string, s
 			WHERE rgl.portfolio_id = pf.portfolio_id
 			AND date(rgl.transaction_date) <= fh.date
 		), 0) as total_original_cost,
-		SUM(fh.total_gain_loss) as total_gain_loss,
+		SUM(fh.unrealized_gain) + COALESCE((
+			SELECT SUM(realized_gain_loss)
+			FROM realized_gain_loss rgl
+			WHERE rgl.portfolio_id = pf.portfolio_id
+			AND date(rgl.transaction_date) <= fh.date
+		), 0) as total_gain_loss,
 		p.is_archived,
 		strftime('%Y-%m-%dT%H:%M:%SZ', 'now') as calculated_at
 	FROM fund_history_materialized fh
