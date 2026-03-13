@@ -95,8 +95,18 @@ func HasPendingMigrations(db *sql.DB) (bool, error) {
 	return dbVersion < headVersion, nil
 }
 
-// headMigrationVersion returns the highest version number present in the embedded migrations FS.
-// Migration filenames follow the goose convention: {version}_{name}.sql
+// goMigrationVersions collects versions from Go migrations that self-register
+// via registerGoMigrationVersion in their init() functions.
+var goMigrationVersions []int64
+
+// registerGoMigrationVersion records a Go migration's version so that
+// headMigrationVersion can discover it. Call this from each Go migration's init().
+func registerGoMigrationVersion(v int64) {
+	goMigrationVersions = append(goMigrationVersions, v)
+}
+
+// headMigrationVersion returns the highest version number across both embedded SQL
+// migrations (migrations/*.sql) and registered Go migrations.
 func headMigrationVersion() (int64, error) {
 	entries, err := fs.ReadDir(migrations, "migrations")
 	if err != nil {
@@ -109,7 +119,6 @@ func headMigrationVersion() (int64, error) {
 			continue
 		}
 		name := e.Name()
-		// Extract the numeric prefix before the first underscore
 		parts := strings.SplitN(name, "_", 2)
 		if len(parts) < 2 {
 			continue
@@ -122,5 +131,12 @@ func headMigrationVersion() (int64, error) {
 			head = v
 		}
 	}
+
+	for _, v := range goMigrationVersions {
+		if v > head {
+			head = v
+		}
+	}
+
 	return head, nil
 }

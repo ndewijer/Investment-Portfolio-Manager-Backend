@@ -1,6 +1,9 @@
 package model
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // Fund represents a fund from the database
 type Fund struct {
@@ -79,6 +82,17 @@ type FundHistoryEntry struct {
 type FundHistoryResponse struct {
 	Date  time.Time          `json:"date"`  // Date of this snapshot
 	Funds []FundHistoryEntry `json:"funds"` // All funds in portfolio on this date
+}
+
+// MarshalJSON formats Date as "2006-01-02" instead of the default RFC 3339.
+func (r FundHistoryResponse) MarshalJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		Date  string             `json:"date"`
+		Funds []FundHistoryEntry `json:"funds"`
+	}{
+		Date:  r.Date.Format("2006-01-02"),
+		Funds: r.Funds,
+	})
 }
 
 // Symbol represents ticker symbol information from an external data source.
