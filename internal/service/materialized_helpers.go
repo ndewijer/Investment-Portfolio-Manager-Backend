@@ -399,11 +399,11 @@ func (s *MaterializedService) calculateFundsForDate(
 			return nil, err
 		}
 
-		// Skip dates where no shares are held — this excludes both dates
-		// before the first buy transaction and dates after a full sell.
-		// Without this guard, zero-share entries for every day since
-		// 1970-01-01 would be written to the materialized table.
-		if entry.Shares == 0 {
+		// Skip entries with no meaningful data — zero shares AND no financial activity.
+		// This excludes dates before the first buy, but preserves sold-fund rows
+		// that carry cumulative realized_gain, dividends, sale_proceeds, or original_cost.
+		if entry.Shares == 0 && entry.RealizedGain == 0 && entry.Dividends == 0 &&
+			entry.SaleProceeds == 0 && entry.OriginalCost == 0 && entry.Fees == 0 {
 			continue
 		}
 
@@ -471,7 +471,7 @@ func (s *MaterializedService) calculateFundEntry(
 	}
 
 	// Calculate realized gains
-	realizedGain, _, _, err := s.realizedGainLossService.processRealizedGainLossForDate(
+	realizedGain, saleProceeds, costBasis, err := s.realizedGainLossService.processRealizedGainLossForDate(
 		realizedGains,
 		date,
 	)
@@ -493,5 +493,7 @@ func (s *MaterializedService) calculateFundEntry(
 		TotalGainLoss:   round(fundMetrics.UnrealizedGain + realizedGain),
 		Dividends:       round(dividendAmount),
 		Fees:            round(fundMetrics.Fees),
+		SaleProceeds:    round(saleProceeds),
+		OriginalCost:    round(costBasis),
 	}, nil
 }

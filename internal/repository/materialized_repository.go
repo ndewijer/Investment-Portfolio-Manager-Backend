@@ -47,11 +47,10 @@ func (r *MaterializedRepository) getQuerier() Querier {
 //  4. Parses date fields (date, calculated_at)
 //  5. Invokes the callback function for each record
 //
-// The query aggregates fund-level data from fund_history_materialized using GROUP BY,
-// and uses correlated subqueries to fetch cumulative values:
-//   - realized_gain, total_sale_proceeds, total_original_cost from realized_gain_loss table
-//   - total_dividends from dividend table
-//   - is_archived from portfolio table
+// The query aggregates fund-level data from fund_history_materialized using GROUP BY.
+// All values (realized_gain, sale_proceeds, original_cost, dividends) are read directly
+// from pre-computed columns in the materialized table — no correlated subqueries.
+// is_archived is fetched via a JOIN to the portfolio table.
 //
 // Parameters:
 //   - portfolioIDs: Slice of portfolio IDs to retrieve history for
@@ -133,7 +132,7 @@ func (r *MaterializedRepository) GetMaterializedHistory(
 // The query performs portfolio-level aggregation by:
 //   - Joining fund_history_materialized with portfolio_fund and portfolio tables
 //   - Grouping by date and portfolio_id to sum fund-level metrics
-//   - Calculating cumulative realized gains, dividends, and sale proceeds via subqueries
+//   - Summing pre-computed fund-level metrics (realized gains, dividends, sale proceeds, original cost)
 //   - Filtering by portfolio IDs and date range
 //
 // Parameters:
@@ -162,40 +161,14 @@ func (r *MaterializedRepository) buildMaterializedQuery(portfolioIDs []string, s
 		fh.date,
 		SUM(fh.value) as value,
 		SUM(fh.cost) as cost,
-		COALESCE((
-			SELECT SUM(realized_gain_loss)
-			FROM realized_gain_loss rgl
-			WHERE rgl.portfolio_id = pf.portfolio_id
-			AND date(rgl.transaction_date) <= fh.date
-		), 0) as realized_gain,
+		SUM(fh.realized_gain) as realized_gain,
 		SUM(fh.unrealized_gain) as unrealized_gain,
-		COALESCE((
-			SELECT SUM(d.total_amount)
-			FROM dividend d
-			JOIN portfolio_fund pf2 ON d.portfolio_fund_id = pf2.id
-			WHERE pf2.portfolio_id = pf.portfolio_id
-			AND date(d.ex_dividend_date) <= fh.date
-		), 0) as total_dividends,
-		COALESCE((
-			SELECT SUM(sale_proceeds)
-			FROM realized_gain_loss rgl
-			WHERE rgl.portfolio_id = pf.portfolio_id
-			AND date(rgl.transaction_date) <= fh.date
-		), 0) as total_sale_proceeds,
-		COALESCE((
-			SELECT SUM(cost_basis)
-			FROM realized_gain_loss rgl
-			WHERE rgl.portfolio_id = pf.portfolio_id
-			AND date(rgl.transaction_date) <= fh.date
-		), 0) as total_original_cost,
-		SUM(fh.unrealized_gain) + COALESCE((
-			SELECT SUM(realized_gain_loss)
-			FROM realized_gain_loss rgl
-			WHERE rgl.portfolio_id = pf.portfolio_id
-			AND date(rgl.transaction_date) <= fh.date
-		), 0) as total_gain_loss,
+		SUM(fh.dividends) as total_dividends,
+		SUM(fh.sale_proceeds) as total_sale_proceeds,
+		SUM(fh.original_cost) as total_original_cost,
+		SUM(fh.unrealized_gain) + SUM(fh.realized_gain) as total_gain_loss,
 		p.is_archived,
-		strftime('%Y-%m-%dT%H:%M:%SZ', 'now') as calculated_at
+		MAX(fh.calculated_at) as calculated_at
 	FROM fund_history_materialized fh
 	JOIN portfolio_fund pf ON fh.portfolio_fund_id = pf.id
 	JOIN portfolio p ON pf.portfolio_id = p.id
@@ -249,7 +222,9 @@ func (r *MaterializedRepository) GetFundHistoryMaterialized(
 			fh.unrealized_gain,
 			fh.total_gain_loss,
 			fh.dividends,
-			fh.fees
+			fh.fees,
+			fh.sale_proceeds,
+			fh.original_cost
 		FROM fund_history_materialized fh
 		JOIN portfolio_fund pf ON fh.portfolio_fund_id = pf.id
 		JOIN fund f ON fh.fund_id = f.id
@@ -284,6 +259,8 @@ func (r *MaterializedRepository) GetFundHistoryMaterialized(
 			&entry.TotalGainLoss,
 			&entry.Dividends,
 			&entry.Fees,
+			&entry.SaleProceeds,
+			&entry.OriginalCost,
 		)
 		if err != nil {
 			return fmt.Errorf("failed to scan fund_history_materialized results: %w", err)
@@ -449,8 +426,8 @@ func (r *MaterializedRepository) InsertMaterializedEntries(ctx context.Context, 
 	}
 
 	stmt, err := r.getQuerier().PrepareContext(ctx, `
-        INSERT INTO fund_history_materialized (id, portfolio_fund_id, fund_id, date, shares, price, value, cost, realized_gain, unrealized_gain, total_gain_loss, dividends, fees, calculated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO fund_history_materialized (id, portfolio_fund_id, fund_id, date, shares, price, value, cost, realized_gain, unrealized_gain, total_gain_loss, dividends, fees, sale_proceeds, original_cost, calculated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
 	if err != nil {
 		return fmt.Errorf("failed to prepare statement: %w", err)
@@ -474,6 +451,8 @@ func (r *MaterializedRepository) InsertMaterializedEntries(ctx context.Context, 
 			e.TotalGainLoss,
 			e.Dividends,
 			e.Fees,
+			e.SaleProceeds,
+			e.OriginalCost,
 			calculatedAt,
 		)
 		if err != nil {
@@ -482,4 +461,106 @@ func (r *MaterializedRepository) InsertMaterializedEntries(ctx context.Context, 
 	}
 	return nil
 
+}
+
+// GetPortfolioSummaryLatest retrieves aggregated portfolio metrics for the most recent date only.
+// This is used by summary/detail endpoints that only need the current state, avoiding a full
+// date-range scan of the materialized table.
+func (r *MaterializedRepository) GetPortfolioSummaryLatest(
+	portfolioIDs []string,
+	callback func(record model.PortfolioHistoryMaterialized) error,
+) error {
+	if len(portfolioIDs) == 0 {
+		return nil
+	}
+
+	placeholders := make([]string, len(portfolioIDs))
+	for i := range placeholders {
+		placeholders[i] = "?"
+	}
+	inClause := strings.Join(placeholders, ",")
+
+	//#nosec G202 -- Safe: placeholders are generated programmatically, not from user input
+	query := `
+	SELECT
+		'' as id,
+		pf.portfolio_id,
+		fh.date,
+		SUM(fh.value) as value,
+		SUM(fh.cost) as cost,
+		SUM(fh.realized_gain) as realized_gain,
+		SUM(fh.unrealized_gain) as unrealized_gain,
+		SUM(fh.dividends) as total_dividends,
+		SUM(fh.sale_proceeds) as total_sale_proceeds,
+		SUM(fh.original_cost) as total_original_cost,
+		SUM(fh.unrealized_gain) + SUM(fh.realized_gain) as total_gain_loss,
+		p.is_archived,
+		MAX(fh.calculated_at) as calculated_at
+	FROM fund_history_materialized fh
+	JOIN portfolio_fund pf ON fh.portfolio_fund_id = pf.id
+	JOIN portfolio p ON pf.portfolio_id = p.id
+	WHERE pf.portfolio_id IN (` + inClause + `)
+	AND fh.date = (
+		SELECT MAX(fh2.date)
+		FROM fund_history_materialized fh2
+		JOIN portfolio_fund pf2 ON fh2.portfolio_fund_id = pf2.id
+		WHERE pf2.portfolio_id = pf.portfolio_id
+	)
+	GROUP BY fh.date, pf.portfolio_id, p.is_archived
+	ORDER BY fh.date ASC
+`
+
+	args := make([]any, 0, len(portfolioIDs))
+	for _, id := range portfolioIDs {
+		args = append(args, id)
+	}
+
+	rows, err := r.getQuerier().Query(query, args...)
+	if err != nil {
+		return fmt.Errorf("failed to query portfolio summary latest: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var record model.PortfolioHistoryMaterialized
+		var dateStr, calculatedAtStr string
+
+		err := rows.Scan(
+			&record.ID,
+			&record.PortfolioID,
+			&dateStr,
+			&record.Value,
+			&record.Cost,
+			&record.RealizedGain,
+			&record.UnrealizedGain,
+			&record.TotalDividends,
+			&record.TotalSaleProceeds,
+			&record.TotalOriginalCost,
+			&record.TotalGainLoss,
+			&record.IsArchived,
+			&calculatedAtStr,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to scan row: %w", err)
+		}
+
+		record.Date, err = ParseTime(dateStr)
+		if err != nil {
+			return fmt.Errorf("failed to parse date: %w", err)
+		}
+
+		record.CalculatedAt, err = ParseTime(calculatedAtStr)
+		if err != nil {
+			return fmt.Errorf("failed to parse calculated_at: %w", err)
+		}
+
+		if err := callback(record); err != nil {
+			return err
+		}
+	}
+
+	if err = rows.Err(); err != nil {
+		return fmt.Errorf("error iterating rows: %w", err)
+	}
+	return nil
 }

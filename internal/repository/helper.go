@@ -5,15 +5,17 @@ import (
 	"time"
 )
 
-// ParseTime parses a date string in "2006-01-02" or RFC3339 format.
+// ParseTime parses a date string in "2006-01-02", "2006-01-02 15:04:05", or RFC3339 format.
 // Note: mirrors validation.ParseTime — both are intentionally kept local to avoid cross-layer imports.
 func ParseTime(str string) (time.Time, error) {
-	returnTime, err := time.Parse("2006-01-02", str)
-	if err != nil {
-		returnTime, err = time.Parse(time.RFC3339, str)
-		if err != nil {
-			return time.Time{}, fmt.Errorf("failed to parse date: %w", err)
+	for _, layout := range []string{
+		"2006-01-02",
+		"2006-01-02 15:04:05",
+		time.RFC3339,
+	} {
+		if t, err := time.Parse(layout, str); err == nil {
+			return t.UTC(), nil
 		}
 	}
-	return returnTime.UTC(), nil
+	return time.Time{}, fmt.Errorf("failed to parse date: %q matches no known format", str)
 }

@@ -193,6 +193,16 @@ func (s *FundService) GetPortfolioFunds(portfolioID string) ([]model.PortfolioFu
 		return []model.PortfolioFundResponse{}, nil
 	}
 
+	// Override fund prices with only the last 30 days. enrichPortfolioFundsWithMetrics
+	// uses useLatestPrice=true, so it only needs the most recent price per fund —
+	// loading all prices from the oldest transaction wastes I/O.
+	recentStart := time.Now().UTC().AddDate(0, -1, 0)
+	recentPrices, err := s.LoadFundPrices(data.FundIDs, recentStart, time.Now().UTC(), true)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load recent fund prices: %w", err)
+	}
+	data.FundPricesByFund = recentPrices
+
 	realizedGainsByPF := data.MapRealizedGainsByPF(portfolioID)
 
 	return s.enrichPortfolioFundsWithMetrics(data, realizedGainsByPF)

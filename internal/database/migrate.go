@@ -3,6 +3,7 @@ package database
 import (
 	"database/sql"
 	"embed"
+	"fmt"
 	"io/fs"
 	"strconv"
 	"strings"
@@ -13,6 +14,9 @@ import (
 //go:embed migrations/*.sql
 var migrations embed.FS
 
+//go:embed testdata/golden_schema.sql
+var goldenSchema string
+
 // Migrate runs all pending migrations.
 // On a fresh DB this creates the full schema.
 // On an existing DB it applies only new migrations.
@@ -22,6 +26,50 @@ func Migrate(db *sql.DB) error {
 		return err
 	}
 	return goose.Up(db, "migrations")
+}
+
+// ApplyGoldenSchema creates all tables and indexes by executing the golden schema DDL directly.
+// This is much faster than running goose migrations (no goose overhead, no version tracking)
+// and is intended for test databases that need a fresh schema quickly.
+// It does NOT insert seed data or populate goose_db_version.
+func ApplyGoldenSchema(db *sql.DB) error {
+	// The golden schema is dumped from sqlite_master ORDER BY name, so indexes
+	// may appear before their parent tables. Execute CREATE TABLE/CREATE INDEX
+	// in two passes to avoid "no such table" errors.
+	var tables, indexes []string
+	for _, stmt := range strings.Split(goldenSchema, "\n\n") {
+		stmt = strings.TrimSpace(stmt)
+		if stmt == "" {
+			continue
+		}
+		if strings.HasPrefix(stmt, "CREATE INDEX") {
+			indexes = append(indexes, stmt)
+		} else if strings.HasPrefix(stmt, "CREATE TABLE sqlite_") {
+			// Skip internal SQLite tables (e.g. sqlite_sequence) — created automatically
+			continue
+		} else {
+			tables = append(tables, stmt)
+		}
+	}
+	for _, stmt := range tables {
+		if _, err := db.Exec(stmt); err != nil {
+			return fmt.Errorf("golden schema exec failed on %q: %w", truncate(stmt, 80), err)
+		}
+	}
+	for _, stmt := range indexes {
+		if _, err := db.Exec(stmt); err != nil {
+			return fmt.Errorf("golden schema exec failed on %q: %w", truncate(stmt, 80), err)
+		}
+	}
+	return nil
+}
+
+// truncate returns at most n characters of s, appending "…" if truncated.
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "…"
 }
 
 // HasPendingMigrations reports whether any migration files in the embedded FS
@@ -47,8 +95,18 @@ func HasPendingMigrations(db *sql.DB) (bool, error) {
 	return dbVersion < headVersion, nil
 }
 
-// headMigrationVersion returns the highest version number present in the embedded migrations FS.
-// Migration filenames follow the goose convention: {version}_{name}.sql
+// goMigrationVersions collects versions from Go migrations that self-register
+// via registerGoMigrationVersion in their init() functions.
+var goMigrationVersions []int64
+
+// registerGoMigrationVersion records a Go migration's version so that
+// headMigrationVersion can discover it. Call this from each Go migration's init().
+func registerGoMigrationVersion(v int64) {
+	goMigrationVersions = append(goMigrationVersions, v)
+}
+
+// headMigrationVersion returns the highest version number across both embedded SQL
+// migrations (migrations/*.sql) and registered Go migrations.
 func headMigrationVersion() (int64, error) {
 	entries, err := fs.ReadDir(migrations, "migrations")
 	if err != nil {
@@ -61,7 +119,6 @@ func headMigrationVersion() (int64, error) {
 			continue
 		}
 		name := e.Name()
-		// Extract the numeric prefix before the first underscore
 		parts := strings.SplitN(name, "_", 2)
 		if len(parts) < 2 {
 			continue
@@ -74,5 +131,12 @@ func headMigrationVersion() (int64, error) {
 			head = v
 		}
 	}
+
+	for _, v := range goMigrationVersions {
+		if v > head {
+			head = v
+		}
+	}
+
 	return head, nil
 }
