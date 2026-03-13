@@ -399,15 +399,22 @@ func (s *MaterializedService) GetPortfolioSummaryWithFallback(portfolioID string
 		log.Printf("portfolio summary: materialized latest returned 0 entries (err=%v), falling back", err)
 	}
 
-	// Fallback: compute full history and take the last entry
+	// Fallback: compute full history and take the last entry.
+	// Pass zero-time as startDate — LoadForPortfolios unconditionally loads
+	// from the oldest transaction date regardless of the requested start.
 	log.Printf("portfolio summary: cache stale or empty, falling back to on-demand calculation")
-	startDate, _ := time.Parse("2006-01-02", "1970-01-01")
-	history, err := s.GetPortfolioHistory(startDate, endDate, portfolioID)
+	history, err := s.GetPortfolioHistory(time.Time{}, endDate, portfolioID)
 	if err != nil {
 		return nil, err
 	}
 
-	s.triggerBackgroundRegeneration(portfolioIDs, startDate)
+	// Use the actual earliest date from the result for background regen,
+	// not an arbitrary epoch, per the architecture doc's startDate clamping rule.
+	if len(history) > 0 {
+		if regenStart, parseErr := time.Parse("2006-01-02", history[0].Date); parseErr == nil {
+			s.triggerBackgroundRegeneration(portfolioIDs, regenStart)
+		}
+	}
 
 	if len(history) == 0 {
 		return []model.PortfolioSummary{}, nil

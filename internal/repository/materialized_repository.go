@@ -47,11 +47,10 @@ func (r *MaterializedRepository) getQuerier() Querier {
 //  4. Parses date fields (date, calculated_at)
 //  5. Invokes the callback function for each record
 //
-// The query aggregates fund-level data from fund_history_materialized using GROUP BY,
-// and uses correlated subqueries to fetch cumulative values:
-//   - realized_gain, total_sale_proceeds, total_original_cost from realized_gain_loss table
-//   - total_dividends from dividend table
-//   - is_archived from portfolio table
+// The query aggregates fund-level data from fund_history_materialized using GROUP BY.
+// All values (realized_gain, sale_proceeds, original_cost, dividends) are read directly
+// from pre-computed columns in the materialized table — no correlated subqueries.
+// is_archived is fetched via a JOIN to the portfolio table.
 //
 // Parameters:
 //   - portfolioIDs: Slice of portfolio IDs to retrieve history for
@@ -133,7 +132,7 @@ func (r *MaterializedRepository) GetMaterializedHistory(
 // The query performs portfolio-level aggregation by:
 //   - Joining fund_history_materialized with portfolio_fund and portfolio tables
 //   - Grouping by date and portfolio_id to sum fund-level metrics
-//   - Calculating cumulative realized gains, dividends, and sale proceeds via subqueries
+//   - Summing pre-computed fund-level metrics (realized gains, dividends, sale proceeds, original cost)
 //   - Filtering by portfolio IDs and date range
 //
 // Parameters:
@@ -505,17 +504,13 @@ func (r *MaterializedRepository) GetPortfolioSummaryLatest(
 		SELECT MAX(fh2.date)
 		FROM fund_history_materialized fh2
 		JOIN portfolio_fund pf2 ON fh2.portfolio_fund_id = pf2.id
-		WHERE pf2.portfolio_id IN (` + inClause + `)
+		WHERE pf2.portfolio_id = pf.portfolio_id
 	)
 	GROUP BY fh.date, pf.portfolio_id, p.is_archived
 	ORDER BY fh.date ASC
 `
 
-	// Build args: portfolioIDs for main WHERE + portfolioIDs for subquery
-	args := make([]any, 0, len(portfolioIDs)*2)
-	for _, id := range portfolioIDs {
-		args = append(args, id)
-	}
+	args := make([]any, 0, len(portfolioIDs))
 	for _, id := range portfolioIDs {
 		args = append(args, id)
 	}
