@@ -687,7 +687,7 @@ func (s *FundService) filterMissingPrices(indicators []yahoo.Indicators, missing
 //
 // Note: This method triggers materialized view regeneration after a successful price insert (Issue #35).
 //
-//nolint:gocyclo // Multi-step pipeline: validate, load, diff, fetch, filter, insert, invalidate
+//nolint:gocyclo,funlen // Multi-step pipeline: validate, load, diff, fetch, filter, insert, invalidate
 func (s *FundService) UpdateHistoricalFundPrice(ctx context.Context, fundID string) (int, error) {
 	fundLog.DebugContext(ctx, "updating historical fund prices", "fundID", fundID)
 	fund, err := s.GetFund(fundID)

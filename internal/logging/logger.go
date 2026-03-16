@@ -34,7 +34,7 @@ func (l *Logger) log(ctx context.Context, level slog.Level, msg string, args ...
 	runtime.Callers(3, pcs[:]) // skip: runtime.Callers, log, public method
 	r := slog.NewRecord(time.Now(), level, msg, pcs[0])
 	r.Add(args...)
-	_ = h.Handle(ctx, r)
+	_ = h.Handle(ctx, r) //nolint:errcheck // Handler.Handle returns nil by contract; nothing to do on failure.
 }
 
 func (l *Logger) Debug(msg string, args ...any) {

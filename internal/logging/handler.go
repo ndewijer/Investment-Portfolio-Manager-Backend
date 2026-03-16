@@ -53,7 +53,7 @@ func (h *DBHandler) Enabled(_ context.Context, level slog.Level) bool {
 //nolint:funlen // Dual-write logic with DB fallback needs the length.
 func (h *DBHandler) Handle(ctx context.Context, record slog.Record) error {
 	// Always write to console — the console handler has pre-bound attrs from WithAttrs.
-	_ = h.console.Handle(ctx, record)
+	_ = h.console.Handle(ctx, record) //nolint:errcheck // Console write is best-effort; nothing to do on failure.
 
 	// Only write to DB if enabled.
 	if !h.enabled.Load() {
@@ -172,7 +172,7 @@ func (h *DBHandler) SetEnabled(v bool) {
 
 // SetLevel sets the minimum log level at runtime.
 func (h *DBHandler) SetLevel(level slog.Level) {
-	h.level.Store(int32(level))
+	h.level.Store(int32(level)) //nolint:gosec // G115: slog levels are small constants (-4 to 12); overflow impossible.
 }
 
 // captureStackTrace returns a formatted stack trace, skipping `skip` frames.

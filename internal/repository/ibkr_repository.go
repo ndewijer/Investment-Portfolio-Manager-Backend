@@ -96,7 +96,7 @@ func (r *IbkrRepository) GetIbkrConfig() (*model.IbkrConfig, error) {
 	if defaultAllocationStr.Valid {
 		var defaultAllocation []model.Allocation
 		if err := json.Unmarshal([]byte(defaultAllocationStr.String), &defaultAllocation); err != nil {
-			ibkrLog.Debug("failed to parse allocation model", "error", err)
+			ibkrLog.Warn("failed to parse allocation model", "error", err)
 			// Continue without allocations
 		} else {
 			ic.DefaultAllocations = defaultAllocation
@@ -402,7 +402,7 @@ func (r *IbkrRepository) CompareIbkrTransaction(t model.IBKRTransaction) bool {
 	).Scan(&count)
 
 	if err != nil {
-		ibkrLog.Debug("query error, treating as existing", "ibkr_transaction_id", t.IBKRTransactionID, "error", err)
+		ibkrLog.Warn("query error, treating as existing", "ibkr_transaction_id", t.IBKRTransactionID, "error", err)
 		return true
 	}
 

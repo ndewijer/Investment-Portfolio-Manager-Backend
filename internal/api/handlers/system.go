@@ -40,7 +40,6 @@ func (h *SystemHandler) Health(w http.ResponseWriter, r *http.Request) {
 		health := HealthResponse{
 			Status:   "unhealthy",
 			Database: "disconnected",
-			Error:    err.Error(),
 		}
 		response.RespondError(w, http.StatusServiceUnavailable, "unhealthy", health)
 		return
