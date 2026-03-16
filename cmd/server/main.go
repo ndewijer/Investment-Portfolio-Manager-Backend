@@ -91,45 +91,67 @@ func main() {
 		}
 	}()
 
-	c := cron.New(cron.WithLocation(time.UTC))
-	// Schedule the price update task to run at 00:55 UTC time every weekday
-	_, err = c.AddFunc("55 00 * * 1-5", func() {
-		if _, err := fundService.UpdateAllFundHistory(context.Background()); err != nil {
-			slog.Error("scheduled fund price update failed", "error", err)
-		}
-	})
-	if err != nil {
-		log.Printf("error: %v", err)
-	}
-	// Schedule the IBKR Import task to run between 06:30 and 08:30 local time Tue-Sat
-	// (fetches previous business day's close-of-business report)
-	_, err = c.AddFunc("30 5-7 * * 2-6", func() {
-		if _, _, err := ibkrService.ImportFlexReport(context.Background()); err != nil {
-			slog.Error("scheduled IBKR import failed", "error", err)
-		}
-	})
-	if err != nil {
-		log.Printf("error: %v", err)
-	}
-	c.Start()
-	defer c.Stop()
+	c := scheduleTasks(fundService, ibkrService)
 
 	// Wait for interrupt signal for graceful shutdown
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
+	log.Println("Shutting down...")
 
-	log.Println("Shutting down server...")
-
-	// Graceful shutdown with timeout
+	// Stop accepting new HTTP requests + stop scheduling new cron jobs
+	cronCtx := c.Stop()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
+	// Drain both in parallel under the same 30s window
 	if err := server.Shutdown(ctx); err != nil {
-		log.Fatalf("Server forced to shutdown: %v", err)
+		log.Printf("Server shutdown error: %v", err)
+	}
+
+	select {
+	case <-cronCtx.Done():
+		log.Println("Cron jobs finished cleanly")
+	case <-ctx.Done():
+		log.Println("Cron jobs did not finish in time")
 	}
 
 	log.Println("Server exited")
+}
+
+func scheduleTasks(fundService *service.FundService, ibkrService *service.IbkrService) *cron.Cron {
+	c := cron.New(
+		cron.WithLocation(time.UTC),
+		cron.WithChain(
+			cron.SkipIfStillRunning(cron.DefaultLogger),
+			cron.Recover(cron.DefaultLogger),
+		),
+	)
+	// Schedule the price update task to run at 00:55 UTC every weekday
+	_, err := c.AddFunc("55 00 * * 1-5", func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+		defer cancel()
+		if _, err := fundService.UpdateAllFundHistory(ctx); err != nil {
+			slog.Error("scheduled fund price update failed", "error", err)
+		}
+	})
+	if err != nil {
+		log.Fatalf("Failed to register fund price update task: %v", err)
+	}
+	// Schedule the IBKR Import task to run between 05:30 and 07:30 UTC Tue-Sat
+	// Fetches previous business day's close-of-business report
+	_, err = c.AddFunc("30 5-7 * * 2-6", func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+		defer cancel()
+		if _, _, err := ibkrService.ImportFlexReport(ctx); err != nil {
+			slog.Error("scheduled IBKR import failed", "error", err)
+		}
+	})
+	if err != nil {
+		log.Fatalf("Failed to register IBKR import task: %v", err)
+	}
+	c.Start()
+	return c
 }
 
 // resolveEncryptionKey returns the encryption key string from env, file, or auto-generation.
