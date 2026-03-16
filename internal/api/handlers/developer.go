@@ -12,10 +12,13 @@ import (
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/request"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/response"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/apperrors"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/logging"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/service"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/validation"
 )
+
+var devLog = logging.NewLogger("developer")
 
 // DeveloperHandler handles HTTP requests for Developer endpoints.
 // It serves as the HTTP layer adapter, parsing requests and delegating
@@ -51,6 +54,12 @@ func NewDeveloperHandler(DeveloperService *service.DeveloperService) *DeveloperH
 // Error: 400 Bad Request if filter parameters are invalid
 // Error: 500 Internal Server Error if retrieval fails
 func (h *DeveloperHandler) GetLogs(w http.ResponseWriter, r *http.Request) {
+	devLog.DebugContext(r.Context(), "get logs request",
+		"level", r.URL.Query().Get("level"),
+		"category", r.URL.Query().Get("category"),
+		"sort_dir", r.URL.Query().Get("sortDir"),
+	)
+
 	// Parse filter parameters
 	filters, err := request.ParseLogFilters(
 		r.URL.Query().Get("level"),
@@ -71,7 +80,8 @@ func (h *DeveloperHandler) GetLogs(w http.ResponseWriter, r *http.Request) {
 	// Call service with filters
 	logs, err := h.DeveloperService.GetLogs(r.Context(), filters)
 	if err != nil {
-		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToRetrieveLogs.Error(), err.Error())
+		devLog.ErrorContext(r.Context(), "failed to get logs", "error", err)
+		response.RespondInternalError(w, r, apperrors.ErrFailedToRetrieveLogs.Error())
 		return
 	}
 
@@ -84,10 +94,13 @@ func (h *DeveloperHandler) GetLogs(w http.ResponseWriter, r *http.Request) {
 // Endpoint: GET /api/developer/system-settings/logging
 // Response: 200 OK with LoggingSetting
 // Error: 500 Internal Server Error if retrieval fails
-func (h *DeveloperHandler) GetLoggingConfig(w http.ResponseWriter, _ *http.Request) {
+func (h *DeveloperHandler) GetLoggingConfig(w http.ResponseWriter, r *http.Request) {
+	devLog.DebugContext(r.Context(), "get logging config request")
+
 	setting, err := h.DeveloperService.GetLoggingConfig()
 	if err != nil {
-		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToRetrieveLoggingConfig.Error(), err.Error())
+		devLog.ErrorContext(r.Context(), "failed to get logging config", "error", err)
+		response.RespondInternalError(w, r, apperrors.ErrFailedToRetrieveLoggingConfig.Error())
 		return
 	}
 
@@ -103,6 +116,7 @@ func (h *DeveloperHandler) GetLoggingConfig(w http.ResponseWriter, _ *http.Reque
 // Error: 400 Bad Request if body is invalid or validation fails
 // Error: 500 Internal Server Error if update fails
 func (h *DeveloperHandler) SetLoggingConfig(w http.ResponseWriter, r *http.Request) {
+	devLog.DebugContext(r.Context(), "set logging config request")
 
 	req, err := parseJSON[request.SetLoggingConfig](r)
 	if err != nil {
@@ -117,10 +131,12 @@ func (h *DeveloperHandler) SetLoggingConfig(w http.ResponseWriter, r *http.Reque
 
 	logSetting, err := h.DeveloperService.SetLoggingConfig(r.Context(), req)
 	if err != nil {
-		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToSetLoggingConfig.Error(), err.Error())
+		devLog.ErrorContext(r.Context(), "failed to set logging config", "error", err)
+		response.RespondInternalError(w, r, apperrors.ErrFailedToSetLoggingConfig.Error())
 		return
 	}
 
+	devLog.InfoContext(r.Context(), "logging config updated", "enabled", req.Enabled, "level", req.Level)
 	response.RespondJSON(w, http.StatusOK, logSetting)
 }
 
@@ -129,7 +145,8 @@ func (h *DeveloperHandler) SetLoggingConfig(w http.ResponseWriter, r *http.Reque
 //
 // Endpoint: GET /api/developer/csv/fund-prices/template
 // Response: 200 OK with TemplateModel
-func (h *DeveloperHandler) GetFundPriceCSVTemplate(w http.ResponseWriter, _ *http.Request) {
+func (h *DeveloperHandler) GetFundPriceCSVTemplate(w http.ResponseWriter, r *http.Request) {
+	devLog.DebugContext(r.Context(), "get fund price CSV template request")
 
 	headers := []string{"date", "price"}
 	example := map[string]string{
@@ -154,7 +171,8 @@ func (h *DeveloperHandler) GetFundPriceCSVTemplate(w http.ResponseWriter, _ *htt
 //
 // Endpoint: GET /api/developer/csv/transactions/template
 // Response: 200 OK with TemplateModel
-func (h *DeveloperHandler) GetTransactionCSVTemplate(w http.ResponseWriter, _ *http.Request) {
+func (h *DeveloperHandler) GetTransactionCSVTemplate(w http.ResponseWriter, r *http.Request) {
+	devLog.DebugContext(r.Context(), "get transaction CSV template request")
 
 	headers := []string{"date", "type", "shares", "cost_per_share"}
 	example := map[string]string{
@@ -197,6 +215,8 @@ func (h *DeveloperHandler) GetExchangeRate(w http.ResponseWriter, r *http.Reques
 	toCurrency := r.URL.Query().Get("toCurrency")
 	dateStr := r.URL.Query().Get("date")
 
+	devLog.DebugContext(r.Context(), "get exchange rate request", "from", fromCurrency, "to", toCurrency, "date", dateStr)
+
 	if fromCurrency == "" {
 		response.RespondError(w, http.StatusBadRequest, apperrors.ErrInvalidCurrency.Error(), "fromCurrency is required")
 		return
@@ -230,7 +250,8 @@ func (h *DeveloperHandler) GetExchangeRate(w http.ResponseWriter, r *http.Reques
 			response.RespondJSON(w, http.StatusOK, exchangeResponse)
 			return
 		}
-		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToRetrieveExchangeRate.Error(), err.Error())
+		devLog.ErrorContext(r.Context(), "failed to get exchange rate", "error", err, "from", fromCurrency, "to", toCurrency, "date", dateStr)
+		response.RespondInternalError(w, r, apperrors.ErrFailedToRetrieveExchangeRate.Error())
 		return
 	}
 
@@ -248,6 +269,7 @@ func (h *DeveloperHandler) GetExchangeRate(w http.ResponseWriter, r *http.Reques
 // Error: 400 Bad Request if body is invalid or validation fails
 // Error: 500 Internal Server Error if update fails
 func (h *DeveloperHandler) UpdateExchangeRate(w http.ResponseWriter, r *http.Request) {
+	devLog.DebugContext(r.Context(), "update exchange rate request")
 
 	req, err := parseJSON[request.SetExchangeRateRequest](r)
 	if err != nil {
@@ -262,11 +284,12 @@ func (h *DeveloperHandler) UpdateExchangeRate(w http.ResponseWriter, r *http.Req
 
 	exRate, err := h.DeveloperService.UpdateExchangeRate(r.Context(), req)
 	if err != nil {
-
-		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToUpdateExchangeRate.Error(), err.Error())
+		devLog.ErrorContext(r.Context(), "failed to update exchange rate", "error", err)
+		response.RespondInternalError(w, r, apperrors.ErrFailedToUpdateExchangeRate.Error())
 		return
 	}
 
+	devLog.InfoContext(r.Context(), "exchange rate updated", "from", req.FromCurrency, "to", req.ToCurrency, "date", req.Date)
 	response.RespondJSON(w, http.StatusOK, exRate)
 }
 
@@ -286,6 +309,8 @@ func (h *DeveloperHandler) GetFundPrice(w http.ResponseWriter, r *http.Request) 
 	fundID := r.URL.Query().Get("fundId")
 	dateStr := r.URL.Query().Get("date")
 
+	devLog.DebugContext(r.Context(), "get fund price request", "fund_id", fundID, "date", dateStr)
+
 	if fundID == "" {
 		response.RespondError(w, http.StatusBadRequest, apperrors.ErrInvalidFundID.Error(), "fundId is required")
 		return
@@ -304,10 +329,11 @@ func (h *DeveloperHandler) GetFundPrice(w http.ResponseWriter, r *http.Request) 
 	fundPrice, err := h.DeveloperService.GetFundPrice(fundID, parsedDate)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrFundPriceNotFound) {
-			response.RespondError(w, http.StatusNotFound, apperrors.ErrFundPriceNotFound.Error(), err.Error())
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrFundPriceNotFound.Error(), "")
 			return
 		}
-		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToRetrieveFundPrice.Error(), err.Error())
+		devLog.ErrorContext(r.Context(), "failed to get fund price", "error", err, "fund_id", fundID, "date", dateStr)
+		response.RespondInternalError(w, r, apperrors.ErrFailedToRetrieveFundPrice.Error())
 		return
 	}
 
@@ -323,6 +349,7 @@ func (h *DeveloperHandler) GetFundPrice(w http.ResponseWriter, r *http.Request) 
 // Error: 400 Bad Request if body is invalid or validation fails
 // Error: 500 Internal Server Error if update fails
 func (h *DeveloperHandler) UpdateFundPrice(w http.ResponseWriter, r *http.Request) {
+	devLog.DebugContext(r.Context(), "update fund price request")
 
 	req, err := parseJSON[request.SetFundPriceRequest](r)
 	if err != nil {
@@ -337,11 +364,12 @@ func (h *DeveloperHandler) UpdateFundPrice(w http.ResponseWriter, r *http.Reques
 
 	fundPrice, err := h.DeveloperService.UpdateFundPrice(r.Context(), req)
 	if err != nil {
-
-		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToUpdateFundPrice.Error(), err.Error())
+		devLog.ErrorContext(r.Context(), "failed to update fund price", "error", err)
+		response.RespondInternalError(w, r, apperrors.ErrFailedToUpdateFundPrice.Error())
 		return
 	}
 
+	devLog.InfoContext(r.Context(), "fund price updated", "fund_id", req.FundID, "date", req.Date)
 	response.RespondJSON(w, http.StatusOK, fundPrice)
 }
 
@@ -352,15 +380,18 @@ func (h *DeveloperHandler) UpdateFundPrice(w http.ResponseWriter, r *http.Reques
 // Response: 204 No Content on success
 // Error: 500 Internal Server Error if deletion fails
 func (h *DeveloperHandler) DeleteLogs(w http.ResponseWriter, r *http.Request) {
+	devLog.DebugContext(r.Context(), "delete logs request")
 
 	ipAddress := getClientIP(r)
 
 	err := h.DeveloperService.DeleteLogs(r.Context(), ipAddress, r.Header.Get("User-Agent"))
 	if err != nil {
-		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToDeleteLogs.Error(), err.Error())
+		devLog.ErrorContext(r.Context(), "failed to delete logs", "error", err)
+		response.RespondInternalError(w, r, apperrors.ErrFailedToDeleteLogs.Error())
 		return
 	}
 
+	devLog.InfoContext(r.Context(), "logs deleted")
 	response.RespondJSON(w, http.StatusNoContent, nil)
 }
 
@@ -395,6 +426,8 @@ func getClientIP(r *http.Request) *string {
 // Error: 400 Bad Request for invalid input or CSV format issues
 // Error: 500 Internal Server Error if import fails
 func (h *DeveloperHandler) ImportFundPrices(w http.ResponseWriter, r *http.Request) {
+	devLog.DebugContext(r.Context(), "import fund prices request")
+
 	r.Body = http.MaxBytesReader(w, r.Body, 10<<20) // 10 MB limit
 	if err := r.ParseMultipartForm(10 << 20); err != nil {
 		response.RespondError(w, http.StatusBadRequest, "failed to parse form", err.Error())
@@ -435,10 +468,12 @@ func (h *DeveloperHandler) ImportFundPrices(w http.ResponseWriter, r *http.Reque
 			response.RespondError(w, http.StatusBadRequest, apperrors.ErrInvalidCSVHeaders.Error(), err.Error())
 			return
 		}
-		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToImportFundPrices.Error(), err.Error())
+		devLog.ErrorContext(r.Context(), "failed to import fund prices", "error", err, "fund_id", fundID)
+		response.RespondInternalError(w, r, apperrors.ErrFailedToImportFundPrices.Error())
 		return
 	}
 
+	devLog.InfoContext(r.Context(), "fund prices imported", "fund_id", fundID, "count", count)
 	response.RespondJSON(w, http.StatusOK, map[string]int{"imported": count})
 }
 
@@ -451,6 +486,8 @@ func (h *DeveloperHandler) ImportFundPrices(w http.ResponseWriter, r *http.Reque
 // Error: 400 Bad Request for invalid input or CSV format issues
 // Error: 500 Internal Server Error if import fails
 func (h *DeveloperHandler) ImportTransactions(w http.ResponseWriter, r *http.Request) {
+	devLog.DebugContext(r.Context(), "import transactions request")
+
 	r.Body = http.MaxBytesReader(w, r.Body, 10<<20) // 10 MB limit
 	if err := r.ParseMultipartForm(10 << 20); err != nil {
 		response.RespondError(w, http.StatusBadRequest, "failed to parse form", err.Error())
@@ -491,10 +528,12 @@ func (h *DeveloperHandler) ImportTransactions(w http.ResponseWriter, r *http.Req
 			response.RespondError(w, http.StatusBadRequest, apperrors.ErrInvalidCSVHeaders.Error(), err.Error())
 			return
 		}
-		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToImportTransactions.Error(), err.Error())
+		devLog.ErrorContext(r.Context(), "failed to import transactions", "error", err, "portfolio_fund_id", portfolioFundID)
+		response.RespondInternalError(w, r, apperrors.ErrFailedToImportTransactions.Error())
 		return
 	}
 
+	devLog.InfoContext(r.Context(), "transactions imported", "portfolio_fund_id", portfolioFundID, "count", count)
 	response.RespondJSON(w, http.StatusOK, map[string]int{"imported": count})
 }
 

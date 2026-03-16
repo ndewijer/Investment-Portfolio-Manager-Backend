@@ -5,9 +5,12 @@ import (
 	"fmt"
 
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/database"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/logging"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/version"
 )
+
+var sysLog = logging.NewLogger("system")
 
 // SystemService handles system-related operations
 type SystemService struct {
@@ -23,15 +26,21 @@ func NewSystemService(db *sql.DB) *SystemService {
 
 // CheckHealth checks the health of the system
 func (s *SystemService) CheckHealth() error {
-	return database.HealthCheck(s.db)
+	sysLog.Debug("checking system health")
+	if err := database.HealthCheck(s.db); err != nil {
+		return fmt.Errorf("health check: %w", err)
+	}
+	return nil
 }
 
 // CheckVersion retrieves version information including app version, database version,
 // feature availability, and pending migration status.
 func (s *SystemService) CheckVersion() (model.VersionInfo, error) {
+	sysLog.Debug("checking version info")
 	appVersion := version.Version
 	dbVersion, err := s.getDbVersion()
 	if err != nil {
+		sysLog.Warn("failed to get db version", "error", err)
 		dbVersion = "unknown"
 	}
 
@@ -66,7 +75,7 @@ func (s *SystemService) getDbVersion() (string, error) {
 	var versionNum string
 	err = s.db.QueryRow("SELECT version_num FROM alembic_version").Scan(&versionNum)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("get alembic version: %w", err)
 	}
 	return versionNum, nil
 }
@@ -95,6 +104,7 @@ func (s *SystemService) checkFeatureAvailability(dbVersion string) map[string]bo
 func (s *SystemService) checkPendingMigrations(dbVersion string) (bool, string) {
 	pending, err := database.HasPendingMigrations(s.db)
 	if err != nil {
+		sysLog.Warn("failed to check pending migrations", "error", err)
 		return false, ""
 	}
 	if pending {

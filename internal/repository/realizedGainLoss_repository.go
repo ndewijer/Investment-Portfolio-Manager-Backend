@@ -7,8 +7,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/logging"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 )
+
+var rglLog = logging.NewLogger("transaction")
 
 // RealizedGainLossRepository provides data access methods for the realized_gain_loss table.
 // It handles creating, retrieving, and deleting records of gains and losses from sold positions.
@@ -50,6 +53,7 @@ func (s *RealizedGainLossRepository) getQuerier() Querier {
 // Each record contains details about a sell transaction including shares sold, cost basis,
 // sale proceeds, and the calculated realized gain or loss.
 func (s *RealizedGainLossRepository) GetRealizedGainLossByPortfolio(portfolio []string, startDate, endDate time.Time) (map[string][]model.RealizedGainLoss, error) {
+	rglLog.Debug("getting realized gain/loss by portfolio", "portfolio_count", len(portfolio), "start_date", startDate.Format("2006-01-02"), "end_date", endDate.Format("2006-01-02"))
 	if len(portfolio) == 0 {
 		return make(map[string][]model.RealizedGainLoss), nil
 	}
@@ -128,6 +132,7 @@ func (s *RealizedGainLossRepository) GetRealizedGainLossByPortfolio(portfolio []
 // InsertRealizedGainLoss creates a new realized gain/loss record in the database.
 // All fields including ID must be set before calling this method.
 func (s *RealizedGainLossRepository) InsertRealizedGainLoss(ctx context.Context, r *model.RealizedGainLoss) error {
+	rglLog.DebugContext(ctx, "inserting realized gain/loss", "transaction_id", r.TransactionID, "portfolio_id", r.PortfolioID)
 	query := `
 		INSERT INTO realized_gain_loss (id, portfolio_id, fund_id, transaction_id, transaction_date,
 			shares_sold, cost_basis, sale_proceeds, realized_gain_loss, created_at)
@@ -156,6 +161,7 @@ func (s *RealizedGainLossRepository) InsertRealizedGainLoss(ctx context.Context,
 // DeleteRealizedGainLossByTransactionID removes the realized gain/loss record associated with a transaction.
 // Returns nil if no record exists for the given transaction ID (idempotent).
 func (s *RealizedGainLossRepository) DeleteRealizedGainLossByTransactionID(ctx context.Context, transactionID string) error {
+	rglLog.DebugContext(ctx, "deleting realized gain/loss by transaction ID", "transaction_id", transactionID)
 	query := `DELETE FROM realized_gain_loss WHERE transaction_id = ?`
 
 	_, err := s.getQuerier().ExecContext(ctx, query, transactionID)

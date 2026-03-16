@@ -8,8 +8,11 @@ import (
 	"time"
 
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/apperrors"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/logging"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 )
+
+var fundLog = logging.NewLogger("fund")
 
 // FundRepository provides data access methods for fund and fund_price tables.
 // It handles retrieving fund metadata and historical price data.
@@ -42,6 +45,7 @@ func (r *FundRepository) getQuerier() Querier {
 // GetAllFunds retrieves all funds from the database with their latest prices.
 // Returns an empty slice if no funds are found.
 func (r *FundRepository) GetAllFunds() ([]model.Fund, error) {
+	fundLog.Debug("getting all funds")
 	query := `
         SELECT f.id, f.name, f.isin, f.symbol, f.currency, f.exchange, f.investment_type, f.dividend_type, fp.price
 		FROM fund f
@@ -101,6 +105,7 @@ func (r *FundRepository) GetAllFunds() ([]model.Fund, error) {
 
 // GetFund retrieves a single fund by ID with its latest price.
 func (r *FundRepository) GetFund(fundID string) (model.Fund, error) {
+	fundLog.Debug("getting fund by ID", "fund_id", fundID)
 	query := `
         SELECT f.id, f.name, f.isin, f.symbol, f.currency, f.exchange, f.investment_type, f.dividend_type, fp.price
 		FROM fund f
@@ -133,7 +138,7 @@ func (r *FundRepository) GetFund(fundID string) (model.Fund, error) {
 		return model.Fund{}, apperrors.ErrFundNotFound
 	}
 	if err != nil {
-		return model.Fund{}, err
+		return model.Fund{}, fmt.Errorf("failed to query fund: %w", err)
 	}
 	if priceStr.Valid {
 		f.LatestPrice = priceStr.Float64
@@ -145,6 +150,7 @@ func (r *FundRepository) GetFund(fundID string) (model.Fund, error) {
 // GetFunds retrieves fund records for the given fund IDs.
 // Returns a slice of Fund objects containing metadata like name, ISIN, symbol, currency, etc.
 func (r *FundRepository) GetFunds(fundIDs []string) ([]model.Fund, error) {
+	fundLog.Debug("getting funds by IDs", "fund_count", len(fundIDs))
 	fundPlaceholders := make([]string, len(fundIDs))
 	for i := range fundPlaceholders {
 		fundPlaceholders[i] = "?"
@@ -219,6 +225,7 @@ func (r *FundRepository) GetFunds(fundIDs []string) ([]model.Fund, error) {
 //
 // Returns a map of fundID -> []FundPrice, grouped by fund and sorted by date according to sortOrder.
 func (r *FundRepository) GetFundPrice(fundIDs []string, startDate, endDate time.Time, ascending bool) (map[string][]model.FundPrice, error) {
+	fundLog.Debug("getting fund prices", "fund_count", len(fundIDs), "start_date", startDate.Format("2006-01-02"), "end_date", endDate.Format("2006-01-02"), "ascending", ascending)
 
 	if startDate.After(endDate) {
 		return nil, fmt.Errorf("startDate (%s) must be before or equal to endDate (%s)",
@@ -295,6 +302,7 @@ func (r *FundRepository) GetFundPrice(fundIDs []string, startDate, endDate time.
 // Returns nil, nil if the symbol is not found.
 // Returns nil, error if a database error occurs.
 func (r *FundRepository) GetSymbol(symbol string) (*model.Symbol, error) {
+	fundLog.Debug("getting symbol", "symbol", symbol)
 	if symbol == "" {
 		return nil, nil
 	}
@@ -322,6 +330,9 @@ func (r *FundRepository) GetSymbol(symbol string) (*model.Symbol, error) {
 	if err == sql.ErrNoRows {
 		return nil, apperrors.ErrSymbolNotFound
 	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to query symbol: %w", err)
+	}
 
 	if lastUpdatedStr.Valid {
 		sb.LastUpdated, err = ParseTime(lastUpdatedStr.String)
@@ -346,12 +357,13 @@ func (r *FundRepository) GetSymbol(symbol string) (*model.Symbol, error) {
 		sb.IsValid = isValidstr.Bool
 	}
 
-	return &sb, err
+	return &sb, nil
 }
 
 // UpsertSymbol inserts or updates a row in the symbol_info table.
 // On conflict (duplicate symbol), the existing row is updated with the new values.
 func (r *FundRepository) UpsertSymbol(s *model.Symbol) error {
+	fundLog.Debug("upserting symbol", "symbol", s.Symbol)
 	query := `
 		INSERT INTO symbol_info (id, symbol, name, exchange, currency, isin, last_updated, data_source, is_valid)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -367,13 +379,17 @@ func (r *FundRepository) UpsertSymbol(s *model.Symbol) error {
 		s.ID, s.Symbol, s.Name, s.Exchange, s.Currency, s.Isin,
 		s.LastUpdated.Format(time.RFC3339), s.DataSource, s.IsValid,
 	)
-	return err
+	if err != nil {
+		return fmt.Errorf("failed to upsert symbol: %w", err)
+	}
+	return nil
 }
 
 // PruneStaleSymbols deletes symbol_info rows older than 24 hours that are not
 // referenced by any fund. This cleans up transient lookup cache entries (e.g.
 // partial typeahead queries) while preserving symbols actively used by funds.
 func (r *FundRepository) PruneStaleSymbols() (int64, error) {
+	fundLog.Debug("pruning stale symbols")
 	query := `
 		DELETE FROM symbol_info
 		WHERE last_updated < datetime('now', '-1 day')
@@ -381,9 +397,13 @@ func (r *FundRepository) PruneStaleSymbols() (int64, error) {
 	`
 	result, err := r.getQuerier().Exec(query)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("failed to prune stale symbols: %w", err)
 	}
-	return result.RowsAffected()
+	n, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get rows affected: %w", err)
+	}
+	return n, nil
 }
 
 // GetFundBySymbolOrIsin retrieves a fund by matching either its symbol or ISIN.
@@ -401,6 +421,7 @@ func (r *FundRepository) PruneStaleSymbols() (int64, error) {
 // If both are provided, the query matches funds where EITHER the symbol OR isin matches.
 // Returns ErrFundNotFound if no matching fund is found.
 func (r *FundRepository) GetFundBySymbolOrIsin(symbol, isin string) (model.Fund, error) {
+	fundLog.Debug("getting fund by symbol or ISIN", "symbol", symbol, "isin", isin)
 
 	var query string
 	var args []any
@@ -441,7 +462,7 @@ func (r *FundRepository) GetFundBySymbolOrIsin(symbol, isin string) (model.Fund,
 		return model.Fund{}, apperrors.ErrFundNotFound
 	}
 	if err != nil {
-		return model.Fund{}, err
+		return model.Fund{}, fmt.Errorf("failed to query fund by symbol or ISIN: %w", err)
 	}
 
 	return f, nil
@@ -452,6 +473,7 @@ func (r *FundRepository) GetFundBySymbolOrIsin(symbol, isin string) (model.Fund,
 // The fund struct should have all required fields populated including a generated ID.
 // Returns an error if the insertion fails (e.g., due to constraint violations).
 func (r *FundRepository) InsertFund(ctx context.Context, f *model.Fund) error {
+	fundLog.DebugContext(ctx, "inserting fund", "fund_id", f.ID, "name", f.Name)
 	query := `
         INSERT INTO fund (id, name, isin, symbol, exchange, currency, investment_type, dividend_type)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -480,6 +502,7 @@ func (r *FundRepository) InsertFund(ctx context.Context, f *model.Fund) error {
 // Returns ErrFundNotFound if no fund with the given ID exists.
 // Returns an error if the update fails.
 func (r *FundRepository) UpdateFund(ctx context.Context, f *model.Fund) error {
+	fundLog.DebugContext(ctx, "updating fund", "fund_id", f.ID)
 	query := `
         UPDATE fund
         SET name = ?, isin = ?, symbol = ?, exchange = ?, currency = ?, investment_type = ?, dividend_type = ?
@@ -517,6 +540,7 @@ func (r *FundRepository) UpdateFund(ctx context.Context, f *model.Fund) error {
 // Returns ErrFundNotFound if no fund with the given ID exists.
 // Returns an error if the deletion fails.
 func (r *FundRepository) DeleteFund(ctx context.Context, fundID string) error {
+	fundLog.DebugContext(ctx, "deleting fund", "fund_id", fundID)
 	query := `DELETE FROM fund WHERE id = ?`
 
 	result, err := r.getQuerier().ExecContext(ctx, query, fundID)
@@ -552,6 +576,7 @@ func (r *FundRepository) DeleteFund(ctx context.Context, fundID string) error {
 // Note: This method does not check for duplicate dates. Callers should verify
 // that the price doesn't already exist before calling this method.
 func (r *FundRepository) InsertFundPrice(ctx context.Context, fp model.FundPrice) error {
+	fundLog.DebugContext(ctx, "inserting fund price", "fund_id", fp.FundID, "date", fp.Date.Format("2006-01-02"))
 	query := `
         INSERT INTO fund_price (id, fund_id, date, price)
         VALUES (?, ?, ?, ?)
@@ -595,6 +620,7 @@ func (r *FundRepository) InsertFundPrice(ctx context.Context, fp model.FundPrice
 //   - error: If statement preparation or any insertion fails. All errors are wrapped with context.
 //   - nil: If fundPrices is empty (no-op) or all insertions succeed
 func (r *FundRepository) InsertFundPrices(ctx context.Context, fundPrices []model.FundPrice) error {
+	fundLog.DebugContext(ctx, "inserting fund prices", "count", len(fundPrices))
 	if len(fundPrices) == 0 {
 		return nil
 	}
@@ -621,6 +647,7 @@ func (r *FundRepository) InsertFundPrices(ctx context.Context, fundPrices []mode
 // UpdateFundPrice upserts a fund price record.
 // On conflict (same fund_id, date), updates the price field.
 func (r *FundRepository) UpdateFundPrice(ctx context.Context, fp model.FundPrice) error {
+	fundLog.DebugContext(ctx, "upserting fund price", "fund_id", fp.FundID, "date", fp.Date.Format("2006-01-02"))
 
 	query := `
 		INSERT INTO fund_price (id, fund_id, date, price)

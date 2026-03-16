@@ -5,8 +5,11 @@ import (
 
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/response"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/apperrors"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/logging"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/service"
 )
+
+var sysLog = logging.NewLogger("system")
 
 // SystemHandler handles system-related HTTP requests
 type SystemHandler struct {
@@ -28,9 +31,12 @@ type HealthResponse struct {
 }
 
 // Health checks the health of the system and database connectivity
-func (h *SystemHandler) Health(w http.ResponseWriter, _ *http.Request) {
+func (h *SystemHandler) Health(w http.ResponseWriter, r *http.Request) {
+	sysLog.DebugContext(r.Context(), "health check request")
+
 	// Check database health
 	if err := h.systemService.CheckHealth(); err != nil {
+		sysLog.ErrorContext(r.Context(), "health check failed", "error", err)
 		health := HealthResponse{
 			Status:   "unhealthy",
 			Database: "disconnected",
@@ -64,11 +70,13 @@ type VersionInfoResponse struct {
 // Endpoint: GET /api/system/version
 // Response: 200 OK with VersionInfoResponse
 // Error: 500 Internal Server Error if version check fails
-func (h *SystemHandler) Version(w http.ResponseWriter, _ *http.Request) {
+func (h *SystemHandler) Version(w http.ResponseWriter, r *http.Request) {
+	sysLog.DebugContext(r.Context(), "version check request")
+
 	version, err := h.systemService.CheckVersion()
 	if err != nil {
-
-		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToGetVersionInfo.Error(), err.Error())
+		sysLog.ErrorContext(r.Context(), "failed to get version info", "error", err)
+		response.RespondInternalError(w, r, apperrors.ErrFailedToGetVersionInfo.Error())
 		return
 	}
 

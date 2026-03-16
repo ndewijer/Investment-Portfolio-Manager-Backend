@@ -7,7 +7,11 @@ import (
 	"net/http"
 	"net/url"
 	"time"
+
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/logging"
 )
+
+var log = logging.NewLogger("fund")
 
 // Client defines the interface for fetching financial data from Yahoo Finance API.
 // This interface enables dependency injection and testing with mock implementations.
@@ -56,6 +60,7 @@ func NewFinanceClient() *FinanceClient {
 //   - PriceChart: Structured chart with indicators and metadata
 //   - error: If data is missing, malformed, or arrays have mismatched lengths
 func (c *FinanceClient) ParseChart(yahooResult Response) (PriceChart, error) {
+	log.Debug("parsing Yahoo chart response")
 	if len(yahooResult.Chart.Result) == 0 {
 		return PriceChart{}, fmt.Errorf("no results returned from Yahoo Finance")
 	}
@@ -111,6 +116,12 @@ func (c *FinanceClient) ParseChart(yahooResult Response) (PriceChart, error) {
 		indicators = append(indicators, indicator)
 	}
 
+	log.Debug("parsed chart data",
+		"symbol", result.Meta.Symbol,
+		"currency", result.Meta.Currency,
+		"indicator_count", len(indicators),
+	)
+
 	return PriceChart{
 		Symbol:           result.Meta.Symbol,
 		Currency:         result.Meta.Currency,
@@ -160,14 +171,18 @@ func (c PriceChart) GetIndicatorForDate(target time.Time) (Indicators, bool) {
 //   - error: If the HTTP request fails, API returns an error, or no results found
 func (c *FinanceClient) QueryYahooFiveDaySymbol(symbol string) (Response, error) {
 	queryURL := fmt.Sprintf("https://query1.finance.yahoo.com/v8/finance/chart/%s?interval=1d&range=5d", url.PathEscape(symbol))
+
+	log.Debug("querying yahoo 5-day symbol", "symbol", symbol, "url", queryURL)
+
 	result, err := c.queryYahoo(queryURL)
 	if err != nil {
-		return Response{}, err
+		return Response{}, fmt.Errorf("yahoo 5-day query for %s: %w", symbol, err)
 	}
 	if len(result.Chart.Result) == 0 {
 		return Response{}, fmt.Errorf("no results returned for symbol %s", symbol)
 	}
 
+	log.Info("yahoo 5-day query successful", "symbol", symbol, "result_count", len(result.Chart.Result))
 	return result, nil
 }
 
@@ -197,14 +212,29 @@ func (c *FinanceClient) QueryYahooSymbolByDateRange(symbol string, startDate, en
 		startDate.Unix(),
 		adjustedEndDate.Unix(),
 	)
+
+	log.Debug("querying yahoo by date range",
+		"symbol", symbol,
+		"start_date", startDate.Format("2006-01-02"),
+		"end_date", endDate.Format("2006-01-02"),
+		"url", queryURL,
+	)
+
 	result, err := c.queryYahoo(queryURL)
 	if err != nil {
-		return Response{}, err
+		return Response{}, fmt.Errorf("yahoo date-range query for %s (%s to %s): %w",
+			symbol, startDate.Format("2006-01-02"), endDate.Format("2006-01-02"), err)
 	}
 	if len(result.Chart.Result) == 0 {
 		return Response{}, fmt.Errorf("no results returned for symbol %s", symbol)
 	}
 
+	log.Info("yahoo date-range query successful",
+		"symbol", symbol,
+		"start_date", startDate.Format("2006-01-02"),
+		"end_date", endDate.Format("2006-01-02"),
+		"result_count", len(result.Chart.Result),
+	)
 	return result, nil
 }
 
@@ -222,30 +252,43 @@ func (c *FinanceClient) QueryYahooSymbolByDateRange(symbol string, startDate, en
 // Returns:
 //   - Response: Parsed API response
 //   - error: If HTTP request fails, response parsing fails, or Yahoo API returns an error
-func (c *FinanceClient) queryYahoo(url string) (Response, error) {
-	req, err := http.NewRequest("GET", url, nil)
+func (c *FinanceClient) queryYahoo(queryURL string) (Response, error) {
+	req, err := http.NewRequest("GET", queryURL, nil)
 	if err != nil {
-		return Response{}, err
+		return Response{}, fmt.Errorf("creating request: %w", err)
 	}
 
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
 	req.Header.Set("Accept", "application/json")
 
+	start := time.Now()
+
 	//nolint:gosec // G704: URL is constructed from a hardcoded Yahoo Finance base with url.PathEscape applied to the symbol; the host cannot be redirected by user input.
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return Response{}, err
+		return Response{}, fmt.Errorf("executing request: %w", err)
 	}
 	defer resp.Body.Close()
 
+	elapsed := time.Since(start)
+	if elapsed > 5*time.Second {
+		log.Warn("slow yahoo API response", "elapsed", elapsed.String(), "url", queryURL)
+	}
+
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return Response{}, err
+		return Response{}, fmt.Errorf("reading response body: %w", err)
 	}
+
+	log.Debug("yahoo API response received",
+		"status_code", resp.StatusCode,
+		"body_size", len(data),
+		"elapsed", elapsed.String(),
+	)
 
 	var response Response
 	if err := json.Unmarshal(data, &response); err != nil {
-		return Response{}, err
+		return Response{}, fmt.Errorf("parsing JSON response: %w", err)
 	}
 
 	if response.Chart.Error != nil {

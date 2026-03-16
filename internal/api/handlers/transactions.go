@@ -8,9 +8,12 @@ import (
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/request"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/response"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/apperrors"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/logging"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/service"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/validation"
 )
+
+var txLog = logging.NewLogger("transaction")
 
 // TransactionHandler handles HTTP requests for transaction endpoints.
 // It serves as the HTTP layer adapter, parsing requests and delegating
@@ -36,9 +39,12 @@ func NewTransactionHandler(transactionService *service.TransactionService) *Tran
 func (h *TransactionHandler) TransactionPerPortfolio(w http.ResponseWriter, r *http.Request) {
 	portfolioID := chi.URLParam(r, "uuid")
 
+	txLog.DebugContext(r.Context(), "get transactions per portfolio request", "portfolio_id", portfolioID)
+
 	transactions, err := h.transactionService.GetTransactionsperPortfolio(portfolioID)
 	if err != nil {
-		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToRetrieveTransactions.Error(), err.Error())
+		txLog.ErrorContext(r.Context(), "failed to get transactions per portfolio", "error", err, "portfolio_id", portfolioID)
+		response.RespondInternalError(w, r, apperrors.ErrFailedToRetrieveTransactions.Error())
 		return
 	}
 
@@ -51,11 +57,13 @@ func (h *TransactionHandler) TransactionPerPortfolio(w http.ResponseWriter, r *h
 // Endpoint: GET /api/transaction
 // Response: 200 OK with array of TransactionResponse
 // Error: 500 Internal Server Error if retrieval fails
-func (h *TransactionHandler) AllTransactions(w http.ResponseWriter, _ *http.Request) {
+func (h *TransactionHandler) AllTransactions(w http.ResponseWriter, r *http.Request) {
+	txLog.DebugContext(r.Context(), "get all transactions request")
 
 	transactions, err := h.transactionService.GetTransactionsperPortfolio("")
 	if err != nil {
-		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToRetrieveTransactions.Error(), err.Error())
+		txLog.ErrorContext(r.Context(), "failed to get all transactions", "error", err)
+		response.RespondInternalError(w, r, apperrors.ErrFailedToRetrieveTransactions.Error())
 		return
 	}
 
@@ -74,13 +82,16 @@ func (h *TransactionHandler) GetTransaction(w http.ResponseWriter, r *http.Reque
 
 	transactionID := chi.URLParam(r, "uuid")
 
+	txLog.DebugContext(r.Context(), "get transaction request", "transaction_id", transactionID)
+
 	transaction, err := h.transactionService.GetTransaction(transactionID)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrTransactionNotFound) {
-			response.RespondError(w, http.StatusNotFound, apperrors.ErrTransactionNotFound.Error(), err.Error())
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrTransactionNotFound.Error(), "")
 			return
 		}
-		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToRetrieveTransaction.Error(), err.Error())
+		txLog.ErrorContext(r.Context(), "failed to get transaction", "error", err, "transaction_id", transactionID)
+		response.RespondInternalError(w, r, apperrors.ErrFailedToRetrieveTransaction.Error())
 		return
 	}
 
@@ -96,6 +107,8 @@ func (h *TransactionHandler) GetTransaction(w http.ResponseWriter, r *http.Reque
 // Error: 400 Bad Request if validation fails or request body is invalid
 // Error: 500 Internal Server Error if creation fails
 func (h *TransactionHandler) CreateTransaction(w http.ResponseWriter, r *http.Request) {
+	txLog.DebugContext(r.Context(), "create transaction request")
+
 	req, err := parseJSON[request.CreateTransactionRequest](r)
 	if err != nil {
 		response.RespondError(w, http.StatusBadRequest, "invalid request body", err.Error())
@@ -110,17 +123,19 @@ func (h *TransactionHandler) CreateTransaction(w http.ResponseWriter, r *http.Re
 	transaction, err := h.transactionService.CreateTransaction(r.Context(), req)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrInsufficientShares) {
-			response.RespondError(w, http.StatusBadRequest, apperrors.ErrInsufficientShares.Error(), err.Error())
+			response.RespondError(w, http.StatusBadRequest, apperrors.ErrInsufficientShares.Error(), "")
 			return
 		}
 		if errors.Is(err, apperrors.ErrPortfolioFundNotFound) {
-			response.RespondError(w, http.StatusBadRequest, apperrors.ErrPortfolioFundNotFound.Error(), err.Error())
+			response.RespondError(w, http.StatusBadRequest, apperrors.ErrPortfolioFundNotFound.Error(), "")
 			return
 		}
-		response.RespondError(w, http.StatusInternalServerError, "failed to create transaction", err.Error())
+		txLog.ErrorContext(r.Context(), "failed to create transaction", "error", err)
+		response.RespondInternalError(w, r, "failed to create transaction")
 		return
 	}
 
+	txLog.InfoContext(r.Context(), "transaction created", "id", transaction.ID, "type", transaction.Type)
 	response.RespondJSON(w, http.StatusCreated, transaction)
 }
 
@@ -136,6 +151,8 @@ func (h *TransactionHandler) CreateTransaction(w http.ResponseWriter, r *http.Re
 func (h *TransactionHandler) UpdateTransaction(w http.ResponseWriter, r *http.Request) {
 	transactionID := chi.URLParam(r, "uuid")
 
+	txLog.DebugContext(r.Context(), "update transaction request", "transaction_id", transactionID)
+
 	req, err := parseJSON[request.UpdateTransactionRequest](r)
 	if err != nil {
 		response.RespondError(w, http.StatusBadRequest, "invalid request body", err.Error())
@@ -150,18 +167,20 @@ func (h *TransactionHandler) UpdateTransaction(w http.ResponseWriter, r *http.Re
 	transaction, err := h.transactionService.UpdateTransaction(r.Context(), transactionID, req)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrTransactionNotFound) {
-			response.RespondError(w, http.StatusNotFound, apperrors.ErrTransactionNotFound.Error(), err.Error())
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrTransactionNotFound.Error(), "")
 			return
 		}
 		if errors.Is(err, apperrors.ErrInsufficientShares) {
-			response.RespondError(w, http.StatusBadRequest, apperrors.ErrInsufficientShares.Error(), err.Error())
+			response.RespondError(w, http.StatusBadRequest, apperrors.ErrInsufficientShares.Error(), "")
 			return
 		}
 
-		response.RespondError(w, http.StatusInternalServerError, "failed to update transaction", err.Error())
+		txLog.ErrorContext(r.Context(), "failed to update transaction", "error", err, "transaction_id", transactionID)
+		response.RespondInternalError(w, r, "failed to update transaction")
 		return
 	}
 
+	txLog.InfoContext(r.Context(), "transaction updated", "id", transaction.ID)
 	response.RespondJSON(w, http.StatusOK, transaction)
 }
 
@@ -176,16 +195,20 @@ func (h *TransactionHandler) UpdateTransaction(w http.ResponseWriter, r *http.Re
 func (h *TransactionHandler) DeleteTransaction(w http.ResponseWriter, r *http.Request) {
 	transactionID := chi.URLParam(r, "uuid")
 
+	txLog.DebugContext(r.Context(), "delete transaction request", "transaction_id", transactionID)
+
 	err := h.transactionService.DeleteTransaction(r.Context(), transactionID)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrTransactionNotFound) {
-			response.RespondError(w, http.StatusNotFound, apperrors.ErrTransactionNotFound.Error(), err.Error())
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrTransactionNotFound.Error(), "")
 			return
 		}
 
-		response.RespondError(w, http.StatusInternalServerError, "failed to delete transaction", err.Error())
+		txLog.ErrorContext(r.Context(), "failed to delete transaction", "error", err, "transaction_id", transactionID)
+		response.RespondInternalError(w, r, "failed to delete transaction")
 		return
 	}
 
+	txLog.InfoContext(r.Context(), "transaction deleted", "transaction_id", transactionID)
 	response.RespondJSON(w, http.StatusNoContent, nil)
 }

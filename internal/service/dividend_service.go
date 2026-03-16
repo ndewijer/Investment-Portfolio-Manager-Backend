@@ -4,14 +4,16 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/request"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/logging"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/repository"
 )
+
+var divLog = logging.NewLogger("dividend")
 
 // DividendService handles dividend-related business logic operations.
 type DividendService struct {
@@ -52,13 +54,23 @@ func (s *DividendService) SetMaterializedInvalidator(m MaterializedInvalidator) 
 // GetAllDividends retrieves all dividend records from the database.
 // Returns raw dividend data without fund enrichment.
 func (s *DividendService) GetAllDividend() ([]model.Dividend, error) {
-	return s.dividendRepo.GetAllDividend()
+	divLog.Debug("retrieving all dividends")
+	result, err := s.dividendRepo.GetAllDividend()
+	if err != nil {
+		return nil, fmt.Errorf("get all dividends: %w", err)
+	}
+	return result, nil
 }
 
 // GetDividend retrieves a single dividend record by its ID.
 // Returns ErrDividendNotFound if no record with the given ID exists.
 func (s *DividendService) GetDividend(DividendID string) (model.Dividend, error) {
-	return s.dividendRepo.GetDividend(DividendID)
+	divLog.Debug("retrieving dividend", "dividendID", DividendID)
+	result, err := s.dividendRepo.GetDividend(DividendID)
+	if err != nil {
+		return model.Dividend{}, fmt.Errorf("get dividend: %w", err)
+	}
+	return result, nil
 }
 
 // GetDividendFund retrieves enriched dividend records filtered by either portfolio or fund.
@@ -70,9 +82,10 @@ func (s *DividendService) GetDividend(DividendID string) (model.Dividend, error)
 //
 // Returns a slice of DividendFund containing all historical dividend payments for the given filter.
 func (s *DividendService) GetDividendFund(portfolioID, fundID string) ([]model.DividendFund, error) {
+	divLog.Debug("retrieving dividend fund", "portfolioID", portfolioID, "fundID", fundID)
 	dividendFund, err := s.dividendRepo.GetDividendPerPortfolioFund(portfolioID, fundID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get dividend fund: %w", err)
 	}
 	return dividendFund, nil
 }
@@ -80,7 +93,11 @@ func (s *DividendService) GetDividendFund(portfolioID, fundID string) ([]model.D
 // loadDividend retrieves dividends for the given portfolio_fund IDs within the specified date range.
 // Results are grouped by portfolio_fund ID, allowing callers to decide how to aggregate.
 func (s *DividendService) loadDividendPerPF(pfIDs []string, startDate, endDate time.Time) (map[string][]model.Dividend, error) {
-	return s.dividendRepo.GetDividendPerPF(pfIDs, startDate, endDate)
+	result, err := s.dividendRepo.GetDividendPerPF(pfIDs, startDate, endDate)
+	if err != nil {
+		return nil, fmt.Errorf("get dividends per portfolio fund: %w", err)
+	}
+	return result, nil
 }
 
 // ProcessDividendSharesForDate calculates shares acquired through dividend reinvestment as of the specified date.
@@ -154,9 +171,10 @@ func (s *DividendService) processDividendAmountForDate(dividend []model.Dividend
 //
 // Returns the created dividend with its generated ID, or an error if creation fails.
 func (s *DividendService) CreateDividend(ctx context.Context, req request.CreateDividendRequest) (*model.DividendFund, error) {
+	divLog.DebugContext(ctx, "creating dividend", "portfolioFundID", req.PortfolioFundID)
 	portfolioFund, err := s.pfRepo.GetPortfolioFundListing(req.PortfolioFundID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get portfolio fund listing: %w", err)
 	}
 
 	if portfolioFund.DividendType == "None" {
@@ -165,17 +183,17 @@ func (s *DividendService) CreateDividend(ctx context.Context, req request.Create
 
 	recordDate, err := time.Parse("2006-01-02", req.RecordDate)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parse record date: %w", err)
 	}
 
 	exDividendDate, err := time.Parse("2006-01-02", req.ExDividendDate)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parse ex-dividend date: %w", err)
 	}
 
 	shares, err := s.transactionRepo.GetSharesOnDate(req.PortfolioFundID, exDividendDate)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get shares on date: %w", err)
 	}
 
 	dividend := &model.Dividend{
@@ -198,7 +216,7 @@ func (s *DividendService) CreateDividend(ctx context.Context, req request.Create
 
 	if req.BuyOrderDate != "" {
 		if err := s.applyReinvestment(ctx, tx, portfolioFund, dividend, req); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("apply reinvestment: %w", err)
 		}
 	} else if portfolioFund.DividendType == "STOCK" {
 		dividend.ReinvestmentStatus = "PENDING"
@@ -218,11 +236,12 @@ func (s *DividendService) CreateDividend(ctx context.Context, req request.Create
 		//nolint:gosec // G118: Background context is intentional — goroutine outlives the HTTP request.
 		go func() {
 			if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), dividend.ExDividendDate, nil, "", req.PortfolioFundID); err != nil {
-				log.Printf("failed to regenerate materialized table: %v", err)
+				divLog.Warn("failed to regenerate materialized table", "error", err)
 			}
 		}()
 	}
 
+	divLog.InfoContext(ctx, "dividend created", "dividendID", dividend.ID, "portfolioFundID", req.PortfolioFundID, "totalAmount", dividend.TotalAmount)
 	return dividendToFund(*dividend, portfolioFund), nil
 }
 
@@ -256,9 +275,10 @@ func (s *DividendService) UpdateDividend(
 	id string,
 	req request.UpdateDividendRequest,
 ) (*model.DividendFund, error) {
+	divLog.DebugContext(ctx, "updating dividend", "dividendID", id)
 	dividend, err := s.dividendRepo.GetDividend(id)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get dividend: %w", err)
 	}
 
 	oldExDividendDate := dividend.ExDividendDate
@@ -269,16 +289,16 @@ func (s *DividendService) UpdateDividend(
 
 	portfolioFund, err := s.pfRepo.GetPortfolioFundListing(dividend.PortfolioFundID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get portfolio fund listing: %w", err)
 	}
 
 	if err := applyUpdateFields(&dividend, req); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("apply update fields: %w", err)
 	}
 
 	shares, err := s.transactionRepo.GetSharesOnDate(dividend.PortfolioFundID, dividend.ExDividendDate)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get shares on date: %w", err)
 	}
 
 	dividend.SharesOwned = shares
@@ -293,7 +313,7 @@ func (s *DividendService) UpdateDividend(
 
 	if req.BuyOrderDate != nil || !dividend.BuyOrderDate.IsZero() {
 		if err := s.applyUpdateReinvestment(ctx, tx, portfolioFund, &dividend, req); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("apply update reinvestment: %w", err)
 		}
 	} else if portfolioFund.DividendType == "STOCK" {
 		dividend.ReinvestmentStatus = "PENDING"
@@ -317,11 +337,12 @@ func (s *DividendService) UpdateDividend(
 		//nolint:gosec // G118: Background context is intentional — goroutine outlives the HTTP request.
 		go func() {
 			if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), regenDate, nil, "", dividend.PortfolioFundID); err != nil {
-				log.Printf("failed to regenerate materialized table: %v", err)
+				divLog.Warn("failed to regenerate materialized table", "error", err)
 			}
 		}()
 	}
 
+	divLog.InfoContext(ctx, "dividend updated", "dividendID", id)
 	return dividendToFund(dividend, portfolioFund), nil
 }
 
@@ -332,7 +353,7 @@ func (s *DividendService) applyReinvestment(ctx context.Context, tx *sql.Tx, por
 	var err error
 	dividend.BuyOrderDate, err = time.Parse("2006-01-02", req.BuyOrderDate)
 	if err != nil {
-		return err
+		return fmt.Errorf("parse buy order date: %w", err)
 	}
 
 	hasReinvestmentInfo := req.ReinvestmentPrice > 0.0 && req.ReinvestmentShares > 0.0
@@ -365,7 +386,7 @@ func (s *DividendService) applyUpdateReinvestment(ctx context.Context, tx *sql.T
 	if req.BuyOrderDate != nil {
 		buyOrderDate, err := time.Parse("2006-01-02", *req.BuyOrderDate)
 		if err != nil {
-			return err
+			return fmt.Errorf("parse buy order date: %w", err)
 		}
 		dividend.BuyOrderDate = buyOrderDate.UTC()
 	}
@@ -436,7 +457,7 @@ func (s *DividendService) createReinvestmentTransaction(ctx context.Context, tx 
 func (s *DividendService) updateReinvestmentTransaction(ctx context.Context, tx *sql.Tx, dividend *model.Dividend, req request.UpdateDividendRequest) error {
 	transaction, err := s.transactionRepo.GetTransactionByID(dividend.ReinvestmentTransactionID)
 	if err != nil {
-		return err
+		return fmt.Errorf("get reinvestment transaction: %w", err)
 	}
 	transaction.PortfolioFundID = dividend.PortfolioFundID
 	transaction.Date = dividend.BuyOrderDate
@@ -488,7 +509,7 @@ func applyUpdateFields(dividend *model.Dividend, req request.UpdateDividendReque
 	if req.RecordDate != nil {
 		recordDate, err := time.Parse("2006-01-02", *req.RecordDate)
 		if err != nil {
-			return err
+			return fmt.Errorf("parse record date: %w", err)
 		}
 		dividend.RecordDate = recordDate.UTC()
 	}
@@ -496,7 +517,7 @@ func applyUpdateFields(dividend *model.Dividend, req request.UpdateDividendReque
 	if req.ExDividendDate != nil {
 		exDividendDate, err := time.Parse("2006-01-02", *req.ExDividendDate)
 		if err != nil {
-			return err
+			return fmt.Errorf("parse ex-dividend date: %w", err)
 		}
 		dividend.ExDividendDate = exDividendDate.UTC()
 	}
@@ -515,10 +536,11 @@ func applyUpdateFields(dividend *model.Dividend, req request.UpdateDividendReque
 // Returns ErrDividendNotFound if the dividend does not exist.
 // Returns an error if any database operation fails; both deletions are rolled back on error.
 func (s *DividendService) DeleteDividend(ctx context.Context, id string) error {
+	divLog.DebugContext(ctx, "deleting dividend", "dividendID", id)
 
 	dividend, err := s.dividendRepo.GetDividend(id)
 	if err != nil {
-		return err
+		return fmt.Errorf("get dividend: %w", err)
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -541,11 +563,13 @@ func (s *DividendService) DeleteDividend(ctx context.Context, id string) error {
 		return fmt.Errorf("commit transaction: %w", err)
 	}
 
+	divLog.InfoContext(ctx, "dividend deleted", "dividendID", id)
+
 	if s.materializedInvalidator != nil {
 		//nolint:gosec // G118: Background context is intentional — goroutine outlives the HTTP request.
 		go func() {
 			if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), dividend.ExDividendDate, nil, "", dividend.PortfolioFundID); err != nil {
-				log.Printf("failed to regenerate materialized table: %v", err)
+				divLog.Warn("failed to regenerate materialized table", "error", err)
 			}
 		}()
 	}

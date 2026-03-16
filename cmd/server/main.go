@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
-	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -19,11 +18,14 @@ import (
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/config"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/database"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/ibkr"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/logging"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/repository"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/service"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/yahoo"
 	"github.com/robfig/cron/v3"
 )
+
+var syslog = logging.NewLogger("system")
 
 func main() {
 	cfg, err := config.Load()
@@ -39,11 +41,15 @@ func main() {
 		log.Fatalf("Failed to open database: %v", err)
 	}
 	defer db.Close()
+
+	// Initialize structured logging (reads config from DB if available).
+	logHandler := logging.Init(db)
+
 	if err := database.Migrate(db); err != nil {
 		log.Fatalf("Failed to run database migrations: %v", err)
 	}
 
-	log.Printf("Connected to database: %s", cfg.Database.Path)
+	syslog.Info("connected to database", "path", cfg.Database.Path)
 
 	// Resolve encryption key (env → file → auto-generate)
 	dataDir := filepath.Dir(cfg.Database.Path)
@@ -61,6 +67,8 @@ func main() {
 	}
 
 	systemService, portfolioService, fundService, materializedService, dividendService, transactionService, ibkrService, developerService := createRepoAndServices(db, fernetKey)
+	developerService.SetLogHandler(logHandler)
+
 	// Create router
 	router := api.NewRouter(
 		systemService,
@@ -85,7 +93,7 @@ func main() {
 
 	// Start server in a goroutine
 	go func() {
-		log.Printf("Starting server on %s", cfg.Server.Addr)
+		syslog.Info("starting server", "addr", cfg.Server.Addr)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Server failed to start: %v", err)
 		}
@@ -97,7 +105,7 @@ func main() {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
-	log.Println("Shutting down...")
+	syslog.Info("shutting down")
 
 	// Stop accepting new HTTP requests + stop scheduling new cron jobs
 	cronCtx := c.Stop()
@@ -107,22 +115,22 @@ func main() {
 	// Drain both in parallel under the same 30s window
 	var shutdownErr bool
 	if err := server.Shutdown(ctx); err != nil {
-		log.Printf("Server shutdown error: %v", err)
+		syslog.Error("server shutdown error", "error", err)
 		shutdownErr = true
 	}
 
 	select {
 	case <-cronCtx.Done():
-		log.Println("Cron jobs finished cleanly")
+		syslog.Info("cron jobs finished cleanly")
 	case <-ctx.Done():
-		log.Println("Cron jobs did not finish in time")
+		syslog.Warn("cron jobs did not finish in time")
 		shutdownErr = true
 	}
 
 	if shutdownErr {
 		log.Fatalf("Shutdown completed with errors")
 	}
-	log.Println("Server exited")
+	syslog.Info("server exited")
 }
 
 func scheduleTasks(fundService *service.FundService, ibkrService *service.IbkrService) *cron.Cron {
@@ -135,10 +143,11 @@ func scheduleTasks(fundService *service.FundService, ibkrService *service.IbkrSe
 	)
 	// Schedule the price update task to run at 00:55 UTC every weekday
 	_, err := c.AddFunc("55 00 * * 1-5", func() {
+		syslog.Info("starting scheduled fund price update")
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 		defer cancel()
 		if _, err := fundService.UpdateAllFundHistory(ctx); err != nil {
-			slog.Error("scheduled fund price update failed", "error", err)
+			syslog.Error("scheduled fund price update failed", "error", err)
 		}
 	})
 	if err != nil {
@@ -147,10 +156,11 @@ func scheduleTasks(fundService *service.FundService, ibkrService *service.IbkrSe
 	// Schedule the IBKR Import task to run between 05:30 and 07:30 UTC Tue-Sat
 	// Fetches previous business day's close-of-business report
 	_, err = c.AddFunc("30 5-7 * * 2-6", func() {
+		syslog.Info("starting scheduled IBKR import")
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 		defer cancel()
 		if _, _, err := ibkrService.ImportFlexReport(ctx); err != nil {
-			slog.Error("scheduled IBKR import failed", "error", err)
+			syslog.Error("scheduled IBKR import failed", "error", err)
 		}
 	})
 	if err != nil {
@@ -188,7 +198,7 @@ func resolveEncryptionKey(cfgKey, dataDir string) (string, error) {
 	if err := os.WriteFile(keyPath, []byte(encoded+"\n"), 0600); err != nil {
 		return "", fmt.Errorf("write encryption key to %s: %w", keyPath, err)
 	}
-	log.Printf("Generated new IBKR encryption key → %s", keyPath)
+	syslog.Info("generated new IBKR encryption key", "path", keyPath)
 
 	return encoded, nil
 }

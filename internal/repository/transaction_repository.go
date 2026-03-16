@@ -8,8 +8,11 @@ import (
 	"time"
 
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/apperrors"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/logging"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 )
+
+var txnLog = logging.NewLogger("transaction")
 
 // TransactionRepository provides data access methods for the transaction table.
 // It handles retrieving and querying portfolio transactions within specified date ranges.
@@ -50,6 +53,7 @@ func (r *TransactionRepository) getQuerier() Querier {
 // Returns a map of portfolioFundID -> []Transaction. If pfIDs is empty, returns an empty map.
 // This grouping allows callers to decide how to aggregate (by portfolio, by fund, etc.) after retrieval.
 func (r *TransactionRepository) GetTransactions(pfIDs []string, startDate, endDate time.Time) (map[string][]model.Transaction, error) {
+	txnLog.Debug("getting transactions", "pf_count", len(pfIDs), "start_date", startDate.Format("2006-01-02"), "end_date", endDate.Format("2006-01-02"))
 	if len(pfIDs) == 0 {
 		return make(map[string][]model.Transaction), nil
 	}
@@ -130,6 +134,7 @@ func (r *TransactionRepository) GetTransactions(pfIDs []string, startDate, endDa
 //   - database query fails
 //   - date parsing fails
 func (r *TransactionRepository) GetOldestTransaction(pfIDs []string) time.Time {
+	txnLog.Debug("getting oldest transaction", "pf_count", len(pfIDs))
 	if len(pfIDs) == 0 {
 		return time.Time{}
 	}
@@ -167,6 +172,7 @@ func (r *TransactionRepository) GetOldestTransaction(pfIDs []string) time.Time {
 // Returns enriched transaction data including fund names and IBKR linkage status.
 // Transactions are sorted by date in ascending order.
 func (r *TransactionRepository) GetTransactionsPerPortfolio(portfolioID string) ([]model.TransactionResponse, error) {
+	txnLog.Debug("getting transactions per portfolio", "portfolio_id", portfolioID)
 
 	transactionQuery := `
 		SELECT
@@ -255,6 +261,7 @@ func (r *TransactionRepository) GetTransactionsPerPortfolio(portfolioID string) 
 // Returns enriched transaction data including fund name and IBKR linkage status.
 // Returns an empty TransactionResponse if transactionID is empty or not found.
 func (r *TransactionRepository) GetTransaction(transactionID string) (model.TransactionResponse, error) {
+	txnLog.Debug("getting transaction", "transaction_id", transactionID)
 	if transactionID == "" {
 		return model.TransactionResponse{}, nil
 	}
@@ -320,6 +327,7 @@ func (r *TransactionRepository) GetTransaction(transactionID string) (model.Tran
 // Returns ErrTransactionNotFound if the transaction does not exist.
 // Returns an error if the query fails or date parsing fails.
 func (r *TransactionRepository) GetTransactionByID(transactionID string) (model.Transaction, error) {
+	txnLog.Debug("getting transaction by ID", "transaction_id", transactionID)
 	query := `
           SELECT id, portfolio_fund_id, date, type, shares, cost_per_share, created_at
           FROM "transaction"
@@ -363,6 +371,7 @@ func (r *TransactionRepository) GetTransactionByID(transactionID string) (model.
 //
 // Returns an error if the insert operation fails.
 func (r *TransactionRepository) InsertTransaction(ctx context.Context, t *model.Transaction) error {
+	txnLog.DebugContext(ctx, "inserting transaction", "transaction_id", t.ID, "portfolio_fund_id", t.PortfolioFundID, "type", t.Type)
 	query := `
         INSERT INTO "transaction" (id, portfolio_fund_id, date, type, shares, cost_per_share, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -391,6 +400,7 @@ func (r *TransactionRepository) InsertTransaction(ctx context.Context, t *model.
 // Returns ErrTransactionNotFound if no transaction exists with the given ID.
 // Returns an error if the update operation fails.
 func (r *TransactionRepository) UpdateTransaction(ctx context.Context, t *model.Transaction) error {
+	txnLog.DebugContext(ctx, "updating transaction", "transaction_id", t.ID)
 	query := `
         UPDATE "transaction"
         SET portfolio_fund_id = ?, date = ?, type = ?, shares = ?, cost_per_share = ?, created_at = ?
@@ -428,6 +438,7 @@ func (r *TransactionRepository) UpdateTransaction(ctx context.Context, t *model.
 // Returns ErrTransactionNotFound if no transaction exists with the given ID.
 // Returns an error if the delete operation fails.
 func (r *TransactionRepository) DeleteTransaction(ctx context.Context, transactionID string) error {
+	txnLog.DebugContext(ctx, "deleting transaction", "transaction_id", transactionID)
 	query := `DELETE FROM "transaction" WHERE id = ?`
 
 	result, err := r.getQuerier().ExecContext(ctx, query, transactionID)
@@ -455,6 +466,7 @@ func (r *TransactionRepository) DeleteTransaction(ctx context.Context, transacti
 // Returns 0.0 if no transactions exist for the given portfolio fund up to the date.
 // Returns ErrInvalidPortfolioID if portfolioFundID is empty.
 func (r *TransactionRepository) GetSharesOnDate(portfolioFundID string, date time.Time) (float64, error) {
+	txnLog.Debug("getting shares on date", "portfolio_fund_id", portfolioFundID, "date", date.Format("2006-01-02"))
 
 	if portfolioFundID == "" {
 		return 0.0, apperrors.ErrInvalidPortfolioID
@@ -486,6 +498,7 @@ func (r *TransactionRepository) GetSharesOnDate(portfolioFundID string, date tim
 // GetTransactionsByPortfolioFundID retrieves all transactions for a portfolio fund, ordered by date ascending.
 // Used for calculating current position (shares held, cost basis, average cost) via weighted average.
 func (r *TransactionRepository) GetTransactionsByPortfolioFundID(pfID string) ([]model.Transaction, error) {
+	txnLog.Debug("getting transactions by portfolio fund ID", "portfolio_fund_id", pfID)
 	if pfID == "" {
 		return nil, apperrors.ErrInvalidPortfolioID
 	}

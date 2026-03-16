@@ -9,8 +9,11 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/apperrors"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/logging"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 )
+
+var pfLog = logging.NewLogger("portfolio")
 
 // PortfolioFundRepository provides data access methods for the portfolio_fund join table.
 type PortfolioFundRepository struct {
@@ -42,6 +45,7 @@ func (r *PortfolioFundRepository) getQuerier() Querier {
 // GetPortfolioFund retrieves a single portfolio_fund record by its ID.
 // Returns ErrPortfolioFundNotFound if no record with the given ID exists.
 func (r *PortfolioFundRepository) GetPortfolioFund(pfID string) (model.PortfolioFund, error) {
+	pfLog.Debug("getting portfolio fund", "portfolio_fund_id", pfID)
 	if pfID == "" {
 		return model.PortfolioFund{}, apperrors.ErrInvalidPortfolioID
 	}
@@ -62,7 +66,7 @@ func (r *PortfolioFundRepository) GetPortfolioFund(pfID string) (model.Portfolio
 		return model.PortfolioFund{}, apperrors.ErrPortfolioFundNotFound
 	}
 	if err != nil {
-		return model.PortfolioFund{}, err
+		return model.PortfolioFund{}, fmt.Errorf("failed to query portfolio fund: %w", err)
 	}
 
 	return pf, nil
@@ -72,6 +76,7 @@ func (r *PortfolioFundRepository) GetPortfolioFund(pfID string) (model.Portfolio
 // Returns ErrFailedToRetrievePortfolioFunds if no record with the given ID exists.
 // Note: includes archived portfolios — archive status is irrelevant for ID-based lookups.
 func (r *PortfolioFundRepository) GetPortfolioFundListing(portfolioFundID string) (model.PortfolioFundListing, error) {
+	pfLog.Debug("getting portfolio fund listing", "portfolio_fund_id", portfolioFundID)
 	query := `
 		SELECT
 			pf.id,
@@ -108,6 +113,7 @@ func (r *PortfolioFundRepository) GetPortfolioFundListing(portfolioFundID string
 // GetAllPortfolioFundListings retrieves all portfolio-fund relationships with enriched metadata.
 // Excludes archived portfolios. Used for the GET /api/portfolio/funds endpoint.
 func (r *PortfolioFundRepository) GetAllPortfolioFundListings() ([]model.PortfolioFundListing, error) {
+	pfLog.Debug("getting all portfolio fund listings")
 	query := `
 		SELECT
 			pf.id,
@@ -157,6 +163,7 @@ func (r *PortfolioFundRepository) GetAllPortfolioFundListings() ([]model.Portfol
 // GetPortfolioFunds retrieves funds associated with a portfolio via the portfolio_fund join table.
 // If PortfolioID is empty, returns all portfolio-fund relationships.
 func (r *PortfolioFundRepository) GetPortfolioFunds(PortfolioID string) ([]model.PortfolioFundResponse, error) {
+	pfLog.Debug("getting portfolio funds", "portfolio_id", PortfolioID)
 	fundQuery := `
 		SELECT
 		portfolio_fund.id,
@@ -206,6 +213,7 @@ func (r *PortfolioFundRepository) GetPortfolioFunds(PortfolioID string) ([]model
 // GetPortfolioFundsbyFundID retrieves all portfolio_fund records for a given fund ID.
 // Returns ErrPortfolioFundNotFound if the fund is not assigned to any portfolio.
 func (r *PortfolioFundRepository) GetPortfolioFundsbyFundID(fundID string) ([]model.PortfolioFund, error) {
+	pfLog.Debug("getting portfolio funds by fund ID", "fund_id", fundID)
 	if fundID == "" {
 		return nil, apperrors.ErrInvalidFundID
 	}
@@ -252,6 +260,7 @@ func (r *PortfolioFundRepository) GetPortfolioFundsbyFundID(fundID string) ([]mo
 // lookup structures needed for calculation pipelines.
 // Returns nil for all values if portfolios is empty.
 func (r *PortfolioFundRepository) GetPortfolioFundsOnPortfolioID(portfolios []model.Portfolio) (map[string][]model.Fund, map[string]string, map[string]string, []string, []string, error) {
+	pfLog.Debug("getting portfolio funds on portfolio IDs", "portfolio_count", len(portfolios))
 	if len(portfolios) == 0 {
 		return nil, nil, nil, nil, nil, nil
 	}
@@ -324,12 +333,13 @@ func (r *PortfolioFundRepository) GetPortfolioFundsOnPortfolioID(portfolios []mo
 // CheckUsage checks if a fund is in use by any portfolios and returns usage details.
 // Returns nil if the fund is not assigned to any portfolio.
 func (r *PortfolioFundRepository) CheckUsage(fundID string) ([]model.PortfolioTransaction, error) {
+	pfLog.Debug("checking fund usage", "fund_id", fundID)
 	pfs, err := r.GetPortfolioFundsbyFundID(fundID)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrPortfolioFundNotFound) {
 			return nil, nil
 		}
-		return nil, err
+		return nil, fmt.Errorf("get portfolio funds by fund ID: %w", err)
 	}
 
 	pfIDs := make([]any, len(pfs))
@@ -379,6 +389,7 @@ func (r *PortfolioFundRepository) CheckUsage(fundID string) ([]model.PortfolioTr
 // GetPortfolioFundByPortfolioAndFund retrieves a portfolio_fund record by both portfolio and fund IDs.
 // Returns ErrPortfolioFundNotFound if no matching relationship exists.
 func (r *PortfolioFundRepository) GetPortfolioFundByPortfolioAndFund(portfolioID, fundID string) (model.PortfolioFund, error) {
+	pfLog.Debug("getting portfolio fund by portfolio and fund", "portfolio_id", portfolioID, "fund_id", fundID)
 	query := `
 		SELECT id, portfolio_id, fund_id
 		FROM portfolio_fund
@@ -403,6 +414,7 @@ func (r *PortfolioFundRepository) GetPortfolioFundByPortfolioAndFund(portfolioID
 
 // InsertPortfolioFund creates a new portfolio_fund relationship between a portfolio and a fund.
 func (r *PortfolioFundRepository) InsertPortfolioFund(ctx context.Context, portfolioID, fundID string) error {
+	pfLog.DebugContext(ctx, "inserting portfolio fund", "portfolio_id", portfolioID, "fund_id", fundID)
 	query := `
         INSERT INTO portfolio_fund (id, portfolio_id, fund_id)
         VALUES (?, ?, ?)
@@ -423,6 +435,7 @@ func (r *PortfolioFundRepository) InsertPortfolioFund(ctx context.Context, portf
 // DeletePortfolioFund removes a portfolio_fund relationship by its ID.
 // Returns ErrPortfolioFundNotFound if no record with the given ID exists.
 func (r *PortfolioFundRepository) DeletePortfolioFund(ctx context.Context, portfolioFundID string) error {
+	pfLog.DebugContext(ctx, "deleting portfolio fund", "portfolio_fund_id", portfolioFundID)
 	query := `DELETE FROM portfolio_fund WHERE id = ?`
 
 	result, err := r.getQuerier().ExecContext(ctx, query, portfolioFundID)

@@ -7,8 +7,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/logging"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 )
+
+var matLog = logging.NewLogger("system")
 
 // MaterializedRepository provides data access methods for the fund_history_materialized table.
 type MaterializedRepository struct {
@@ -67,6 +70,7 @@ func (r *MaterializedRepository) GetMaterializedHistory(
 	startDate, endDate time.Time,
 	callback func(record model.PortfolioHistoryMaterialized) error,
 ) error {
+	matLog.Debug("getting materialized history", "portfolio_count", len(portfolioIDs), "start_date", startDate.Format("2006-01-02"), "end_date", endDate.Format("2006-01-02"))
 
 	if len(portfolioIDs) == 0 {
 		return nil
@@ -207,6 +211,7 @@ func (r *MaterializedRepository) GetFundHistoryMaterialized(
 	startDate, endDate time.Time,
 	callback func(entry model.FundHistoryEntry) error,
 ) error {
+	matLog.Debug("getting fund history materialized", "portfolio_id", portfolioID, "start_date", startDate.Format("2006-01-02"), "end_date", endDate.Format("2006-01-02"))
 	query := `
 		SELECT
 			fh.id,
@@ -287,6 +292,7 @@ func (r *MaterializedRepository) GetFundHistoryMaterialized(
 // from the materialized table for the given portfolio IDs. If no rows exist, returns
 // zero-value times and false.
 func (r *MaterializedRepository) GetLatestMaterializedDate(portfolioIDs []string) (latestDate time.Time, latestCalc time.Time, ok bool, err error) {
+	matLog.Debug("getting latest materialized date", "portfolio_count", len(portfolioIDs))
 	if len(portfolioIDs) == 0 {
 		return time.Time{}, time.Time{}, false, nil
 	}
@@ -333,6 +339,7 @@ func (r *MaterializedRepository) GetLatestMaterializedDate(portfolioIDs []string
 // source tables (transaction, fund_price, dividend) for the given portfolio IDs in a
 // single query. fund_price uses MAX(date) since it has no created_at column.
 func (r *MaterializedRepository) GetLatestSourceDates(portfolioIDs []string) (latestTxn, latestPrice, latestDiv time.Time, err error) {
+	matLog.Debug("getting latest source dates", "portfolio_count", len(portfolioIDs))
 	if len(portfolioIDs) == 0 {
 		return time.Time{}, time.Time{}, time.Time{}, nil
 	}
@@ -394,6 +401,7 @@ func (r *MaterializedRepository) GetLatestSourceDates(portfolioIDs []string) (la
 // InvalidateMaterializedTable deletes cached entries from the given date forward,
 // scoped to the specified portfolio_fund IDs. If pfIDs is empty, no rows are deleted.
 func (r *MaterializedRepository) InvalidateMaterializedTable(ctx context.Context, date time.Time, pfIDs []string) error {
+	matLog.DebugContext(ctx, "invalidating materialized table", "from_date", date.Format("2006-01-02"), "pf_count", len(pfIDs))
 	if len(pfIDs) == 0 {
 		return nil
 	}
@@ -420,6 +428,7 @@ func (r *MaterializedRepository) InvalidateMaterializedTable(ctx context.Context
 }
 
 func (r *MaterializedRepository) InsertMaterializedEntries(ctx context.Context, fundHistoryEntries []model.FundHistoryEntry) error {
+	matLog.DebugContext(ctx, "inserting materialized entries", "count", len(fundHistoryEntries))
 
 	if len(fundHistoryEntries) == 0 {
 		return nil
@@ -470,6 +479,7 @@ func (r *MaterializedRepository) GetPortfolioSummaryLatest(
 	portfolioIDs []string,
 	callback func(record model.PortfolioHistoryMaterialized) error,
 ) error {
+	matLog.Debug("getting portfolio summary latest", "portfolio_count", len(portfolioIDs))
 	if len(portfolioIDs) == 0 {
 		return nil
 	}

@@ -4,15 +4,18 @@ package response
 
 import (
 	"encoding/json"
-	"log"
+	"log/slog"
 	"net/http"
+
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/logging"
 )
 
 // ErrorResponse represents a structured error response returned by the API.
 // The Details field is optional and can contain additional context about the error.
 type ErrorResponse struct {
-	Error   string      `json:"error"`
-	Details interface{} `json:"details,omitempty"`
+	Error     string      `json:"error"`
+	Details   interface{} `json:"details,omitempty"`
+	RequestID string      `json:"requestId,omitempty"`
 }
 
 // RespondJSON sends a JSON response with the given status code.
@@ -27,22 +30,38 @@ func RespondJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(data); err != nil {
-		log.Printf("failed to encode JSON response: %v", err)
+		slog.Error("failed to encode JSON response", "error", err)
 	}
 }
 
 // RespondError sends a structured error response with the given status code.
-// The message should be a user-friendly error description.
-// The details parameter can be an error string, additional context, or nil.
+// Use for 4xx client errors where details are safe to expose (validation, not-found, etc.).
 //
 // Example:
 //
 //	response.RespondError(w, http.StatusBadRequest, "validation failed", err.Error())
 //	response.RespondError(w, http.StatusNotFound, "resource not found", "")
 func RespondError(w http.ResponseWriter, status int, message string, details interface{}) {
-	response := ErrorResponse{
+	resp := ErrorResponse{
 		Error:   message,
 		Details: details,
 	}
-	RespondJSON(w, status, response)
+	RespondJSON(w, status, resp)
+}
+
+// RespondInternalError sends a sanitized 500 error response.
+// The full error chain is NOT exposed to the client — it's already in the logs via
+// ErrorContext. Only the safe user-facing message and request ID are returned,
+// so the user can reference the request ID when reporting issues.
+//
+// Example:
+//
+//	slog.ErrorContext(r.Context(), "failed to get fund", "error", err)
+//	response.RespondInternalError(w, r, "failed to retrieve fund")
+func RespondInternalError(w http.ResponseWriter, r *http.Request, message string) {
+	resp := ErrorResponse{
+		Error:     message,
+		RequestID: logging.RequestIDFromContext(r.Context()),
+	}
+	RespondJSON(w, http.StatusInternalServerError, resp)
 }

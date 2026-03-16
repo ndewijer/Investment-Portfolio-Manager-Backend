@@ -23,9 +23,12 @@ var goldenSchema string
 func Migrate(db *sql.DB) error {
 	goose.SetBaseFS(migrations)
 	if err := goose.SetDialect("sqlite"); err != nil {
-		return err
+		return fmt.Errorf("set goose dialect: %w", err)
 	}
-	return goose.Up(db, "migrations")
+	if err := goose.Up(db, "migrations"); err != nil {
+		return fmt.Errorf("run migrations: %w", err)
+	}
+	return nil
 }
 
 // ApplyGoldenSchema creates all tables and indexes by executing the golden schema DDL directly.
@@ -110,7 +113,7 @@ func registerGoMigrationVersion(v int64) {
 func headMigrationVersion() (int64, error) {
 	entries, err := fs.ReadDir(migrations, "migrations")
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("read migration dir: %w", err)
 	}
 
 	var head int64

@@ -203,8 +203,12 @@ func TestAPIKeyMiddleware(t *testing.T) {
 		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
 		json.NewDecoder(w.Body).Decode(&response)
 
-		if response["details"] != "Authentication not loaded" {
-			t.Errorf("Expected 'Authentication not loaded' error, got '%s'", response["details"])
+		if response["error"] != "internal server error" {
+			t.Errorf("Expected 'internal server error', got '%s'", response["error"])
+		}
+		// Details should NOT be exposed for 500s (security: no internal leak)
+		if response["details"] != "" {
+			t.Errorf("Expected empty details for 500, got '%s'", response["details"])
 		}
 	})
 }

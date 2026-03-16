@@ -6,7 +6,6 @@ import (
 	"database/sql"
 	"encoding/csv"
 	"fmt"
-	"log"
 	"strconv"
 	"strings"
 	"time"
@@ -14,9 +13,12 @@ import (
 	"github.com/google/uuid"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/request"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/apperrors"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/logging"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/repository"
 )
+
+var devLog = logging.NewLogger("developer")
 
 // DeveloperService handles Developer-related business logic operations.
 type DeveloperService struct {
@@ -26,6 +28,7 @@ type DeveloperService struct {
 	transactionRepo         *repository.TransactionRepository
 	pfRepo                  *repository.PortfolioFundRepository
 	materializedInvalidator MaterializedInvalidator
+	logHandler              *logging.DBHandler
 }
 
 // NewDeveloperService creates a new DeveloperService with the provided repository dependencies.
@@ -51,25 +54,40 @@ func (s *DeveloperService) SetMaterializedInvalidator(m MaterializedInvalidator)
 	s.materializedInvalidator = m
 }
 
+// SetLogHandler injects the logging DBHandler for runtime config updates.
+func (s *DeveloperService) SetLogHandler(h *logging.DBHandler) {
+	s.logHandler = h
+}
+
 // GetLogs retrieves system logs with the specified filters and pagination.
 // Returns a paginated response with cursor for fetching subsequent pages.
 // The context parameter is currently unused but reserved for future cancellation support.
 func (s *DeveloperService) GetLogs(_ context.Context, filters *model.LogFilters) (*model.LogResponse, error) {
-	return s.developerRepo.GetLogs(filters)
+	devLog.Debug("retrieving logs")
+	result, err := s.developerRepo.GetLogs(filters)
+	if err != nil {
+		return nil, fmt.Errorf("get logs: %w", err)
+	}
+	return result, nil
 }
 
 // GetLoggingConfig retrieves the current logging configuration settings.
 // Returns the enabled status and logging level from system settings.
 // Returns default values (enabled=true, level="info") if settings are not configured.
 func (s *DeveloperService) GetLoggingConfig() (model.LoggingSetting, error) {
-
-	return s.developerRepo.GetLoggingConfig()
+	devLog.Debug("retrieving logging config")
+	config, err := s.developerRepo.GetLoggingConfig()
+	if err != nil {
+		return model.LoggingSetting{}, fmt.Errorf("get logging config: %w", err)
+	}
+	return config, nil
 }
 
 // SetLoggingConfig updates the logging configuration in system settings.
 // Upserts LOGGING_ENABLED and LOGGING_LEVEL settings within a single transaction.
 // Only updates fields that are present in the request.
 func (s *DeveloperService) SetLoggingConfig(ctx context.Context, req request.SetLoggingConfig) (model.LoggingSetting, error) {
+	devLog.DebugContext(ctx, "setting logging config", "level", req.Level)
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -112,14 +130,25 @@ func (s *DeveloperService) SetLoggingConfig(ctx context.Context, req request.Set
 		return model.LoggingSetting{}, fmt.Errorf("cannot retrieve new log settings: %w", err)
 	}
 
+	// Update the runtime logging handler immediately.
+	if s.logHandler != nil {
+		s.logHandler.SetEnabled(config.Enabled)
+		s.logHandler.SetLevel(logging.DBStringToSlogLevel(config.Level))
+	}
+
+	devLog.InfoContext(ctx, "logging config updated", "enabled", config.Enabled, "level", config.Level)
 	return config, nil
 }
 
 // GetExchangeRate retrieves the exchange rate for a specific currency pair and date.
 // Returns ErrExchangeRateNotFound if no rate exists for the given parameters.
 func (s *DeveloperService) GetExchangeRate(fromCurrency, toCurrency string, dateTime time.Time) (*model.ExchangeRate, error) {
-
-	return s.developerRepo.GetExchangeRate(fromCurrency, toCurrency, dateTime)
+	devLog.Debug("retrieving exchange rate", "from", fromCurrency, "to", toCurrency, "date", dateTime.Format("2006-01-02"))
+	rate, err := s.developerRepo.GetExchangeRate(fromCurrency, toCurrency, dateTime)
+	if err != nil {
+		return nil, fmt.Errorf("get exchange rate: %w", err)
+	}
+	return rate, nil
 }
 
 // UpdateExchangeRate creates or updates an exchange rate for a given currency pair and date.
@@ -128,13 +157,14 @@ func (s *DeveloperService) UpdateExchangeRate(
 	ctx context.Context,
 	req request.SetExchangeRateRequest,
 ) (model.ExchangeRate, error) {
+	devLog.DebugContext(ctx, "updating exchange rate", "from", req.FromCurrency, "to", req.ToCurrency, "date", req.Date)
 
 	var exRate model.ExchangeRate
 	var err error
 
 	exRate.Date, err = time.Parse("2006-01-02", req.Date)
 	if err != nil {
-		return model.ExchangeRate{}, err
+		return model.ExchangeRate{}, fmt.Errorf("parse date: %w", err)
 	}
 	exRate.ID = uuid.New().String()
 	exRate.ToCurrency = req.ToCurrency
@@ -142,7 +172,7 @@ func (s *DeveloperService) UpdateExchangeRate(
 
 	rateFloat, err := strconv.ParseFloat(strings.TrimSpace(req.Rate), 64)
 	if err != nil {
-		return model.ExchangeRate{}, err
+		return model.ExchangeRate{}, fmt.Errorf("parse rate: %w", err)
 	}
 	exRate.Rate = rateFloat
 
@@ -160,6 +190,7 @@ func (s *DeveloperService) UpdateExchangeRate(
 		return model.ExchangeRate{}, fmt.Errorf("commit transaction: %w", err)
 	}
 
+	devLog.InfoContext(ctx, "exchange rate updated", "from", exRate.FromCurrency, "to", exRate.ToCurrency, "date", exRate.Date.Format("2006-01-02"))
 	return exRate, nil
 }
 
@@ -167,11 +198,12 @@ func (s *DeveloperService) UpdateExchangeRate(
 // Uses the FundRepository's GetFundPrice method to fetch the price.
 // Returns ErrFundPriceNotFound if no price exists for the given fund and date.
 func (s *DeveloperService) GetFundPrice(fundID string, dateTime time.Time) (model.FundPrice, error) {
+	devLog.Debug("retrieving fund price", "fundID", fundID, "date", dateTime.Format("2006-01-02"))
 
 	fundIDs := []string{fundID}
 	fundPrices, err := s.fundRepo.GetFundPrice(fundIDs, dateTime, dateTime, true)
 	if err != nil {
-		return model.FundPrice{}, err
+		return model.FundPrice{}, fmt.Errorf("get fund price: %w", err)
 	}
 
 	prices, exists := fundPrices[fundID]
@@ -188,17 +220,18 @@ func (s *DeveloperService) UpdateFundPrice(
 	ctx context.Context,
 	req request.SetFundPriceRequest,
 ) (model.FundPrice, error) {
+	devLog.DebugContext(ctx, "updating fund price", "fundID", req.FundID, "date", req.Date)
 
 	var fp model.FundPrice
 	var err error
 
 	fp.Date, err = time.Parse("2006-01-02", req.Date)
 	if err != nil {
-		return model.FundPrice{}, err
+		return model.FundPrice{}, fmt.Errorf("parse date: %w", err)
 	}
 	priceFloat, err := strconv.ParseFloat(strings.TrimSpace(req.Price), 64)
 	if err != nil {
-		return model.FundPrice{}, err
+		return model.FundPrice{}, fmt.Errorf("parse price: %w", err)
 	}
 	fp.Price = priceFloat
 	fp.FundID = req.FundID
@@ -223,17 +256,19 @@ func (s *DeveloperService) UpdateFundPrice(
 		//nolint:gosec // G118: Background context is intentional — goroutine outlives the HTTP request.
 		go func() {
 			if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), fp.Date, nil, fp.FundID, ""); err != nil {
-				log.Printf("failed to regenerate materialized table after manual price update: %v", err)
+				devLog.Warn("failed to regenerate materialized table after manual price update", "error", err)
 			}
 		}()
 	}
 
+	devLog.InfoContext(ctx, "fund price updated", "fundID", fp.FundID, "date", fp.Date.Format("2006-01-02"))
 	return fp, nil
 }
 
 // DeleteLogs clears all log entries and records a single "logs cleared" audit entry.
 // Both the deletion and the new audit log are performed within a single transaction.
 func (s *DeveloperService) DeleteLogs(ctx context.Context, ipAddress *string, userAgent string) error {
+	devLog.DebugContext(ctx, "deleting logs")
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -265,6 +300,7 @@ func (s *DeveloperService) DeleteLogs(ctx context.Context, ipAddress *string, us
 		return fmt.Errorf("commit transaction: %w", err)
 	}
 
+	devLog.InfoContext(ctx, "logs deleted")
 	return nil
 }
 
@@ -275,6 +311,7 @@ func (s *DeveloperService) DeleteLogs(ctx context.Context, ipAddress *string, us
 //
 //nolint:gocyclo // CSV parsing + validation + batch insert + materialized invalidation
 func (s *DeveloperService) ImportFundPrices(ctx context.Context, fundID string, content []byte) (int, error) {
+	devLog.DebugContext(ctx, "importing fund prices from CSV", "fundID", fundID)
 	if _, err := s.fundRepo.GetFund(fundID); err != nil {
 		return 0, apperrors.ErrFundNotFound
 	}
@@ -341,11 +378,12 @@ func (s *DeveloperService) ImportFundPrices(ctx context.Context, fundID string, 
 		//nolint:gosec // G118: Background context is intentional — goroutine outlives the HTTP request.
 		go func() {
 			if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), earliestDate, nil, fundID, ""); err != nil {
-				log.Printf("failed to regenerate materialized table after price import: %v", err)
+				devLog.Warn("failed to regenerate materialized table after price import", "error", err)
 			}
 		}()
 	}
 
+	devLog.InfoContext(ctx, "fund prices imported", "fundID", fundID, "count", count)
 	return count, nil
 }
 
@@ -398,6 +436,7 @@ func validateTransactionRow(row []string, colIdx map[string]int, rowNum int) (tr
 //
 //nolint:gocyclo // CSV parsing + validation + batch insert + materialized invalidation
 func (s *DeveloperService) ImportTransactions(ctx context.Context, portfolioFundID string, content []byte) (int, error) {
+	devLog.DebugContext(ctx, "importing transactions from CSV", "portfolioFundID", portfolioFundID)
 	if _, err := s.pfRepo.GetPortfolioFund(portfolioFundID); err != nil {
 		return 0, apperrors.ErrPortfolioFundNotFound
 	}
@@ -462,11 +501,12 @@ func (s *DeveloperService) ImportTransactions(ctx context.Context, portfolioFund
 		//nolint:gosec // G118: Background context is intentional — goroutine outlives the HTTP request.
 		go func() {
 			if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), earliestDate, nil, "", portfolioFundID); err != nil {
-				log.Printf("failed to regenerate materialized table after transaction import: %v", err)
+				devLog.Warn("failed to regenerate materialized table after transaction import", "error", err)
 			}
 		}()
 	}
 
+	devLog.InfoContext(ctx, "transactions imported", "portfolioFundID", portfolioFundID, "count", count)
 	return count, nil
 }
 

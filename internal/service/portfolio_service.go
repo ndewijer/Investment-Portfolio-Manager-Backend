@@ -7,9 +7,12 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/request"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/logging"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/repository"
 )
+
+var pfLog = logging.NewLogger("portfolio")
 
 // PortfolioService handles portfolio-related business logic operations.
 // It coordinates between multiple repositories to compute portfolio summaries
@@ -36,19 +39,25 @@ func NewPortfolioService(
 // GetAllPortfolios retrieves all portfolios from the database with no filters applied.
 // This includes both archived and excluded portfolios.
 func (s *PortfolioService) GetAllPortfolios() ([]model.Portfolio, error) {
-	return s.portfolioRepo.GetPortfolios(model.PortfolioFilter{
+	pfLog.Debug("retrieving all portfolios")
+	result, err := s.portfolioRepo.GetPortfolios(model.PortfolioFilter{
 		IncludeArchived: true,
 		IncludeExcluded: true,
 	})
+	if err != nil {
+		return nil, fmt.Errorf("get all portfolios: %w", err)
+	}
+	return result, nil
 }
 
 // GetPortfolio retrieves a single portfolio by its ID.
 // Returns the portfolio metadata including name, description, and archive status.
 // This is a simple wrapper around the repository layer for portfolio lookup.
 func (s *PortfolioService) GetPortfolio(portfolioID string) (model.Portfolio, error) {
+	pfLog.Debug("retrieving portfolio", "portfolioID", portfolioID)
 	result, err := s.portfolioRepo.GetPortfolioOnID(portfolioID)
 	if err != nil {
-		return model.Portfolio{}, err
+		return model.Portfolio{}, fmt.Errorf("get portfolio: %w", err)
 	}
 	return result, nil
 }
@@ -56,10 +65,15 @@ func (s *PortfolioService) GetPortfolio(portfolioID string) (model.Portfolio, er
 // LoadActivePortfolios retrieves only active, non-excluded portfolios.
 // Archived and excluded portfolios are filtered out.
 func (s *PortfolioService) LoadActivePortfolios() ([]model.Portfolio, error) {
-	return s.portfolioRepo.GetPortfolios(model.PortfolioFilter{
+	pfLog.Debug("loading active portfolios")
+	result, err := s.portfolioRepo.GetPortfolios(model.PortfolioFilter{
 		IncludeArchived: false,
 		IncludeExcluded: false,
 	})
+	if err != nil {
+		return nil, fmt.Errorf("load active portfolios: %w", err)
+	}
+	return result, nil
 }
 
 // LoadAllPortfolioFunds retrieves all funds associated with the given portfolios.
@@ -71,7 +85,12 @@ func (s *PortfolioService) LoadActivePortfolios() ([]model.Portfolio, error) {
 //   - fundIDs: slice of all unique fund IDs
 //   - error: any error encountered
 func (s *PortfolioService) LoadAllPortfolioFunds(portfolios []model.Portfolio) (map[string][]model.Fund, map[string]string, map[string]string, []string, []string, error) {
-	return s.pfRepo.GetPortfolioFundsOnPortfolioID(portfolios)
+	pfLog.Debug("loading all portfolio funds", "portfolioCount", len(portfolios))
+	fundsByPortfolio, pfToPortfolio, pfToFund, pfIDs, fundIDs, err := s.pfRepo.GetPortfolioFundsOnPortfolioID(portfolios)
+	if err != nil {
+		return nil, nil, nil, nil, nil, fmt.Errorf("load portfolio funds: %w", err)
+	}
+	return fundsByPortfolio, pfToPortfolio, pfToFund, pfIDs, fundIDs, nil
 }
 
 // GetPortfoliosForRequest resolves a portfolio ID parameter into a slice of portfolios.
@@ -95,23 +114,29 @@ func (s *PortfolioService) LoadAllPortfolioFunds(portfolios []model.Portfolio) (
 //	portfolios, err := portfolioService.GetPortfoliosForRequest(portfolioID)
 //	// portfolios is always a slice, simplifying downstream code
 func (s *PortfolioService) GetPortfoliosForRequest(portfolioID string) ([]model.Portfolio, error) {
+	pfLog.Debug("resolving portfolios for request", "portfolioID", portfolioID)
 	if portfolioID != "" {
 		portfolio, err := s.portfolioRepo.GetPortfolioOnID(portfolioID)
 		if err != nil {
-			return []model.Portfolio{}, err
+			return []model.Portfolio{}, fmt.Errorf("get portfolio: %w", err)
 		}
 
 		return []model.Portfolio{portfolio}, nil
 	}
 
 	// Load all active portfolios
-	return s.portfolioRepo.GetPortfolios(model.PortfolioFilter{
+	result, err := s.portfolioRepo.GetPortfolios(model.PortfolioFilter{
 		IncludeArchived: false,
 		IncludeExcluded: false,
 	})
+	if err != nil {
+		return nil, fmt.Errorf("get active portfolios: %w", err)
+	}
+	return result, nil
 }
 
 func (s *PortfolioService) CreatePortfolio(ctx context.Context, req request.CreatePortfolioRequest) (*model.Portfolio, error) {
+	pfLog.DebugContext(ctx, "creating portfolio", "name", req.Name)
 	portfolio := &model.Portfolio{
 		ID:                  uuid.New().String(),
 		Name:                req.Name,
@@ -124,6 +149,7 @@ func (s *PortfolioService) CreatePortfolio(ctx context.Context, req request.Crea
 		return nil, fmt.Errorf("failed to create portfolio: %w", err)
 	}
 
+	pfLog.InfoContext(ctx, "portfolio created", "portfolioID", portfolio.ID, "name", portfolio.Name)
 	return portfolio, nil
 }
 
@@ -132,6 +158,7 @@ func (s *PortfolioService) UpdatePortfolio(
 	id string,
 	req request.UpdatePortfolioRequest,
 ) (*model.Portfolio, error) {
+	pfLog.DebugContext(ctx, "updating portfolio", "portfolioID", id)
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -141,7 +168,7 @@ func (s *PortfolioService) UpdatePortfolio(
 
 	portfolio, err := s.portfolioRepo.WithTx(tx).GetPortfolioOnID(id)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get portfolio: %w", err)
 	}
 
 	if req.Name != nil {
@@ -165,10 +192,12 @@ func (s *PortfolioService) UpdatePortfolio(
 		return nil, fmt.Errorf("commit transaction: %w", err)
 	}
 
+	pfLog.InfoContext(ctx, "portfolio updated", "portfolioID", id)
 	return &portfolio, nil
 }
 
 func (s *PortfolioService) DeletePortfolio(ctx context.Context, id string) error {
+	pfLog.DebugContext(ctx, "deleting portfolio", "portfolioID", id)
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -178,17 +207,18 @@ func (s *PortfolioService) DeletePortfolio(ctx context.Context, id string) error
 
 	_, err = s.portfolioRepo.WithTx(tx).GetPortfolioOnID(id)
 	if err != nil {
-		return err
+		return fmt.Errorf("get portfolio: %w", err)
 	}
 
 	err = s.portfolioRepo.WithTx(tx).DeletePortfolio(ctx, id)
 	if err != nil {
-		return err
+		return fmt.Errorf("delete portfolio: %w", err)
 	}
 
 	if err = tx.Commit(); err != nil {
 		return fmt.Errorf("commit transaction: %w", err)
 	}
 
+	pfLog.InfoContext(ctx, "portfolio deleted", "portfolioID", id)
 	return nil
 }

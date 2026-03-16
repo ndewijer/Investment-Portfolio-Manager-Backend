@@ -4,17 +4,19 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
 	"slices"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/request"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/apperrors"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/logging"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/repository"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/yahoo"
 )
+
+var fundLog = logging.NewLogger("fund")
 
 // FundService handles fund-related business logic operations.
 type FundService struct {
@@ -95,13 +97,23 @@ func (s *FundService) SetMaterializedInvalidator(m MaterializedInvalidator) {
 // GetFund retrieves fund from the database.
 // Returns fund metadata including latest prices.
 func (s *FundService) GetFund(fundID string) (model.Fund, error) {
-	return s.fundRepo.GetFund(fundID)
+	fundLog.Debug("retrieving fund", "fundID", fundID)
+	fund, err := s.fundRepo.GetFund(fundID)
+	if err != nil {
+		return model.Fund{}, fmt.Errorf("get fund: %w", err)
+	}
+	return fund, nil
 }
 
 // GetAllFunds retrieves all funds from the database.
 // Returns fund metadata including latest prices for all funds in the system.
 func (s *FundService) GetAllFunds() ([]model.Fund, error) {
-	return s.fundRepo.GetAllFunds()
+	fundLog.Debug("retrieving all funds")
+	funds, err := s.fundRepo.GetAllFunds()
+	if err != nil {
+		return nil, fmt.Errorf("get all funds: %w", err)
+	}
+	return funds, nil
 }
 
 // GetSymbol retrieves symbol information by ticker symbol.
@@ -109,9 +121,10 @@ func (s *FundService) GetAllFunds() ([]model.Fund, error) {
 // v8 chart endpoint, caches the result, and returns it. Prunes stale unreferenced
 // cache entries on each call.
 func (s *FundService) GetSymbol(symbol string) (*model.Symbol, error) {
+	fundLog.Debug("looking up symbol", "symbol", symbol)
 	_, err := s.fundRepo.PruneStaleSymbols()
 	if err != nil {
-		log.Printf("Failed to prune logs: %v", err)
+		fundLog.Warn("failed to prune stale symbols", "error", err)
 	}
 
 	sym, err := s.fundRepo.GetSymbol(symbol)
@@ -150,7 +163,12 @@ func (s *FundService) GetSymbol(symbol string) (*model.Symbol, error) {
 // Returns a listing of funds across all portfolios (non-archived) with portfolio and fund names.
 // Used for the GET /api/portfolio/funds endpoint.
 func (s *FundService) GetAllPortfolioFundListings() ([]model.PortfolioFundListing, error) {
-	return s.pfRepo.GetAllPortfolioFundListings()
+	fundLog.Debug("retrieving all portfolio fund listings")
+	listings, err := s.pfRepo.GetAllPortfolioFundListings()
+	if err != nil {
+		return nil, fmt.Errorf("get portfolio fund listings: %w", err)
+	}
+	return listings, nil
 }
 
 // GetPortfolioFunds retrieves detailed fund metrics for all funds in a portfolio.
@@ -176,17 +194,18 @@ func (s *FundService) GetAllPortfolioFundListings() ([]model.PortfolioFundListin
 // RealizedGainLoss, TotalGainLoss, TotalDividends, and TotalFees.
 // All monetary values are rounded to two decimal places.
 func (s *FundService) GetPortfolioFunds(portfolioID string) ([]model.PortfolioFundResponse, error) {
+	fundLog.Debug("retrieving portfolio funds", "portfolioID", portfolioID)
 
 	// Direct repo call (not via PortfolioService) because the handler guarantees a non-empty
 	// portfolioID, making the multi-portfolio resolution in GetPortfoliosForRequest unnecessary.
 	portfolio, err := s.portfolioRepo.GetPortfolioOnID(portfolioID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get portfolio: %w", err)
 	}
 
 	data, err := s.dataLoaderService.LoadForPortfolios([]model.Portfolio{portfolio}, time.Time{}, time.Now().UTC())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("load portfolio data: %w", err)
 	}
 
 	if len(data.PFIDs) == 0 {
@@ -222,7 +241,12 @@ func (s *FundService) GetPortfolioFunds(portfolioID string) ([]model.PortfolioFu
 // ASC order is typically used for date-aware price lookups (getPriceForDate),
 // while DESC order is efficient for latest-price queries.
 func (s *FundService) LoadFundPrices(fundIDs []string, startDate, endDate time.Time, ascending bool) (map[string][]model.FundPrice, error) {
-	return s.fundRepo.GetFundPrice(fundIDs, startDate, endDate, ascending)
+	fundLog.Debug("loading fund prices", "fundCount", len(fundIDs), "startDate", startDate.Format("2006-01-02"), "endDate", endDate.Format("2006-01-02"))
+	prices, err := s.fundRepo.GetFundPrice(fundIDs, startDate, endDate, ascending)
+	if err != nil {
+		return nil, fmt.Errorf("get fund prices: %w", err)
+	}
+	return prices, nil
 }
 
 // CheckUsage checks if a fund is currently in use by any portfolios.
@@ -237,9 +261,10 @@ func (s *FundService) LoadFundPrices(fundIDs []string, startDate, endDate time.T
 //
 // Use case: Call before deletion to prevent losing historical data.
 func (s *FundService) CheckUsage(fundID string) (model.FundUsage, error) {
+	fundLog.Debug("checking fund usage", "fundID", fundID)
 	checkUsage, err := s.pfRepo.CheckUsage(fundID)
 	if err != nil {
-		return model.FundUsage{}, err
+		return model.FundUsage{}, fmt.Errorf("check fund usage: %w", err)
 	}
 	var fundUsage model.FundUsage
 	if len(checkUsage) == 0 {
@@ -256,6 +281,7 @@ func (s *FundService) CheckUsage(fundID string) (model.FundUsage, error) {
 // Validates that both the portfolio and fund exist before creating the relationship.
 // This allows a fund to be tracked within a specific portfolio.
 func (s *FundService) CreatePortfolioFund(ctx context.Context, req request.CreatePortfolioFundRequest) error {
+	fundLog.DebugContext(ctx, "creating portfolio fund", "portfolioID", req.PortfolioID, "fundID", req.FundID)
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -267,12 +293,12 @@ func (s *FundService) CreatePortfolioFund(ctx context.Context, req request.Creat
 	// within the service-level transaction without passing tx through service boundaries.
 	_, err = s.portfolioRepo.WithTx(tx).GetPortfolioOnID(req.PortfolioID)
 	if err != nil {
-		return err
+		return fmt.Errorf("get portfolio: %w", err)
 	}
 
 	_, err = s.fundRepo.WithTx(tx).GetFund(req.FundID)
 	if err != nil {
-		return err
+		return fmt.Errorf("get fund: %w", err)
 	}
 
 	if err := s.pfRepo.WithTx(tx).InsertPortfolioFund(ctx, req.PortfolioID, req.FundID); err != nil {
@@ -282,6 +308,7 @@ func (s *FundService) CreatePortfolioFund(ctx context.Context, req request.Creat
 	if err = tx.Commit(); err != nil {
 		return fmt.Errorf("commit transaction: %w", err)
 	}
+	fundLog.InfoContext(ctx, "portfolio fund created", "portfolioID", req.PortfolioID, "fundID", req.FundID)
 	return nil
 }
 
@@ -289,6 +316,7 @@ func (s *FundService) CreatePortfolioFund(ctx context.Context, req request.Creat
 // Validates that the portfolio-fund relationship exists before deletion.
 // This does not delete the fund itself, only removes it from the portfolio.
 func (s *FundService) DeletePortfolioFund(ctx context.Context, pfID string) error {
+	fundLog.DebugContext(ctx, "deleting portfolio fund", "portfolioFundID", pfID)
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -298,18 +326,19 @@ func (s *FundService) DeletePortfolioFund(ctx context.Context, pfID string) erro
 
 	_, err = s.pfRepo.WithTx(tx).GetPortfolioFund(pfID)
 	if err != nil {
-		return err
+		return fmt.Errorf("get portfolio fund: %w", err)
 	}
 
 	err = s.pfRepo.WithTx(tx).DeletePortfolioFund(ctx, pfID)
 	if err != nil {
-		return err
+		return fmt.Errorf("delete portfolio fund: %w", err)
 	}
 
 	if err = tx.Commit(); err != nil {
 		return fmt.Errorf("commit transaction: %w", err)
 	}
 
+	fundLog.InfoContext(ctx, "portfolio fund deleted", "portfolio_fund_id", pfID)
 	return nil
 }
 
@@ -326,6 +355,7 @@ func (s *FundService) DeletePortfolioFund(ctx context.Context, pfID string) erro
 //
 // Returns the created fund with its generated ID, or an error if creation fails.
 func (s *FundService) CreateFund(ctx context.Context, req request.CreateFundRequest) (*model.Fund, error) {
+	fundLog.DebugContext(ctx, "creating fund", "name", req.Name, "symbol", req.Symbol)
 	fund := &model.Fund{
 		ID:             uuid.New().String(),
 		Name:           req.Name,
@@ -341,6 +371,7 @@ func (s *FundService) CreateFund(ctx context.Context, req request.CreateFundRequ
 		return nil, fmt.Errorf("failed to create fund: %w", err)
 	}
 
+	fundLog.InfoContext(ctx, "fund created", "fundID", fund.ID, "symbol", fund.Symbol)
 	return fund, nil
 }
 
@@ -359,6 +390,7 @@ func (s *FundService) UpdateFund(
 	id string,
 	req request.UpdateFundRequest,
 ) (*model.Fund, error) {
+	fundLog.DebugContext(ctx, "updating fund", "fundID", id)
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -368,7 +400,7 @@ func (s *FundService) UpdateFund(
 
 	fund, err := s.fundRepo.WithTx(tx).GetFund(id)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get fund: %w", err)
 	}
 	if req.Name != nil {
 		fund.Name = *req.Name
@@ -400,6 +432,7 @@ func (s *FundService) UpdateFund(
 		return nil, fmt.Errorf("commit transaction: %w", err)
 	}
 
+	fundLog.InfoContext(ctx, "fund updated", "fundID", id)
 	return &fund, nil
 }
 
@@ -417,6 +450,7 @@ func (s *FundService) UpdateFund(
 //   - apperrors.ErrFundInUse if the fund is being used by portfolios
 //   - error if deletion fails
 func (s *FundService) DeleteFund(ctx context.Context, id string) error {
+	fundLog.DebugContext(ctx, "deleting fund", "fundID", id)
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -426,7 +460,7 @@ func (s *FundService) DeleteFund(ctx context.Context, id string) error {
 
 	_, err = s.fundRepo.WithTx(tx).GetFund(id)
 	if err != nil {
-		return err
+		return fmt.Errorf("get fund: %w", err)
 	}
 
 	usage, err := s.pfRepo.WithTx(tx).CheckUsage(id)
@@ -447,6 +481,7 @@ func (s *FundService) DeleteFund(ctx context.Context, id string) error {
 		return fmt.Errorf("commit transaction: %w", err)
 	}
 
+	fundLog.InfoContext(ctx, "fund deleted", "fundID", id)
 	return nil
 }
 
@@ -479,9 +514,10 @@ func (s *FundService) DeleteFund(ctx context.Context, id string) error {
 //
 // Note: This method triggers materialized view regeneration after a successful price insert (Issue #35).
 func (s *FundService) UpdateCurrentFundPrice(ctx context.Context, fundID string) (model.FundPrice, bool, error) {
+	fundLog.DebugContext(ctx, "updating current fund price", "fundID", fundID)
 	fund, err := s.GetFund(fundID)
 	if err != nil {
-		return model.FundPrice{}, false, err
+		return model.FundPrice{}, false, fmt.Errorf("get fund: %w", err)
 	}
 
 	if fund.Symbol == "" {
@@ -496,7 +532,7 @@ func (s *FundService) UpdateCurrentFundPrice(ctx context.Context, fundID string)
 
 	chart, err := s.fetchYahooChart(fund.Symbol)
 	if err != nil {
-		return model.FundPrice{}, false, err
+		return model.FundPrice{}, false, fmt.Errorf("fetch yahoo chart: %w", err)
 	}
 
 	if len(chart.Indicators) == 0 {
@@ -525,18 +561,19 @@ func (s *FundService) UpdateCurrentFundPrice(ctx context.Context, fundID string)
 	}
 
 	if err = s.fundRepo.InsertFundPrice(ctx, fundPrice); err != nil {
-		return model.FundPrice{}, false, err
+		return model.FundPrice{}, false, fmt.Errorf("insert fund price: %w", err)
 	}
 
 	if s.materializedInvalidator != nil {
 		//nolint:gosec // G118: Background context is intentional — goroutine outlives the HTTP request.
 		go func() {
 			if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), fundPrice.Date, nil, fundPrice.FundID, ""); err != nil {
-				log.Printf("failed to regenerate materialized table: %v", err)
+				fundLog.Warn("failed to regenerate materialized table after price update", "error", err)
 			}
 		}()
 	}
 
+	fundLog.InfoContext(ctx, "fund price updated", "fundID", fundID, "date", fundPrice.Date.Format("2006-01-02"), "price", fundPrice.Price)
 	return fundPrice, true, nil
 
 }
@@ -545,6 +582,7 @@ func (s *FundService) UpdateCurrentFundPrice(ctx context.Context, fundID string)
 func (s *FundService) checkExistingPrice(fundID string, date time.Time) (model.FundPrice, bool) {
 	fundPrices, err := s.fundRepo.GetFundPrice([]string{fundID}, date, date, true)
 	if err != nil {
+		fundLog.Warn("failed to check existing price", "error", err, "fund_id", fundID)
 		return model.FundPrice{}, false
 	}
 
@@ -559,9 +597,13 @@ func (s *FundService) checkExistingPrice(fundID string, date time.Time) (model.F
 func (s *FundService) fetchYahooChart(symbol string) (yahoo.PriceChart, error) {
 	raw, err := s.yahooClient.QueryYahooFiveDaySymbol(symbol)
 	if err != nil {
-		return yahoo.PriceChart{}, err
+		return yahoo.PriceChart{}, fmt.Errorf("query yahoo five day: %w", err)
 	}
-	return s.yahooClient.ParseChart(raw)
+	chart, err := s.yahooClient.ParseChart(raw)
+	if err != nil {
+		return yahoo.PriceChart{}, fmt.Errorf("parse yahoo chart: %w", err)
+	}
+	return chart, nil
 }
 
 // buildMissingDatesMap creates a map of date strings that are missing from the existing prices.
@@ -647,9 +689,10 @@ func (s *FundService) filterMissingPrices(indicators []yahoo.Indicators, missing
 //
 //nolint:gocyclo // Multi-step pipeline: validate, load, diff, fetch, filter, insert, invalidate
 func (s *FundService) UpdateHistoricalFundPrice(ctx context.Context, fundID string) (int, error) {
+	fundLog.DebugContext(ctx, "updating historical fund prices", "fundID", fundID)
 	fund, err := s.GetFund(fundID)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("get fund: %w", err)
 	}
 
 	if fund.Symbol == "" {
@@ -658,7 +701,7 @@ func (s *FundService) UpdateHistoricalFundPrice(ctx context.Context, fundID stri
 
 	portfolioFunds, err := s.pfRepo.GetPortfolioFundsbyFundID(fundID)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("get portfolio funds by fund ID: %w", err)
 	}
 	if len(portfolioFunds) == 0 {
 		return 0, fmt.Errorf("no portfolio funds found for fund %s", fundID)
@@ -678,7 +721,7 @@ func (s *FundService) UpdateHistoricalFundPrice(ctx context.Context, fundID stri
 
 	existingPrices, err := s.fundRepo.GetFundPrice([]string{fundID}, oldestDate, now, true)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("get existing fund prices: %w", err)
 	}
 
 	missingDates := s.buildMissingDatesMap(existingPrices[fundID], oldestDate, yesterdayDate)
@@ -688,11 +731,11 @@ func (s *FundService) UpdateHistoricalFundPrice(ctx context.Context, fundID stri
 
 	raw, err := s.yahooClient.QueryYahooSymbolByDateRange(fund.Symbol, oldestDate, yesterdayDate)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("query yahoo by date range: %w", err)
 	}
 	chart, err := s.yahooClient.ParseChart(raw)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("parse yahoo chart: %w", err)
 	}
 
 	missingFundPrices := s.filterMissingPrices(chart.Indicators, missingDates, fundID)
@@ -708,7 +751,7 @@ func (s *FundService) UpdateHistoricalFundPrice(ctx context.Context, fundID stri
 
 	err = s.fundRepo.WithTx(tx).InsertFundPrices(ctx, missingFundPrices)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("insert fund prices: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -722,11 +765,12 @@ func (s *FundService) UpdateHistoricalFundPrice(ctx context.Context, fundID stri
 		//nolint:gosec // G118: Background context is intentional — goroutine outlives the HTTP request.
 		go func() {
 			if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), oldestPrice.Date, nil, oldestPrice.FundID, ""); err != nil {
-				log.Printf("failed to regenerate materialized table: %v", err)
+				fundLog.Warn("failed to regenerate materialized table after historical price update", "error", err)
 			}
 		}()
 	}
 
+	fundLog.InfoContext(ctx, "historical fund prices updated", "fundID", fundID, "pricesAdded", len(missingFundPrices))
 	return len(missingFundPrices), nil
 }
 
@@ -748,9 +792,10 @@ func (s *FundService) UpdateHistoricalFundPrice(ctx context.Context, fundID stri
 // The response always includes detailed information about which funds succeeded or failed,
 // regardless of whether an error is returned.
 func (s *FundService) UpdateAllFundHistory(ctx context.Context) (model.AllFundUpdateResponse, error) {
+	fundLog.DebugContext(ctx, "updating all fund history")
 	funds, err := s.GetAllFunds()
 	if err != nil {
-		return model.AllFundUpdateResponse{}, err
+		return model.AllFundUpdateResponse{}, fmt.Errorf("get all funds: %w", err)
 	}
 
 	if len(funds) == 0 {
@@ -794,5 +839,10 @@ func (s *FundService) UpdateAllFundHistory(ctx context.Context) (model.AllFundUp
 	}
 
 	fundUpdate.Success = true
+	if len(errors) > 0 {
+		fundLog.Warn("fund history update completed with errors", "updated", len(fundResults), "errors", len(errors))
+	} else {
+		fundLog.InfoContext(ctx, "all fund history updated", "updated", len(fundResults))
+	}
 	return fundUpdate, nil
 }

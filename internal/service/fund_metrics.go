@@ -1,7 +1,6 @@
 package service
 
 import (
-	"errors"
 	"fmt"
 	"time"
 
@@ -89,8 +88,7 @@ func (s *FundService) calculateFundMetrics(
 				cost += transaction.CostPerShare
 				fees += transaction.CostPerShare
 			default:
-				err := errors.New("unknown transaction type")
-				return FundMetrics{}, fmt.Errorf(": %w", err)
+				return FundMetrics{}, fmt.Errorf("unsupported transaction type: %s", transaction.Type)
 			}
 		} else {
 			break

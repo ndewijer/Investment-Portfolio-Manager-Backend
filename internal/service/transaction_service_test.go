@@ -3,6 +3,7 @@ package service_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"math"
 	"testing"
 
@@ -234,7 +235,7 @@ func TestTransactionService_CreateSellTransaction_InsufficientShares(t *testing.
 			CostPerShare:    15.0,
 		})
 
-		if err != apperrors.ErrInsufficientShares {
+		if !errors.Is(err, apperrors.ErrInsufficientShares) {
 			t.Errorf("Expected ErrInsufficientShares, got: %v", err)
 		}
 	})
@@ -260,7 +261,7 @@ func TestTransactionService_CreateSellTransaction_InsufficientShares(t *testing.
 			CostPerShare:    15.0,
 		})
 
-		if err != apperrors.ErrInsufficientShares {
+		if !errors.Is(err, apperrors.ErrInsufficientShares) {
 			t.Errorf("Expected ErrInsufficientShares, got: %v", err)
 		}
 	})
@@ -463,7 +464,7 @@ func TestTransactionService_UpdateTransaction_RecalculatesRealizedGains(t *testi
 		_, err = svc.UpdateTransaction(ctx, buyTx.ID, request.UpdateTransactionRequest{
 			Type: &sellType,
 		})
-		if err != apperrors.ErrInsufficientShares {
+		if !errors.Is(err, apperrors.ErrInsufficientShares) {
 			t.Errorf("Expected ErrInsufficientShares, got: %v", err)
 		}
 	})

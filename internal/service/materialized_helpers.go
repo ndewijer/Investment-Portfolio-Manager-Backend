@@ -1,7 +1,7 @@
 package service
 
 import (
-	"log"
+	"fmt"
 	"slices"
 	"time"
 
@@ -160,7 +160,7 @@ func (s *MaterializedService) calculateDailyPortfolioHistory(
 			divByPFByPortfolio,
 		)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("calculate portfolio summary for date %s: %w", date.Format("2006-01-02"), err)
 		}
 
 		// Only include dates in display range
@@ -212,8 +212,7 @@ func (s *MaterializedService) calculatePortfolioSummaryForDate(
 
 	for _, portfolio := range portfolios {
 		if len(txByPortfolio[portfolio.ID]) == 0 {
-			log.Printf("calculatePortfolioSummaryForDate [%s]: skipping portfolio %s (%s) — no transactions loaded",
-				date.Format("2006-01-02"), portfolio.ID, portfolio.Name)
+			matLog.Debug("calculatePortfolioSummaryForDate: skipping portfolio, no transactions loaded", "date", date.Format("2006-01-02"), "portfolioID", portfolio.ID, "portfolioName", portfolio.Name)
 			continue
 		}
 
@@ -234,7 +233,7 @@ func (s *MaterializedService) calculatePortfolioSummaryForDate(
 			divByPFByPortfolio[portfolio.ID],
 		)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("calculate single portfolio summary: %w", err)
 		}
 
 		summary = append(summary, ps)
@@ -279,7 +278,7 @@ func (s *MaterializedService) calculateSinglePortfolioSummary(
 		date,
 	)
 	if err != nil {
-		return model.PortfolioSummary{}, err
+		return model.PortfolioSummary{}, fmt.Errorf("process dividend shares: %w", err)
 	}
 
 	transactionMetrics, err := s.processTransactionsForDate(
@@ -290,13 +289,13 @@ func (s *MaterializedService) calculateSinglePortfolioSummary(
 		date,
 	)
 	if err != nil {
-		return model.PortfolioSummary{}, err
+		return model.PortfolioSummary{}, fmt.Errorf("process transactions: %w", err)
 	}
 
 	// Calculate dividend amount
 	totalDividendAmount, err := s.dividendService.processDividendAmountForDate(allDividends, date)
 	if err != nil {
-		return model.PortfolioSummary{}, err
+		return model.PortfolioSummary{}, fmt.Errorf("process dividends: %w", err)
 	}
 
 	// Calculate realized gains
@@ -305,7 +304,7 @@ func (s *MaterializedService) calculateSinglePortfolioSummary(
 		date,
 	)
 	if err != nil {
-		return model.PortfolioSummary{}, err
+		return model.PortfolioSummary{}, fmt.Errorf("process realized gain loss: %w", err)
 	}
 
 	// Build summary with rounding
@@ -355,7 +354,7 @@ func (s *MaterializedService) calculateFundHistoryByDate(
 			realizedGainsByPF,
 		)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("calculate funds for date %s: %w", currentDate.Format("2006-01-02"), err)
 		}
 
 		if len(fundsForDate) > 0 {
@@ -396,7 +395,7 @@ func (s *MaterializedService) calculateFundsForDate(
 			realizedGainsByPF[pf.ID],
 		)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("calculate fund entry: %w", err)
 		}
 
 		// Skip entries with no meaningful data — zero shares AND no financial activity.
@@ -444,7 +443,7 @@ func (s *MaterializedService) calculateFundEntry(
 		date,
 	)
 	if err != nil {
-		return model.FundHistoryEntry{}, err
+		return model.FundHistoryEntry{}, fmt.Errorf("process dividend shares: %w", err)
 	}
 
 	// Calculate fund metrics
@@ -458,7 +457,7 @@ func (s *MaterializedService) calculateFundEntry(
 		false,
 	)
 	if err != nil {
-		return model.FundHistoryEntry{}, err
+		return model.FundHistoryEntry{}, fmt.Errorf("calculate fund metrics: %w", err)
 	}
 
 	// Calculate dividend amount
@@ -467,7 +466,7 @@ func (s *MaterializedService) calculateFundEntry(
 		date,
 	)
 	if err != nil {
-		return model.FundHistoryEntry{}, err
+		return model.FundHistoryEntry{}, fmt.Errorf("process dividends: %w", err)
 	}
 
 	// Calculate realized gains
@@ -476,7 +475,7 @@ func (s *MaterializedService) calculateFundEntry(
 		date,
 	)
 	if err != nil {
-		return model.FundHistoryEntry{}, err
+		return model.FundHistoryEntry{}, fmt.Errorf("process realized gain loss: %w", err)
 	}
 
 	// Build entry with rounding

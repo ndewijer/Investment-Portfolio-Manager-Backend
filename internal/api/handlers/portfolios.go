@@ -9,10 +9,13 @@ import (
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/request"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/response"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/apperrors"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/logging"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/service"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/validation"
 )
+
+var pfLog = logging.NewLogger("portfolio")
 
 // PortfolioHandler handles HTTP requests for portfolio endpoints.
 // It serves as the HTTP layer adapter, parsing requests and delegating
@@ -38,12 +41,13 @@ func NewPortfolioHandler(portfolioService *service.PortfolioService, fundService
 // Endpoint: GET /api/portfolio
 // Response: 200 OK with array of PortfoliosResponse
 // Error: 500 Internal Server Error if retrieval fails
-func (h *PortfolioHandler) Portfolios(w http.ResponseWriter, _ *http.Request) {
+func (h *PortfolioHandler) Portfolios(w http.ResponseWriter, r *http.Request) {
+	pfLog.DebugContext(r.Context(), "get all portfolios request")
 
 	portfolios, err := h.portfolioService.GetAllPortfolios()
 	if err != nil {
-
-		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToRetrievePortfolios.Error(), err.Error())
+		pfLog.ErrorContext(r.Context(), "failed to get all portfolios", "error", err)
+		response.RespondInternalError(w, r, apperrors.ErrFailedToRetrievePortfolios.Error())
 		return
 	}
 
@@ -60,6 +64,8 @@ func (h *PortfolioHandler) GetPortfolio(w http.ResponseWriter, r *http.Request) 
 
 	portfolioID := chi.URLParam(r, "uuid")
 
+	pfLog.DebugContext(r.Context(), "get portfolio request", "portfolio_id", portfolioID)
+
 	if portfolioID == "" {
 		response.RespondError(w, http.StatusBadRequest, apperrors.ErrInvalidPortfolioID.Error(), "")
 		return
@@ -68,11 +74,12 @@ func (h *PortfolioHandler) GetPortfolio(w http.ResponseWriter, r *http.Request) 
 	summaries, err := h.materializedService.GetPortfolioSummaryWithFallback(portfolioID)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrPortfolioNotFound) {
-			response.RespondError(w, http.StatusNotFound, apperrors.ErrPortfolioNotFound.Error(), err.Error())
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrPortfolioNotFound.Error(), "")
 			return
 		}
 
-		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToGetPortfolioSummary.Error(), err.Error())
+		pfLog.ErrorContext(r.Context(), "failed to get portfolio summary", "error", err, "portfolio_id", portfolioID)
+		response.RespondInternalError(w, r, apperrors.ErrFailedToGetPortfolioSummary.Error())
 		return
 	}
 
@@ -100,12 +107,13 @@ func (h *PortfolioHandler) GetPortfolio(w http.ResponseWriter, r *http.Request) 
 // Endpoint: GET /api/portfolio/summary
 // Response: 200 OK with array of PortfolioSummaryResponse
 // Error: 500 Internal Server Error if calculation fails
-func (h *PortfolioHandler) PortfolioSummary(w http.ResponseWriter, _ *http.Request) {
+func (h *PortfolioHandler) PortfolioSummary(w http.ResponseWriter, r *http.Request) {
+	pfLog.DebugContext(r.Context(), "get portfolio summary request")
 
 	summaries, err := h.materializedService.GetPortfolioSummaryWithFallback("")
 	if err != nil {
-
-		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToGetPortfolioSummary.Error(), err.Error())
+		pfLog.ErrorContext(r.Context(), "failed to get portfolio summaries", "error", err)
+		response.RespondInternalError(w, r, apperrors.ErrFailedToGetPortfolioSummary.Error())
 		return
 	}
 
@@ -129,6 +137,11 @@ func (h *PortfolioHandler) PortfolioSummary(w http.ResponseWriter, _ *http.Reque
 // Error: 400 Bad Request if date parsing fails
 // Error: 500 Internal Server Error if calculation fails
 func (h *PortfolioHandler) PortfolioHistory(w http.ResponseWriter, r *http.Request) {
+	pfLog.DebugContext(r.Context(), "get portfolio history request",
+		"start_date", r.URL.Query().Get("start_date"),
+		"end_date", r.URL.Query().Get("end_date"),
+	)
+
 	startDate, endDate, err := parseDateParams(r)
 	if err != nil {
 		response.RespondError(w, http.StatusBadRequest, "Invalid date parameters", err.Error())
@@ -137,8 +150,8 @@ func (h *PortfolioHandler) PortfolioHistory(w http.ResponseWriter, r *http.Reque
 
 	portfolioHistory, err := h.materializedService.GetPortfolioHistoryWithFallback(startDate, endDate, "")
 	if err != nil {
-
-		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToGetPortfolioHistory.Error(), err.Error())
+		pfLog.ErrorContext(r.Context(), "failed to get portfolio history", "error", err)
+		response.RespondInternalError(w, r, apperrors.ErrFailedToGetPortfolioHistory.Error())
 		return
 	}
 
@@ -180,11 +193,13 @@ func parseDateParams(r *http.Request) (time.Time, time.Time, error) {
 // Endpoint: GET /api/portfolio/funds
 // Response: 200 OK with array of PortfolioFundListing
 // Error: 500 Internal Server Error if retrieval fails
-func (h *PortfolioHandler) PortfolioFunds(w http.ResponseWriter, _ *http.Request) {
+func (h *PortfolioHandler) PortfolioFunds(w http.ResponseWriter, r *http.Request) {
+	pfLog.DebugContext(r.Context(), "get all portfolio funds request")
+
 	listings, err := h.fundService.GetAllPortfolioFundListings()
 	if err != nil {
-
-		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToRetrievePortfolioFunds.Error(), err.Error())
+		pfLog.ErrorContext(r.Context(), "failed to get portfolio fund listings", "error", err)
+		response.RespondInternalError(w, r, apperrors.ErrFailedToRetrievePortfolioFunds.Error())
 		return
 	}
 
@@ -205,6 +220,9 @@ func (h *PortfolioHandler) PortfolioFunds(w http.ResponseWriter, _ *http.Request
 func (h *PortfolioHandler) GetPortfolioFunds(w http.ResponseWriter, r *http.Request) {
 
 	portfolioID := chi.URLParam(r, "uuid")
+
+	pfLog.DebugContext(r.Context(), "get portfolio funds request", "portfolio_id", portfolioID)
+
 	if portfolioID == "" {
 		response.RespondError(w, http.StatusBadRequest, apperrors.ErrInvalidPortfolioID.Error(), "")
 		return
@@ -213,11 +231,12 @@ func (h *PortfolioHandler) GetPortfolioFunds(w http.ResponseWriter, r *http.Requ
 	portfolioFunds, err := h.fundService.GetPortfolioFunds(portfolioID)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrPortfolioNotFound) {
-			response.RespondError(w, http.StatusNotFound, apperrors.ErrPortfolioNotFound.Error(), err.Error())
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrPortfolioNotFound.Error(), "")
 			return
 		}
 
-		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToGetPortfolioFunds.Error(), err.Error())
+		pfLog.ErrorContext(r.Context(), "failed to get portfolio funds", "error", err, "portfolio_id", portfolioID)
+		response.RespondInternalError(w, r, apperrors.ErrFailedToGetPortfolioFunds.Error())
 		return
 	}
 
@@ -233,26 +252,27 @@ func (h *PortfolioHandler) GetPortfolioFunds(w http.ResponseWriter, r *http.Requ
 // Error: 400 Bad Request if JSON is invalid or validation fails
 // Error: 500 Internal Server Error if creation fails
 func (h *PortfolioHandler) CreatePortfolio(w http.ResponseWriter, r *http.Request) {
+	pfLog.DebugContext(r.Context(), "create portfolio request")
+
 	req, err := parseJSON[request.CreatePortfolioRequest](r)
 	if err != nil {
-
 		response.RespondError(w, http.StatusBadRequest, "invalid request body", err.Error())
 		return
 	}
 
 	if err := validation.ValidateCreatePortfolio(req); err != nil {
-
 		response.RespondError(w, http.StatusBadRequest, "validation failed", err.Error())
 		return
 	}
 
 	portfolio, err := h.portfolioService.CreatePortfolio(r.Context(), req)
 	if err != nil {
-
-		response.RespondError(w, http.StatusInternalServerError, "failed to create portfolio", err.Error())
+		pfLog.ErrorContext(r.Context(), "failed to create portfolio", "error", err)
+		response.RespondInternalError(w, r, "failed to create portfolio")
 		return
 	}
 
+	pfLog.InfoContext(r.Context(), "portfolio created", "id", portfolio.ID, "name", portfolio.Name)
 	response.RespondJSON(w, http.StatusCreated, portfolio)
 }
 
@@ -268,15 +288,15 @@ func (h *PortfolioHandler) CreatePortfolio(w http.ResponseWriter, r *http.Reques
 func (h *PortfolioHandler) UpdatePortfolio(w http.ResponseWriter, r *http.Request) {
 	portfolioID := chi.URLParam(r, "uuid")
 
+	pfLog.DebugContext(r.Context(), "update portfolio request", "portfolio_id", portfolioID)
+
 	req, err := parseJSON[request.UpdatePortfolioRequest](r)
 	if err != nil {
-
 		response.RespondError(w, http.StatusBadRequest, "invalid request body", err.Error())
 		return
 	}
 
 	if err := validation.ValidateUpdatePortfolio(req); err != nil {
-
 		response.RespondError(w, http.StatusBadRequest, "validation failed", err.Error())
 		return
 	}
@@ -284,15 +304,16 @@ func (h *PortfolioHandler) UpdatePortfolio(w http.ResponseWriter, r *http.Reques
 	portfolio, err := h.portfolioService.UpdatePortfolio(r.Context(), portfolioID, req)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrPortfolioNotFound) {
-
-			response.RespondError(w, http.StatusNotFound, apperrors.ErrPortfolioNotFound.Error(), err.Error())
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrPortfolioNotFound.Error(), "")
 			return
 		}
 
-		response.RespondError(w, http.StatusInternalServerError, "failed to update portfolio", err.Error())
+		pfLog.ErrorContext(r.Context(), "failed to update portfolio", "error", err, "portfolio_id", portfolioID)
+		response.RespondInternalError(w, r, "failed to update portfolio")
 		return
 	}
 
+	pfLog.InfoContext(r.Context(), "portfolio updated", "id", portfolio.ID)
 	response.RespondJSON(w, http.StatusOK, portfolio)
 }
 
@@ -307,18 +328,21 @@ func (h *PortfolioHandler) UpdatePortfolio(w http.ResponseWriter, r *http.Reques
 func (h *PortfolioHandler) DeletePortfolio(w http.ResponseWriter, r *http.Request) {
 	portfolioID := chi.URLParam(r, "uuid")
 
+	pfLog.DebugContext(r.Context(), "delete portfolio request", "portfolio_id", portfolioID)
+
 	err := h.portfolioService.DeletePortfolio(r.Context(), portfolioID)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrPortfolioNotFound) {
-
-			response.RespondError(w, http.StatusNotFound, apperrors.ErrPortfolioNotFound.Error(), err.Error())
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrPortfolioNotFound.Error(), "")
 			return
 		}
 
-		response.RespondError(w, http.StatusInternalServerError, "failed to delete portfolio", err.Error())
+		pfLog.ErrorContext(r.Context(), "failed to delete portfolio", "error", err, "portfolio_id", portfolioID)
+		response.RespondInternalError(w, r, "failed to delete portfolio")
 		return
 	}
 
+	pfLog.InfoContext(r.Context(), "portfolio deleted", "portfolio_id", portfolioID)
 	response.RespondJSON(w, http.StatusNoContent, nil)
 }
 
@@ -333,6 +357,8 @@ func (h *PortfolioHandler) DeletePortfolio(w http.ResponseWriter, r *http.Reques
 func (h *PortfolioHandler) ArchivePortfolio(w http.ResponseWriter, r *http.Request) {
 	portfolioID := chi.URLParam(r, "uuid")
 
+	pfLog.DebugContext(r.Context(), "archive portfolio request", "portfolio_id", portfolioID)
+
 	isArchived := true
 	req := request.UpdatePortfolioRequest{
 		IsArchived: &isArchived,
@@ -341,13 +367,15 @@ func (h *PortfolioHandler) ArchivePortfolio(w http.ResponseWriter, r *http.Reque
 	portfolio, err := h.portfolioService.UpdatePortfolio(r.Context(), portfolioID, req)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrPortfolioNotFound) {
-			response.RespondError(w, http.StatusNotFound, apperrors.ErrPortfolioNotFound.Error(), err.Error())
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrPortfolioNotFound.Error(), "")
 			return
 		}
-		response.RespondError(w, http.StatusInternalServerError, "failed to archive portfolio", err.Error())
+		pfLog.ErrorContext(r.Context(), "failed to archive portfolio", "error", err, "portfolio_id", portfolioID)
+		response.RespondInternalError(w, r, "failed to archive portfolio")
 		return
 	}
 
+	pfLog.InfoContext(r.Context(), "portfolio archived", "portfolio_id", portfolioID)
 	response.RespondJSON(w, http.StatusOK, portfolio)
 }
 
@@ -362,6 +390,8 @@ func (h *PortfolioHandler) ArchivePortfolio(w http.ResponseWriter, r *http.Reque
 func (h *PortfolioHandler) UnarchivePortfolio(w http.ResponseWriter, r *http.Request) {
 	portfolioID := chi.URLParam(r, "uuid")
 
+	pfLog.DebugContext(r.Context(), "unarchive portfolio request", "portfolio_id", portfolioID)
+
 	isArchived := false
 	req := request.UpdatePortfolioRequest{
 		IsArchived: &isArchived,
@@ -370,13 +400,15 @@ func (h *PortfolioHandler) UnarchivePortfolio(w http.ResponseWriter, r *http.Req
 	portfolio, err := h.portfolioService.UpdatePortfolio(r.Context(), portfolioID, req)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrPortfolioNotFound) {
-			response.RespondError(w, http.StatusNotFound, apperrors.ErrPortfolioNotFound.Error(), err.Error())
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrPortfolioNotFound.Error(), "")
 			return
 		}
-		response.RespondError(w, http.StatusInternalServerError, "failed to unarchive portfolio", err.Error())
+		pfLog.ErrorContext(r.Context(), "failed to unarchive portfolio", "error", err, "portfolio_id", portfolioID)
+		response.RespondInternalError(w, r, "failed to unarchive portfolio")
 		return
 	}
 
+	pfLog.InfoContext(r.Context(), "portfolio unarchived", "portfolio_id", portfolioID)
 	response.RespondJSON(w, http.StatusOK, portfolio)
 }
 
@@ -388,6 +420,8 @@ func (h *PortfolioHandler) UnarchivePortfolio(w http.ResponseWriter, r *http.Req
 // Error: 404 Not Found if portfolio or fund doesn't exist
 // Error: 500 Internal Server Error if creation fails
 func (h *PortfolioHandler) CreatePortfolioFund(w http.ResponseWriter, r *http.Request) {
+	pfLog.DebugContext(r.Context(), "create portfolio fund request")
+
 	req, err := parseJSON[request.CreatePortfolioFundRequest](r)
 	if err != nil {
 		response.RespondError(w, http.StatusBadRequest, "invalid request body", err.Error())
@@ -402,17 +436,19 @@ func (h *PortfolioHandler) CreatePortfolioFund(w http.ResponseWriter, r *http.Re
 	err = h.fundService.CreatePortfolioFund(r.Context(), req)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrPortfolioNotFound) {
-			response.RespondError(w, http.StatusNotFound, apperrors.ErrPortfolioNotFound.Error(), err.Error())
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrPortfolioNotFound.Error(), "")
 			return
 		}
 		if errors.Is(err, apperrors.ErrFundNotFound) {
-			response.RespondError(w, http.StatusNotFound, apperrors.ErrFundNotFound.Error(), err.Error())
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrFundNotFound.Error(), "")
 			return
 		}
-		response.RespondError(w, http.StatusInternalServerError, "failed to create portfolio fund", err.Error())
+		pfLog.ErrorContext(r.Context(), "failed to create portfolio fund", "error", err)
+		response.RespondInternalError(w, r, "failed to create portfolio fund")
 		return
 	}
 
+	pfLog.InfoContext(r.Context(), "portfolio fund created", "portfolio_id", req.PortfolioID, "fund_id", req.FundID)
 	response.RespondJSON(w, http.StatusCreated, nil)
 }
 
@@ -428,6 +464,8 @@ func (h *PortfolioHandler) DeletePortfolioFund(w http.ResponseWriter, r *http.Re
 	portfolioFundID := chi.URLParam(r, "uuid")
 	confirm := r.URL.Query().Get("confirm")
 
+	pfLog.DebugContext(r.Context(), "delete portfolio fund request", "portfolio_fund_id", portfolioFundID)
+
 	if confirm != "true" {
 		response.RespondError(w, http.StatusConflict, "Confirm deletion", "")
 		return
@@ -436,14 +474,15 @@ func (h *PortfolioHandler) DeletePortfolioFund(w http.ResponseWriter, r *http.Re
 	err := h.fundService.DeletePortfolioFund(r.Context(), portfolioFundID)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrPortfolioFundNotFound) {
-
-			response.RespondError(w, http.StatusNotFound, apperrors.ErrPortfolioFundNotFound.Error(), err.Error())
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrPortfolioFundNotFound.Error(), "")
 			return
 		}
 
-		response.RespondError(w, http.StatusInternalServerError, "failed to delete portfolio fund", err.Error())
+		pfLog.ErrorContext(r.Context(), "failed to delete portfolio fund", "error", err, "portfolio_fund_id", portfolioFundID)
+		response.RespondInternalError(w, r, "failed to delete portfolio fund")
 		return
 	}
 
+	pfLog.InfoContext(r.Context(), "portfolio fund deleted", "portfolio_fund_id", portfolioFundID)
 	response.RespondJSON(w, http.StatusNoContent, nil)
 }
