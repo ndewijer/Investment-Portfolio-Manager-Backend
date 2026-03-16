@@ -586,20 +586,28 @@ func (s *FundService) buildMissingDatesMap(existingPrices []model.FundPrice, sta
 // filterMissingPrices filters Yahoo Finance indicators to only include dates that are missing.
 // This helper function reduces cyclomatic complexity in UpdateHistoricalFundPrice.
 func (s *FundService) filterMissingPrices(indicators []yahoo.Indicators, missingDates map[string]bool, fundID string) []model.FundPrice {
-	missingFundPrices := make([]model.FundPrice, 0, len(missingDates))
+	// Use a map keyed by date string to deduplicate: Yahoo Finance can return
+	// multiple timestamps for the same trading day (e.g. open and close).
+	// Later entries overwrite earlier ones, so we keep the latest timestamp's price.
+	byDate := make(map[string]model.FundPrice, len(missingDates))
 	for _, v := range indicators {
 		sanitizedDate := v.Date.Truncate(24 * time.Hour).Format("2006-01-02")
 		if missingDates[sanitizedDate] {
 			if v.PriceClose <= 0 {
 				continue
 			}
-			missingFundPrices = append(missingFundPrices, model.FundPrice{
+			byDate[sanitizedDate] = model.FundPrice{
 				ID:     uuid.New().String(),
 				FundID: fundID,
 				Price:  v.PriceClose,
 				Date:   v.Date.Truncate(24 * time.Hour),
-			})
+			}
 		}
+	}
+
+	missingFundPrices := make([]model.FundPrice, 0, len(byDate))
+	for _, fp := range byDate {
+		missingFundPrices = append(missingFundPrices, fp)
 	}
 	return missingFundPrices
 }
