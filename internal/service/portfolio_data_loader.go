@@ -2,12 +2,14 @@ package service
 
 import (
 	"fmt"
-	"log"
 	"time"
 
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/logging"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/repository"
 )
+
+var dlLog = logging.NewLogger("system")
 
 // DataLoaderService centralizes the loading of all data required for portfolio calculations.
 // This service eliminates code duplication by providing a single point for batch-loading
@@ -138,6 +140,7 @@ func (s *DataLoaderService) LoadForPortfolios(
 	portfolios []model.Portfolio,
 	_, endDate time.Time,
 ) (*PortfolioData, error) {
+	dlLog.Debug("loading data for portfolios", "count", len(portfolios), "endDate", endDate.Format("2006-01-02"))
 
 	if len(portfolios) == 0 {
 		return &PortfolioData{}, nil
@@ -178,9 +181,13 @@ func (s *DataLoaderService) LoadForPortfolios(
 	// appear empty. The display range (startDate/endDate) is applied by callers.
 	dataStartDate := oldestTxDate
 
-	log.Printf("data loader: %d portfolio(s), %d portfolio-fund(s), oldest tx %s, loading %s–%s",
-		len(portfolios), len(pfIDs), oldestTxDate.Format("2006-01-02"),
-		dataStartDate.Format("2006-01-02"), endDate.Format("2006-01-02"))
+	dlLog.Debug("data loader starting",
+		"portfolios", len(portfolios),
+		"portfolio_funds", len(pfIDs),
+		"oldest_tx", oldestTxDate.Format("2006-01-02"),
+		"data_start", dataStartDate.Format("2006-01-02"),
+		"end", endDate.Format("2006-01-02"),
+	)
 
 	// Batch load all data
 	transactionsByPF, err := s.transactionService.loadTransactions(pfIDs, dataStartDate, endDate)

@@ -4,15 +4,17 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/request"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/apperrors"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/logging"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/repository"
 )
+
+var txLog = logging.NewLogger("transaction")
 
 // TransactionService handles transaction-related business logic operations.
 // This includes sell processing with realized gain/loss tracking, insufficient shares
@@ -58,19 +60,33 @@ func (s *TransactionService) getOldestTransaction(pfIDs []string) time.Time {
 // loadTransactions retrieves transactions for the given portfolio_fund IDs within the specified date range.
 // Results are grouped by portfolio_fund ID, allowing callers to decide how to aggregate.
 func (s *TransactionService) loadTransactions(pfIDs []string, startDate, endDate time.Time) (map[string][]model.Transaction, error) {
-	return s.transactionRepo.GetTransactions(pfIDs, startDate, endDate)
+	result, err := s.transactionRepo.GetTransactions(pfIDs, startDate, endDate)
+	if err != nil {
+		return nil, fmt.Errorf("get transactions: %w", err)
+	}
+	return result, nil
 }
 
 // GetTransactionsperPortfolio retrieves all transactions for a specific portfolio or all transactions if portfolioID is empty.
 // Returns enriched transaction data including fund names and IBKR linkage status.
 func (s *TransactionService) GetTransactionsperPortfolio(portfolioID string) ([]model.TransactionResponse, error) {
-	return s.transactionRepo.GetTransactionsPerPortfolio(portfolioID)
+	txLog.Debug("retrieving transactions per portfolio", "portfolioID", portfolioID)
+	result, err := s.transactionRepo.GetTransactionsPerPortfolio(portfolioID)
+	if err != nil {
+		return nil, fmt.Errorf("get transactions per portfolio: %w", err)
+	}
+	return result, nil
 }
 
 // GetTransaction retrieves a single transaction by its ID.
 // Returns enriched transaction data including fund name and IBKR linkage status.
 func (s *TransactionService) GetTransaction(transactionID string) (model.TransactionResponse, error) {
-	return s.transactionRepo.GetTransaction(transactionID)
+	txLog.Debug("retrieving transaction", "transactionID", transactionID)
+	result, err := s.transactionRepo.GetTransaction(transactionID)
+	if err != nil {
+		return model.TransactionResponse{}, fmt.Errorf("get transaction: %w", err)
+	}
+	return result, nil
 }
 
 // CreateTransaction creates a new transaction from the provided request.
@@ -81,6 +97,7 @@ func (s *TransactionService) GetTransaction(transactionID string) (model.Transac
 // Returns ErrInsufficientShares if selling more shares than currently held.
 // Returns an error if date parsing fails or database insertion fails.
 func (s *TransactionService) CreateTransaction(ctx context.Context, req request.CreateTransactionRequest) (*model.Transaction, error) {
+	txLog.DebugContext(ctx, "creating transaction", "portfolioFundID", req.PortfolioFundID, "type", req.Type)
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -90,12 +107,12 @@ func (s *TransactionService) CreateTransaction(ctx context.Context, req request.
 
 	_, err = s.pfRepo.WithTx(tx).GetPortfolioFund(req.PortfolioFundID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get portfolio fund: %w", err)
 	}
 
 	transactionDate, err := time.Parse("2006-01-02", req.Date)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parse date: %w", err)
 	}
 
 	transaction := &model.Transaction{
@@ -114,7 +131,7 @@ func (s *TransactionService) CreateTransaction(ctx context.Context, req request.
 
 	if req.Type == "sell" {
 		if err := s.createRealizedGainLoss(ctx, tx, transaction.ID, transaction); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("create realized gain/loss: %w", err)
 		}
 	}
 
@@ -126,11 +143,12 @@ func (s *TransactionService) CreateTransaction(ctx context.Context, req request.
 		//nolint:gosec // G118: Background context is intentional — goroutine outlives the HTTP request.
 		go func() {
 			if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), transaction.Date, nil, "", req.PortfolioFundID); err != nil {
-				log.Printf("failed to regenerate materialized table: %v", err)
+				txLog.Warn("failed to regenerate materialized table after transaction creation", "error", err)
 			}
 		}()
 	}
 
+	txLog.InfoContext(ctx, "transaction created", "transactionID", transaction.ID, "type", transaction.Type, "shares", transaction.Shares)
 	return transaction, nil
 }
 
@@ -156,6 +174,7 @@ func (s *TransactionService) UpdateTransaction(
 	id string,
 	req request.UpdateTransactionRequest,
 ) (*model.Transaction, error) {
+	txLog.DebugContext(ctx, "updating transaction", "transactionID", id)
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -165,7 +184,7 @@ func (s *TransactionService) UpdateTransaction(
 
 	transaction, err := s.transactionRepo.WithTx(tx).GetTransactionByID(id)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get transaction: %w", err)
 	}
 
 	oldType := transaction.Type
@@ -173,7 +192,7 @@ func (s *TransactionService) UpdateTransaction(
 	oldPortfolioFundID := transaction.PortfolioFundID
 
 	if err := s.applyTransactionUpdates(tx, &transaction, req); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("apply transaction updates: %w", err)
 	}
 
 	if oldType == "sell" || transaction.Type == "sell" {
@@ -184,7 +203,7 @@ func (s *TransactionService) UpdateTransaction(
 		}
 		if transaction.Type == "sell" {
 			if err := s.createRealizedGainLoss(ctx, tx, id, &transaction); err != nil {
-				return nil, err
+				return nil, fmt.Errorf("create realized gain/loss: %w", err)
 			}
 		}
 	}
@@ -205,19 +224,20 @@ func (s *TransactionService) UpdateTransaction(
 		//nolint:gosec // G118: Background context is intentional — goroutine outlives the HTTP request.
 		go func() {
 			if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), regenDate, nil, "", transaction.PortfolioFundID); err != nil {
-				log.Printf("failed to regenerate materialized table: %v", err)
+				txLog.Warn("failed to regenerate materialized table after transaction update", "error", err)
 			}
 		}()
 		if oldPortfolioFundID != transaction.PortfolioFundID {
 			//nolint:gosec // G118: Background context is intentional — goroutine outlives the HTTP request.
 			go func() {
 				if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), regenDate, nil, "", oldPortfolioFundID); err != nil {
-					log.Printf("failed to regenerate materialized table for old portfolio-fund: %v", err)
+					txLog.Warn("failed to regenerate materialized table for old portfolio-fund", "error", err)
 				}
 			}()
 		}
 	}
 
+	txLog.InfoContext(ctx, "transaction updated", "transactionID", id)
 	return &transaction, nil
 }
 
@@ -232,6 +252,7 @@ func (s *TransactionService) UpdateTransaction(
 // Returns ErrTransactionNotFound if the transaction does not exist.
 // Returns an error if the database deletion fails.
 func (s *TransactionService) DeleteTransaction(ctx context.Context, id string) error {
+	txLog.DebugContext(ctx, "deleting transaction", "transactionID", id)
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -241,7 +262,7 @@ func (s *TransactionService) DeleteTransaction(ctx context.Context, id string) e
 
 	transaction, err := s.transactionRepo.WithTx(tx).GetTransactionByID(id)
 	if err != nil {
-		return err
+		return fmt.Errorf("get transaction: %w", err)
 	}
 
 	if transaction.Type == "sell" {
@@ -281,11 +302,12 @@ func (s *TransactionService) DeleteTransaction(ctx context.Context, id string) e
 		//nolint:gosec // G118: Background context is intentional — goroutine outlives the HTTP request.
 		go func() {
 			if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), transaction.Date, nil, "", transaction.PortfolioFundID); err != nil {
-				log.Printf("failed to regenerate materialized table: %v", err)
+				txLog.Warn("failed to regenerate materialized table after transaction deletion", "error", err)
 			}
 		}()
 	}
 
+	txLog.InfoContext(ctx, "transaction deleted", "transactionID", id)
 	return nil
 }
 
@@ -343,14 +365,14 @@ func (s *TransactionService) applyTransactionUpdates(tx *sql.Tx, transaction *mo
 	if req.PortfolioFundID != nil {
 		_, err := s.pfRepo.WithTx(tx).GetPortfolioFund(*req.PortfolioFundID)
 		if err != nil {
-			return err
+			return fmt.Errorf("get portfolio fund: %w", err)
 		}
 		transaction.PortfolioFundID = *req.PortfolioFundID
 	}
 	if req.Date != nil {
 		transactionDate, err := time.Parse("2006-01-02", *req.Date)
 		if err != nil {
-			return err
+			return fmt.Errorf("parse date: %w", err)
 		}
 		transaction.Date = transactionDate.UTC()
 	}
@@ -380,7 +402,7 @@ func (s *TransactionService) createRealizedGainLoss(ctx context.Context, tx *sql
 
 	pf, err := s.pfRepo.WithTx(tx).GetPortfolioFund(transaction.PortfolioFundID)
 	if err != nil {
-		return err
+		return fmt.Errorf("get portfolio fund: %w", err)
 	}
 
 	avgCost := 0.0

@@ -11,10 +11,13 @@ import (
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/request"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/response"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/apperrors"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/logging"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/service"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/validation"
 )
+
+var fundLog = logging.NewLogger("fund")
 
 // FundHandler handles HTTP requests for fund endpoints.
 // It serves as the HTTP layer adapter, parsing requests and delegating
@@ -41,11 +44,13 @@ func NewFundHandler(fundService *service.FundService, materializedService *servi
 // Endpoint: GET /api/fund
 // Response: 200 OK with array of Fund
 // Error: 500 Internal Server Error if retrieval fails
-func (h *FundHandler) GetAllFunds(w http.ResponseWriter, _ *http.Request) {
+func (h *FundHandler) GetAllFunds(w http.ResponseWriter, r *http.Request) {
+	fundLog.DebugContext(r.Context(), "get all funds request")
 
 	funds, err := h.fundService.GetAllFunds()
 	if err != nil {
-		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToRetrieveFunds.Error(), err.Error())
+		fundLog.ErrorContext(r.Context(), "failed to get all funds", "error", err)
+		response.RespondInternalError(w, r, apperrors.ErrFailedToRetrieveFunds.Error())
 		return
 	}
 
@@ -64,14 +69,17 @@ func (h *FundHandler) GetFund(w http.ResponseWriter, r *http.Request) {
 
 	fundID := chi.URLParam(r, "uuid")
 
+	fundLog.DebugContext(r.Context(), "get fund request", "fund_id", fundID)
+
 	fund, err := h.fundService.GetFund(fundID)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrFundNotFound) {
-			response.RespondError(w, http.StatusNotFound, apperrors.ErrFundNotFound.Error(), err.Error())
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrFundNotFound.Error(), "")
 			return
 		}
 
-		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToRetrieveFund.Error(), err.Error())
+		fundLog.ErrorContext(r.Context(), "failed to get fund", "error", err, "fund_id", fundID)
+		response.RespondInternalError(w, r, apperrors.ErrFailedToRetrieveFund.Error())
 		return
 	}
 
@@ -88,6 +96,9 @@ func (h *FundHandler) GetFund(w http.ResponseWriter, r *http.Request) {
 func (h *FundHandler) GetSymbol(w http.ResponseWriter, r *http.Request) {
 
 	symbol := chi.URLParam(r, "symbol")
+
+	fundLog.DebugContext(r.Context(), "get symbol request", "symbol", symbol)
+
 	if symbol == "" {
 		response.RespondError(w, http.StatusBadRequest, apperrors.ErrInvalidSymbol.Error(), "")
 		return
@@ -96,10 +107,11 @@ func (h *FundHandler) GetSymbol(w http.ResponseWriter, r *http.Request) {
 	symbolresponse, err := h.fundService.GetSymbol(symbol)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrSymbolNotFound) {
-			response.RespondError(w, http.StatusNotFound, apperrors.ErrSymbolNotFound.Error(), err.Error())
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrSymbolNotFound.Error(), "")
 			return
 		}
-		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToRetrieveSymbol.Error(), err.Error())
+		fundLog.ErrorContext(r.Context(), "failed to get symbol", "error", err, "symbol", symbol)
+		response.RespondInternalError(w, r, apperrors.ErrFailedToRetrieveSymbol.Error())
 		return
 	}
 
@@ -121,6 +133,12 @@ func (h *FundHandler) GetFundHistory(w http.ResponseWriter, r *http.Request) {
 
 	portfolioID := chi.URLParam(r, "uuid")
 
+	fundLog.DebugContext(r.Context(), "get fund history request",
+		"portfolio_id", portfolioID,
+		"start_date", r.URL.Query().Get("start_date"),
+		"end_date", r.URL.Query().Get("end_date"),
+	)
+
 	startDate, endDate, err := parseDateParams(r)
 	if err != nil {
 		response.RespondError(w, http.StatusBadRequest, "Invalid date parameters", err.Error())
@@ -129,7 +147,8 @@ func (h *FundHandler) GetFundHistory(w http.ResponseWriter, r *http.Request) {
 
 	fundHistory, err := h.materializedService.GetFundHistoryWithFallback(portfolioID, startDate, endDate)
 	if err != nil {
-		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToRetrieveFundHistory.Error(), err.Error())
+		fundLog.ErrorContext(r.Context(), "failed to get fund history", "error", err, "portfolio_id", portfolioID)
+		response.RespondInternalError(w, r, apperrors.ErrFailedToRetrieveFundHistory.Error())
 		return
 	}
 
@@ -147,6 +166,8 @@ func (h *FundHandler) GetFundPrices(w http.ResponseWriter, r *http.Request) {
 
 	fundID := chi.URLParam(r, "uuid")
 
+	fundLog.DebugContext(r.Context(), "get fund prices request", "fund_id", fundID)
+
 	startDate, err := time.Parse("2006-01-02", "1970-01-01")
 	if err != nil {
 		panic("impossible: hardcoded date failed to parse: " + err.Error())
@@ -155,7 +176,8 @@ func (h *FundHandler) GetFundPrices(w http.ResponseWriter, r *http.Request) {
 
 	funds, err := h.fundService.LoadFundPrices([]string{fundID}, startDate, endDate, false)
 	if err != nil {
-		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToRetrieveFunds.Error(), err.Error())
+		fundLog.ErrorContext(r.Context(), "failed to get fund prices", "error", err, "fund_id", fundID)
+		response.RespondInternalError(w, r, apperrors.ErrFailedToRetrieveFunds.Error())
 		return
 	}
 
@@ -178,9 +200,12 @@ func (h *FundHandler) GetFundPrices(w http.ResponseWriter, r *http.Request) {
 func (h *FundHandler) CheckUsage(w http.ResponseWriter, r *http.Request) {
 	fundID := chi.URLParam(r, "uuid")
 
+	fundLog.DebugContext(r.Context(), "check fund usage request", "fund_id", fundID)
+
 	fundUsage, err := h.fundService.CheckUsage(fundID)
 	if err != nil {
-		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToRetrieveUsage.Error(), err.Error())
+		fundLog.ErrorContext(r.Context(), "failed to check fund usage", "error", err, "fund_id", fundID)
+		response.RespondInternalError(w, r, apperrors.ErrFailedToRetrieveUsage.Error())
 		return
 	}
 
@@ -204,26 +229,27 @@ func (h *FundHandler) CheckUsage(w http.ResponseWriter, r *http.Request) {
 // Error: 400 Bad Request if validation fails
 // Error: 500 Internal Server Error if creation fails
 func (h *FundHandler) CreateFund(w http.ResponseWriter, r *http.Request) {
+	fundLog.DebugContext(r.Context(), "create fund request")
+
 	req, err := parseJSON[request.CreateFundRequest](r)
 	if err != nil {
-
 		response.RespondError(w, http.StatusBadRequest, "invalid request body", err.Error())
 		return
 	}
 
 	if err := validation.ValidateCreateFund(req); err != nil {
-
 		response.RespondError(w, http.StatusBadRequest, "validation failed", err.Error())
 		return
 	}
 
 	portfolio, err := h.fundService.CreateFund(r.Context(), req)
 	if err != nil {
-
-		response.RespondError(w, http.StatusInternalServerError, "failed to create fund", err.Error())
+		fundLog.ErrorContext(r.Context(), "failed to create fund", "error", err)
+		response.RespondInternalError(w, r, "failed to create fund")
 		return
 	}
 
+	fundLog.InfoContext(r.Context(), "fund created", "id", portfolio.ID, "name", portfolio.Name)
 	response.RespondJSON(w, http.StatusCreated, portfolio)
 }
 
@@ -249,15 +275,15 @@ func (h *FundHandler) CreateFund(w http.ResponseWriter, r *http.Request) {
 func (h *FundHandler) UpdateFund(w http.ResponseWriter, r *http.Request) {
 	fundID := chi.URLParam(r, "uuid")
 
+	fundLog.DebugContext(r.Context(), "update fund request", "fund_id", fundID)
+
 	req, err := parseJSON[request.UpdateFundRequest](r)
 	if err != nil {
-
 		response.RespondError(w, http.StatusBadRequest, "invalid request body", err.Error())
 		return
 	}
 
 	if err := validation.ValidateUpdateFund(req); err != nil {
-
 		response.RespondError(w, http.StatusBadRequest, "validation failed", err.Error())
 		return
 	}
@@ -265,15 +291,16 @@ func (h *FundHandler) UpdateFund(w http.ResponseWriter, r *http.Request) {
 	portfolio, err := h.fundService.UpdateFund(r.Context(), fundID, req)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrFundNotFound) {
-
-			response.RespondError(w, http.StatusNotFound, apperrors.ErrFundNotFound.Error(), err.Error())
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrFundNotFound.Error(), "")
 			return
 		}
 
-		response.RespondError(w, http.StatusInternalServerError, "failed to update fund", err.Error())
+		fundLog.ErrorContext(r.Context(), "failed to update fund", "error", err, "fund_id", fundID)
+		response.RespondInternalError(w, r, "failed to update fund")
 		return
 	}
 
+	fundLog.InfoContext(r.Context(), "fund updated", "id", portfolio.ID)
 	response.RespondJSON(w, http.StatusOK, portfolio)
 }
 
@@ -291,24 +318,26 @@ func (h *FundHandler) UpdateFund(w http.ResponseWriter, r *http.Request) {
 func (h *FundHandler) DeleteFund(w http.ResponseWriter, r *http.Request) {
 	fundID := chi.URLParam(r, "uuid")
 
+	fundLog.DebugContext(r.Context(), "delete fund request", "fund_id", fundID)
+
 	err := h.fundService.DeleteFund(r.Context(), fundID)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrFundNotFound) {
-
-			response.RespondError(w, http.StatusNotFound, apperrors.ErrFundNotFound.Error(), err.Error())
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrFundNotFound.Error(), "")
 			return
 		}
 
 		if errors.Is(err, apperrors.ErrFundInUse) {
-
-			response.RespondError(w, http.StatusConflict, "cannot delete fund: in use by portfolio", err.Error())
+			response.RespondError(w, http.StatusConflict, "cannot delete fund: in use by portfolio", "")
 			return
 		}
 
-		response.RespondError(w, http.StatusInternalServerError, "failed to delete fund", err.Error())
+		fundLog.ErrorContext(r.Context(), "failed to delete fund", "error", err, "fund_id", fundID)
+		response.RespondInternalError(w, r, "failed to delete fund")
 		return
 	}
 
+	fundLog.InfoContext(r.Context(), "fund deleted", "fund_id", fundID)
 	response.RespondJSON(w, http.StatusNoContent, nil)
 }
 
@@ -332,6 +361,8 @@ func (h *FundHandler) UpdateFundPrice(w http.ResponseWriter, r *http.Request) {
 	fundID := chi.URLParam(r, "uuid")
 	updateType := r.URL.Query().Get("type")
 
+	fundLog.DebugContext(r.Context(), "update fund price request", "fund_id", fundID, "type", updateType)
+
 	if updateType != "today" && updateType != "historical" {
 		response.RespondError(w, http.StatusBadRequest, "type requires 'today' or 'historical'", "")
 		return
@@ -343,10 +374,11 @@ func (h *FundHandler) UpdateFundPrice(w http.ResponseWriter, r *http.Request) {
 		_, newPrices, err := h.fundService.UpdateCurrentFundPrice(r.Context(), fundID)
 		if err != nil {
 			if errors.Is(err, apperrors.ErrFundNotFound) {
-				response.RespondError(w, http.StatusNotFound, apperrors.ErrFundNotFound.Error(), err.Error())
+				response.RespondError(w, http.StatusNotFound, apperrors.ErrFundNotFound.Error(), "")
 				return
 			}
-			response.RespondError(w, http.StatusInternalServerError, "cannot update current fund price", err.Error())
+			fundLog.ErrorContext(r.Context(), "failed to update current fund price", "error", err, "fund_id", fundID)
+			response.RespondInternalError(w, r, "cannot update current fund price")
 			return
 		}
 		resp = model.FundPriceUpdateResponse{
@@ -358,10 +390,11 @@ func (h *FundHandler) UpdateFundPrice(w http.ResponseWriter, r *http.Request) {
 		count, err := h.fundService.UpdateHistoricalFundPrice(r.Context(), fundID)
 		if err != nil {
 			if errors.Is(err, apperrors.ErrFundNotFound) {
-				response.RespondError(w, http.StatusNotFound, apperrors.ErrFundNotFound.Error(), err.Error())
+				response.RespondError(w, http.StatusNotFound, apperrors.ErrFundNotFound.Error(), "")
 				return
 			}
-			response.RespondError(w, http.StatusInternalServerError, "cannot update historical fund prices", err.Error())
+			fundLog.ErrorContext(r.Context(), "failed to update historical fund prices", "error", err, "fund_id", fundID)
+			response.RespondInternalError(w, r, "cannot update historical fund prices")
 			return
 		}
 		resp = model.FundPriceUpdateResponse{
@@ -371,6 +404,7 @@ func (h *FundHandler) UpdateFundPrice(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	fundLog.InfoContext(r.Context(), "fund price updated", "fund_id", fundID, "type", updateType)
 	response.RespondJSON(w, http.StatusOK, resp)
 }
 
@@ -378,15 +412,20 @@ func (h *FundHandler) UpdateFundPrice(w http.ResponseWriter, r *http.Request) {
 // Returns 200 on full or partial success, 500 on total failure, 404 if no funds exist.
 // The response includes detailed success/error information for each fund.
 func (h *FundHandler) UpdateAllFundHistory(w http.ResponseWriter, r *http.Request) {
+	fundLog.DebugContext(r.Context(), "update all fund history request")
+
 	resp, err := h.fundService.UpdateAllFundHistory(r.Context())
 	if err != nil {
 		if errors.Is(err, apperrors.ErrFundNotFound) {
-			response.RespondError(w, http.StatusNotFound, apperrors.ErrFundNotFound.Error(), err.Error())
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrFundNotFound.Error(), "")
 			return
 		}
+		fundLog.ErrorContext(r.Context(), "failed to update all fund history", "error", err)
 		// Total failure - return structured response with all error details
 		response.RespondJSON(w, http.StatusInternalServerError, resp)
 		return
 	}
+
+	fundLog.InfoContext(r.Context(), "all fund history updated")
 	response.RespondJSON(w, http.StatusOK, resp)
 }

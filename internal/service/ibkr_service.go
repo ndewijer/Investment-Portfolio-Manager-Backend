@@ -7,7 +7,6 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"log"
 	"math"
 	"strings"
 	"time"
@@ -17,9 +16,12 @@ import (
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/request"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/apperrors"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/ibkr"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/logging"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/repository"
 )
+
+var ibkrLog = logging.NewLogger("ibkr")
 
 // IbkrService handles IBKR (Interactive Brokers) integration business logic operations.
 type IbkrService struct {
@@ -104,13 +106,14 @@ func (s *IbkrService) SetMaterializedInvalidator(m MaterializedInvalidator) {
 // GetIbkrConfig retrieves the IBKR integration configuration.
 // Adds a token expiration warning if the token expires within 30 days.
 func (s *IbkrService) GetIbkrConfig() (*model.IbkrConfig, error) {
+	ibkrLog.Debug("retrieving ibkr config")
 	config, err := s.ibkrRepo.GetIbkrConfig()
 
 	if err != nil {
 		if errors.Is(err, apperrors.ErrIbkrConfigNotFound) {
 			return &model.IbkrConfig{Configured: false}, nil
 		}
-		return &model.IbkrConfig{}, err
+		return &model.IbkrConfig{}, fmt.Errorf("get ibkr config: %w", err)
 	}
 	if config == nil {
 		return nil, fmt.Errorf("unexpected nil config")
@@ -130,30 +133,50 @@ func (s *IbkrService) GetIbkrConfig() (*model.IbkrConfig, error) {
 // GetActivePortfolios retrieves all active portfolios that can be used for IBKR import allocation.
 // Returns portfolios that are not archived and not excluded from tracking.
 func (s *IbkrService) GetActivePortfolios() ([]model.Portfolio, error) {
-	return s.portfolioRepo.GetPortfolios(model.PortfolioFilter{
+	ibkrLog.Debug("retrieving active portfolios for ibkr")
+	portfolios, err := s.portfolioRepo.GetPortfolios(model.PortfolioFilter{
 		IncludeArchived: false,
 		IncludeExcluded: false,
 	})
+	if err != nil {
+		return nil, fmt.Errorf("get active portfolios: %w", err)
+	}
+	return portfolios, nil
 }
 
 // GetPendingDividends retrieves dividend records with PENDING reinvestment status.
 // These dividends can be matched to incoming IBKR dividend transactions.
 // Optionally filters by fund symbol or ISIN.
 func (s *IbkrService) GetPendingDividends(symbol, isin string) ([]model.PendingDividend, error) {
-	return s.ibkrRepo.GetPendingDividends(symbol, isin)
+	ibkrLog.Debug("retrieving pending dividends", "symbol", symbol, "isin", isin)
+	dividends, err := s.ibkrRepo.GetPendingDividends(symbol, isin)
+	if err != nil {
+		return nil, fmt.Errorf("get pending dividends: %w", err)
+	}
+	return dividends, nil
 }
 
 // GetInbox retrieves IBKR imported transactions from the inbox.
 // Returns transactions filtered by status (defaults to "pending") and optionally by transaction type.
 // Used to display imported IBKR transactions that need to be allocated to portfolios.
 func (s *IbkrService) GetInbox(status, transactionType string) ([]model.IBKRTransaction, error) {
-	return s.ibkrRepo.GetInbox(status, transactionType)
+	ibkrLog.Debug("retrieving inbox", "status", status, "transactionType", transactionType)
+	inbox, err := s.ibkrRepo.GetInbox(status, transactionType)
+	if err != nil {
+		return nil, fmt.Errorf("get inbox: %w", err)
+	}
+	return inbox, nil
 }
 
 // GetInboxCount retrieves the count of IBKR imported transactions with status "pending".
 // Returns only the count without fetching full transaction records for efficiency.
 func (s *IbkrService) GetInboxCount() (model.IBKRInboxCount, error) {
-	return s.ibkrRepo.GetIbkrInboxCount()
+	ibkrLog.Debug("retrieving inbox count")
+	count, err := s.ibkrRepo.GetIbkrInboxCount()
+	if err != nil {
+		return model.IBKRInboxCount{}, fmt.Errorf("get inbox count: %w", err)
+	}
+	return count, nil
 }
 
 // GetTransactionAllocations retrieves the allocation details for an IBKR transaction.
@@ -169,15 +192,16 @@ func (s *IbkrService) GetInboxCount() (model.IBKRInboxCount, error) {
 // Returns the transaction allocation summary with portfolio-level details,
 // or an error if the transaction is not found or a database error occurs.
 func (s *IbkrService) GetTransactionAllocations(transactionID string) (model.IBKRAllocation, error) {
+	ibkrLog.Debug("retrieving transaction allocations", "transactionID", transactionID)
 
 	ibkrTransaction, err := s.ibkrRepo.GetIbkrTransaction(transactionID)
 	if err != nil {
-		return model.IBKRAllocation{}, err
+		return model.IBKRAllocation{}, fmt.Errorf("get ibkr transaction: %w", err)
 	}
 
 	allocationDetails, err := s.ibkrRepo.GetIbkrTransactionAllocations(transactionID)
 	if err != nil {
-		return model.IBKRAllocation{}, err
+		return model.IBKRAllocation{}, fmt.Errorf("get transaction allocations: %w", err)
 	}
 
 	feesByID := make(map[string]float64)
@@ -232,9 +256,10 @@ func (s *IbkrService) GetTransactionAllocations(transactionID string) (model.IBK
 //   - Only returns error for database failures, not for "fund not found"
 //   - ErrIBKRTransactionNotFound if the transaction doesn't exist
 func (s *IbkrService) GetEligiblePortfolios(transactionID string) (model.IBKREligiblePortfolioResponse, error) {
+	ibkrLog.Debug("retrieving eligible portfolios", "transactionID", transactionID)
 	transaction, err := s.ibkrRepo.GetIbkrTransaction(transactionID)
 	if err != nil {
-		return model.IBKREligiblePortfolioResponse{}, err
+		return model.IBKREligiblePortfolioResponse{}, fmt.Errorf("get ibkr transaction: %w", err)
 	}
 
 	fund, err := s.findFundByISINOrSymbol(transaction.ISIN, transaction.Symbol)
@@ -249,7 +274,7 @@ func (s *IbkrService) GetEligiblePortfolios(transactionID string) (model.IBKREli
 		}, nil
 	}
 	if err != nil {
-		return model.IBKREligiblePortfolioResponse{}, err
+		return model.IBKREligiblePortfolioResponse{}, fmt.Errorf("find fund by isin or symbol: %w", err)
 	}
 
 	matchedBy := "symbol"
@@ -259,7 +284,7 @@ func (s *IbkrService) GetEligiblePortfolios(transactionID string) (model.IBKREli
 
 	portfolios, err := s.portfolioRepo.GetPortfoliosByFundID(fund.ID)
 	if err != nil {
-		return model.IBKREligiblePortfolioResponse{}, err
+		return model.IBKREligiblePortfolioResponse{}, fmt.Errorf("get portfolios by fund: %w", err)
 	}
 
 	warning := ""
@@ -289,17 +314,18 @@ func (s *IbkrService) GetEligiblePortfolios(transactionID string) (model.IBKREli
 //
 //nolint:gocyclo // Primary Flex Report Import orchestrator. Mostly filled with error handling.
 func (s *IbkrService) ImportFlexReport(ctx context.Context) (int, int, error) {
+	ibkrLog.DebugContext(ctx, "starting flex report import")
 
 	config, err := s.GetIbkrConfig()
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, fmt.Errorf("get ibkr config: %w", err)
 	}
 
 	cache, err := s.ibkrRepo.GetIbkrImportCache()
 	if err != nil {
 		// No cache is fine, error on the rest.
 		if !errors.Is(err, apperrors.ErrIbkrImportCacheNotFound) {
-			return 0, 0, err
+			return 0, 0, fmt.Errorf("get import cache: %w", err)
 		}
 	}
 	var req ibkr.FlexQueryResponse
@@ -307,20 +333,22 @@ func (s *IbkrService) ImportFlexReport(ctx context.Context) (int, int, error) {
 	var cacheSet bool
 
 	if cache.ExpiresAt.IsZero() || cache.ExpiresAt.Before(time.Now().UTC()) {
+		ibkrLog.DebugContext(ctx, "import cache expired or missing, fetching from ibkr api")
 		token, err := s.decryptToken(config.FlexToken)
 		if err != nil {
-			return 0, 0, err
+			return 0, 0, fmt.Errorf("decrypt token: %w", err)
 		}
 
 		req, body, err = s.ibkrClient.RetreiveIbkrFlexReport(ctx, token, config.FlexQueryID)
 		if err != nil {
-			return 0, 0, err
+			return 0, 0, fmt.Errorf("retrieve flex report: %w", err)
 		}
 	} else {
+		ibkrLog.DebugContext(ctx, "using cached import data", "expiresAt", cache.ExpiresAt)
 		cacheSet = true
 		err := xml.Unmarshal(cache.Data, &req)
 		if err != nil {
-			return 0, 0, err
+			return 0, 0, fmt.Errorf("unmarshal cached flex report: %w", err)
 		}
 	}
 
@@ -336,13 +364,13 @@ func (s *IbkrService) ImportFlexReport(ctx context.Context) (int, int, error) {
 			ExpiresAt: now.Add(time.Hour),
 		}
 		if err := s.writeImportCache(ctx, importCache); err != nil {
-			return 0, 0, err
+			return 0, 0, fmt.Errorf("write import cache: %w", err)
 		}
 	}
 
 	report, rates, err := s.parseIBKRFlexReport(req)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, fmt.Errorf("parse flex report: %w", err)
 	}
 
 	missingTransactions := []model.IBKRTransaction{}
@@ -355,13 +383,13 @@ func (s *IbkrService) ImportFlexReport(ctx context.Context) (int, int, error) {
 
 	if len(missingTransactions) > 0 {
 		if err := s.AddIbkrTransactions(ctx, missingTransactions); err != nil {
-			return 0, 0, err
+			return 0, 0, fmt.Errorf("add transactions: %w", err)
 		}
 	}
 
 	if len(rates) > 0 {
 		if err := s.addExchangeRates(ctx, rates); err != nil {
-			return 0, 0, err
+			return 0, 0, fmt.Errorf("add exchange rates: %w", err)
 		}
 	}
 
@@ -369,6 +397,7 @@ func (s *IbkrService) ImportFlexReport(ctx context.Context) (int, int, error) {
 		return 0, 0, fmt.Errorf("ImportFlexReport: failed to update last_import_date: %w", err)
 	}
 
+	ibkrLog.InfoContext(ctx, "flex report import completed", "imported", len(missingTransactions), "skipped", len(report)-len(missingTransactions), "exchangeRates", len(rates))
 	return len(missingTransactions), len(report) - len(missingTransactions), nil
 }
 
@@ -394,7 +423,7 @@ func (s *IbkrService) encryptToken(token string) (string, error) {
 	}
 	encryptedToken, err := fernet.EncryptAndSign([]byte(token), s.encryptionKey)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("encrypt token: %w", err)
 	}
 	if encryptedToken == nil {
 		return "", fmt.Errorf("encryption failed")
@@ -413,7 +442,7 @@ func (s *IbkrService) writeImportCache(ctx context.Context, importCache model.Ib
 	defer func() { _ = tx.Rollback() }() //nolint:errcheck
 
 	if err := s.ibkrRepo.WithTx(tx).WriteImportCache(ctx, importCache); err != nil {
-		return err
+		return fmt.Errorf("write import cache: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -435,7 +464,7 @@ func (s *IbkrService) addExchangeRates(ctx context.Context, rates []model.Exchan
 	for _, v := range rates {
 
 		if err = s.developerRepository.WithTx(tx).UpdateExchangeRate(ctx, v); err != nil {
-			return err
+			return fmt.Errorf("update exchange rate: %w", err)
 		}
 	}
 
@@ -449,6 +478,7 @@ func (s *IbkrService) addExchangeRates(ctx context.Context, rates []model.Exchan
 // AddIbkrTransactions persists a slice of IBKR transactions to the database within a single transaction.
 // Returns an error if the transaction cannot be started or if any insert fails.
 func (s *IbkrService) AddIbkrTransactions(ctx context.Context, transactions []model.IBKRTransaction) error {
+	ibkrLog.DebugContext(ctx, "adding ibkr transactions", "count", len(transactions))
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
@@ -456,7 +486,7 @@ func (s *IbkrService) AddIbkrTransactions(ctx context.Context, transactions []mo
 	defer func() { _ = tx.Rollback() }() //nolint:errcheck
 
 	if err = s.ibkrRepo.WithTx(tx).AddIbkrTransactions(ctx, transactions); err != nil {
-		return err
+		return fmt.Errorf("add ibkr transactions: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -476,7 +506,7 @@ func (s *IbkrService) parseIBKRFlexReport(report ibkr.FlexQueryResponse) ([]mode
 	for i, v := range report.FlexStatements.FlexStatement.Trades.Trade {
 		transactionDate, err := time.Parse("20060102", v.TradeDate)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, fmt.Errorf("parse trade date for transaction %d: %w", v.TransactionID, err)
 		}
 
 		reportDate, err := time.Parse("20060102", v.ReportDate)
@@ -520,7 +550,7 @@ func (s *IbkrService) parseIBKRFlexReport(report ibkr.FlexQueryResponse) ([]mode
 	for i, v := range report.FlexStatements.FlexStatement.ConversionRates.ConversionRate {
 		reportDate, err := time.Parse("20060102", v.ReportDate)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, fmt.Errorf("parse conversion rate report date: %w", err)
 		}
 
 		rate := model.ExchangeRate{
@@ -552,6 +582,7 @@ func (s *IbkrService) UpdateIbkrConfig(
 	ctx context.Context,
 	req request.UpdateIbkrConfigRequest,
 ) (*model.IbkrConfig, error) {
+	ibkrLog.DebugContext(ctx, "updating ibkr config")
 
 	var config *model.IbkrConfig
 	var err error
@@ -563,7 +594,7 @@ func (s *IbkrService) UpdateIbkrConfig(
 
 	config, err = s.ibkrRepo.WithTx(tx).GetIbkrConfig()
 	if err != nil && !errors.Is(err, apperrors.ErrIbkrConfigNotFound) {
-		return nil, err
+		return nil, fmt.Errorf("get ibkr config: %w", err)
 	} else if errors.Is(err, apperrors.ErrIbkrConfigNotFound) {
 		config.ID = uuid.New().String()
 		config.CreatedAt = time.Now().UTC()
@@ -603,7 +634,7 @@ func (s *IbkrService) UpdateIbkrConfig(
 	if req.FlexToken != nil && *req.FlexToken != "" {
 		encToken, err := s.encryptToken(*req.FlexToken)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("encrypt token: %w", err)
 		}
 		config.FlexToken = encToken
 	}
@@ -615,7 +646,7 @@ func (s *IbkrService) UpdateIbkrConfig(
 	if req.TokenExpiresAt != nil {
 		time, err := repository.ParseTime(*req.TokenExpiresAt)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("parse token expiration: %w", err)
 		}
 		config.TokenExpiresAt = &time
 	}
@@ -644,6 +675,7 @@ func (s *IbkrService) UpdateIbkrConfig(
 	}
 
 	config.Configured = true
+	ibkrLog.InfoContext(ctx, "ibkr config updated", "enabled", config.Enabled, "autoImport", config.AutoImportEnabled)
 
 	return config, nil
 }
@@ -651,12 +683,13 @@ func (s *IbkrService) UpdateIbkrConfig(
 // DeleteIbkrConfig removes the IBKR configuration from the database.
 // Returns ErrIbkrConfigNotFound (propagated from the repository) if no config exists.
 func (s *IbkrService) DeleteIbkrConfig(ctx context.Context) error {
-
+	ibkrLog.DebugContext(ctx, "deleting ibkr config")
 	err := s.ibkrRepo.DeleteIbkrConfig(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("delete ibkr config: %w", err)
 	}
 
+	ibkrLog.InfoContext(ctx, "ibkr config deleted")
 	return nil
 }
 
@@ -665,16 +698,21 @@ func (s *IbkrService) DeleteIbkrConfig(ctx context.Context) error {
 // than from the encrypted config — this is intentional for a pre-save credential check.
 // Returns true if IBKR accepts the credentials, or an error if the call fails.
 func (s *IbkrService) TestIbkrConnection(ctx context.Context, req request.TestIbkrConnectionRequest) (bool, error) {
-
-	return s.ibkrClient.TestIbkrConnection(ctx, req.FlexToken, req.FlexQueryID)
+	ibkrLog.DebugContext(ctx, "testing ibkr connection", "flexQueryID", req.FlexQueryID)
+	ok, err := s.ibkrClient.TestIbkrConnection(ctx, req.FlexToken, req.FlexQueryID)
+	if err != nil {
+		return false, fmt.Errorf("test ibkr connection: %w", err)
+	}
+	return ok, nil
 }
 
 // GetIbkrTransactionDetail retrieves a single IBKR transaction with its allocation details.
 // If the transaction is processed, allocations are included in the response.
 func (s *IbkrService) GetIbkrTransactionDetail(transactionID string) (model.IBKRTransactionDetail, error) {
+	ibkrLog.Debug("retrieving ibkr transaction detail", "transactionID", transactionID)
 	tx, err := s.ibkrRepo.GetIbkrTransaction(transactionID)
 	if err != nil {
-		return model.IBKRTransactionDetail{}, err
+		return model.IBKRTransactionDetail{}, fmt.Errorf("get ibkr transaction: %w", err)
 	}
 
 	detail := model.IBKRTransactionDetail{IBKRTransaction: tx}
@@ -682,7 +720,7 @@ func (s *IbkrService) GetIbkrTransactionDetail(transactionID string) (model.IBKR
 	if tx.Status == "processed" {
 		alloc, err := s.GetTransactionAllocations(transactionID)
 		if err != nil {
-			return model.IBKRTransactionDetail{}, err
+			return model.IBKRTransactionDetail{}, fmt.Errorf("get transaction allocations: %w", err)
 		}
 		detail.Allocations = alloc.Allocations
 	}
@@ -693,21 +731,28 @@ func (s *IbkrService) GetIbkrTransactionDetail(transactionID string) (model.IBKR
 // DeleteIbkrTransaction removes a pending IBKR transaction.
 // Returns ErrIBKRTransactionAlreadyProcessed if the transaction is not pending.
 func (s *IbkrService) DeleteIbkrTransaction(ctx context.Context, transactionID string) error {
+	ibkrLog.DebugContext(ctx, "deleting ibkr transaction", "transactionID", transactionID)
 	tx, err := s.ibkrRepo.GetIbkrTransaction(transactionID)
 	if err != nil {
-		return err
+		return fmt.Errorf("get ibkr transaction: %w", err)
 	}
 
 	if tx.Status != "pending" {
 		return apperrors.ErrIBKRTransactionAlreadyProcessed
 	}
 
-	return s.ibkrRepo.DeleteIbkrTransaction(ctx, transactionID)
+	if err := s.ibkrRepo.DeleteIbkrTransaction(ctx, transactionID); err != nil {
+		return fmt.Errorf("delete ibkr transaction: %w", err)
+	}
+
+	ibkrLog.InfoContext(ctx, "ibkr transaction deleted", "transaction_id", transactionID)
+	return nil
 }
 
 // IgnoreIbkrTransaction marks a pending IBKR transaction as ignored.
 // Returns ErrIBKRTransactionAlreadyProcessed if the transaction is not pending.
 func (s *IbkrService) IgnoreIbkrTransaction(ctx context.Context, transactionID string) error {
+	ibkrLog.DebugContext(ctx, "ignoring ibkr transaction", "transactionID", transactionID)
 	dbTx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
@@ -716,7 +761,7 @@ func (s *IbkrService) IgnoreIbkrTransaction(ctx context.Context, transactionID s
 
 	ibkrTx, err := s.ibkrRepo.WithTx(dbTx).GetIbkrTransaction(transactionID)
 	if err != nil {
-		return err
+		return fmt.Errorf("get ibkr transaction: %w", err)
 	}
 
 	if ibkrTx.Status != "pending" {
@@ -724,13 +769,14 @@ func (s *IbkrService) IgnoreIbkrTransaction(ctx context.Context, transactionID s
 	}
 
 	if err := s.ibkrRepo.WithTx(dbTx).UpdateIbkrTransactionStatus(ctx, transactionID, "ignored", nil); err != nil {
-		return err
+		return fmt.Errorf("update ibkr transaction status: %w", err)
 	}
 
 	if err := dbTx.Commit(); err != nil {
 		return fmt.Errorf("commit transaction: %w", err)
 	}
 
+	ibkrLog.InfoContext(ctx, "ibkr transaction ignored", "transaction_id", transactionID)
 	return nil
 }
 
@@ -739,7 +785,7 @@ func (s *IbkrService) IgnoreIbkrTransaction(ctx context.Context, transactionID s
 func (s *IbkrService) findFundByISINOrSymbol(isin, symbol string) (model.Fund, error) {
 	fund, err := s.fundRepository.GetFundBySymbolOrIsin("", isin)
 	if err != nil && !errors.Is(err, apperrors.ErrFundNotFound) {
-		return model.Fund{}, err
+		return model.Fund{}, fmt.Errorf("find fund by isin: %w", err)
 	}
 	if fund.ID != "" {
 		return fund, nil
@@ -747,7 +793,7 @@ func (s *IbkrService) findFundByISINOrSymbol(isin, symbol string) (model.Fund, e
 
 	fund, err = s.fundRepository.GetFundBySymbolOrIsin(symbol, "")
 	if err != nil && !errors.Is(err, apperrors.ErrFundNotFound) {
-		return model.Fund{}, err
+		return model.Fund{}, fmt.Errorf("find fund by symbol: %w", err)
 	}
 	if fund.ID != "" {
 		return fund, nil
@@ -761,6 +807,7 @@ func (s *IbkrService) findFundByISINOrSymbol(isin, symbol string) (model.Fund, e
 // Creates Transaction and IBKRTransactionAllocation records for each portfolio, including
 // separate fee transactions when fees > 0.
 func (s *IbkrService) AllocateIbkrTransaction(ctx context.Context, transactionID string, allocations []request.AllocationEntry) error {
+	ibkrLog.DebugContext(ctx, "allocating ibkr transaction", "transactionID", transactionID, "allocations", len(allocations))
 	dbTx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
@@ -769,17 +816,18 @@ func (s *IbkrService) AllocateIbkrTransaction(ctx context.Context, transactionID
 
 	ibkrTx, err := s.ibkrRepo.WithTx(dbTx).GetIbkrTransaction(transactionID)
 	if err != nil {
-		return err
+		return fmt.Errorf("get ibkr transaction: %w", err)
 	}
 
 	if err := s.allocateIbkrTransactionTx(ctx, dbTx, transactionID, allocations); err != nil {
-		return err
+		return fmt.Errorf("allocate transaction: %w", err)
 	}
 
 	if err := dbTx.Commit(); err != nil {
 		return fmt.Errorf("commit transaction: %w", err)
 	}
 
+	ibkrLog.InfoContext(ctx, "ibkr transaction allocated", "transactionID", transactionID)
 	s.triggerRegenFromAllocations(transactionID, ibkrTx.TransactionDate)
 
 	return nil
@@ -788,6 +836,7 @@ func (s *IbkrService) AllocateIbkrTransaction(ctx context.Context, transactionID
 // BulkAllocateIbkrTransactions allocates multiple IBKR transactions using the same allocation split.
 // Each transaction is allocated in its own DB transaction so partial success is possible.
 func (s *IbkrService) BulkAllocateIbkrTransactions(ctx context.Context, req request.BulkAllocateRequest) model.BulkAllocateResponse {
+	ibkrLog.DebugContext(ctx, "bulk allocating ibkr transactions", "count", len(req.TransactionIDs))
 	resp := model.BulkAllocateResponse{Errors: []string{}}
 
 	for _, txID := range req.TransactionIDs {
@@ -799,6 +848,14 @@ func (s *IbkrService) BulkAllocateIbkrTransactions(ctx context.Context, req requ
 		}
 	}
 
+	if resp.Failed > 0 && resp.Success > 0 {
+		ibkrLog.Warn("bulk allocation partially succeeded", "success", resp.Success, "failed", resp.Failed)
+	} else if resp.Failed > 0 {
+		ibkrLog.Warn("bulk allocation failed for all transactions", "failed", resp.Failed)
+	} else {
+		ibkrLog.InfoContext(ctx, "bulk allocation completed", "success", resp.Success)
+	}
+
 	return resp
 }
 
@@ -808,7 +865,7 @@ func (s *IbkrService) BulkAllocateIbkrTransactions(ctx context.Context, req requ
 func (s *IbkrService) unallocateIbkrTransactionTx(ctx context.Context, dbTx *sql.Tx, transactionID string) error {
 	ibkrTx, err := s.ibkrRepo.WithTx(dbTx).GetIbkrTransaction(transactionID)
 	if err != nil {
-		return err
+		return fmt.Errorf("get ibkr transaction: %w", err)
 	}
 
 	if ibkrTx.Status != "processed" {
@@ -842,9 +899,10 @@ func (s *IbkrService) unallocateIbkrTransactionTx(ctx context.Context, dbTx *sql
 // Deletes all linked Transaction and IBKRTransactionAllocation records, then resets
 // the status to "pending".
 func (s *IbkrService) UnallocateIbkrTransaction(ctx context.Context, transactionID string) error {
+	ibkrLog.DebugContext(ctx, "unallocating ibkr transaction", "transactionID", transactionID)
 	ibkrTx, err := s.ibkrRepo.GetIbkrTransaction(transactionID)
 	if err != nil {
-		return err
+		return fmt.Errorf("get ibkr transaction: %w", err)
 	}
 
 	portfolioIDs := s.collectPortfolioIDsFromAllocations(transactionID)
@@ -856,18 +914,20 @@ func (s *IbkrService) UnallocateIbkrTransaction(ctx context.Context, transaction
 	defer func() { _ = dbTx.Rollback() }() //nolint:errcheck
 
 	if err := s.unallocateIbkrTransactionTx(ctx, dbTx, transactionID); err != nil {
-		return err
+		return fmt.Errorf("unallocate transaction: %w", err)
 	}
 
 	if err := dbTx.Commit(); err != nil {
 		return fmt.Errorf("commit transaction: %w", err)
 	}
 
+	ibkrLog.InfoContext(ctx, "ibkr transaction unallocated", "transaction_id", transactionID)
+
 	if s.materializedInvalidator != nil && len(portfolioIDs) > 0 {
 		//nolint:gosec // G118: Background context is intentional — goroutine outlives the HTTP request.
 		go func() {
 			if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), ibkrTx.TransactionDate, portfolioIDs, "", ""); err != nil {
-				log.Printf("failed to regenerate materialized table: %v", err)
+				ibkrLog.Warn("failed to regenerate materialized table after unallocation", "error", err)
 			}
 		}()
 	}
@@ -878,9 +938,10 @@ func (s *IbkrService) UnallocateIbkrTransaction(ctx context.Context, transaction
 // ModifyAllocations atomically unallocates and reallocates an IBKR transaction with new allocation percentages.
 // Both operations run in a single DB transaction for atomicity.
 func (s *IbkrService) ModifyAllocations(ctx context.Context, transactionID string, allocations []request.AllocationEntry) error {
+	ibkrLog.DebugContext(ctx, "modifying ibkr allocations", "transactionID", transactionID, "allocations", len(allocations))
 	ibkrTx, err := s.ibkrRepo.GetIbkrTransaction(transactionID)
 	if err != nil {
-		return err
+		return fmt.Errorf("get ibkr transaction: %w", err)
 	}
 
 	oldPortfolioIDs := s.collectPortfolioIDsFromAllocations(transactionID)
@@ -892,17 +953,19 @@ func (s *IbkrService) ModifyAllocations(ctx context.Context, transactionID strin
 	defer func() { _ = dbTx.Rollback() }() //nolint:errcheck
 
 	if err := s.unallocateIbkrTransactionTx(ctx, dbTx, transactionID); err != nil {
-		return err
+		return fmt.Errorf("unallocate transaction: %w", err)
 	}
 
 	// Inline allocate (AllocateIbkrTransaction opens its own tx)
 	if err := s.allocateIbkrTransactionTx(ctx, dbTx, transactionID, allocations); err != nil {
-		return err
+		return fmt.Errorf("allocate transaction: %w", err)
 	}
 
 	if err := dbTx.Commit(); err != nil {
 		return fmt.Errorf("commit transaction: %w", err)
 	}
+
+	ibkrLog.InfoContext(ctx, "ibkr allocations modified", "transaction_id", transactionID)
 
 	newPortfolioIDs := s.collectPortfolioIDsFromAllocations(transactionID)
 	seen := make(map[string]bool)
@@ -918,7 +981,7 @@ func (s *IbkrService) ModifyAllocations(ctx context.Context, transactionID strin
 		//nolint:gosec // G118: Background context is intentional — goroutine outlives the HTTP request.
 		go func() {
 			if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), ibkrTx.TransactionDate, newPortfolioIDs, "", ""); err != nil {
-				log.Printf("failed to regenerate materialized table: %v", err)
+				ibkrLog.Warn("failed to regenerate materialized table after allocation modification", "error", err)
 			}
 		}()
 	}
@@ -933,7 +996,7 @@ func (s *IbkrService) ModifyAllocations(ctx context.Context, transactionID strin
 func (s *IbkrService) allocateIbkrTransactionTx(ctx context.Context, dbTx *sql.Tx, transactionID string, allocations []request.AllocationEntry) error {
 	ibkrTx, err := s.ibkrRepo.WithTx(dbTx).GetIbkrTransaction(transactionID)
 	if err != nil {
-		return err
+		return fmt.Errorf("get ibkr transaction: %w", err)
 	}
 
 	if ibkrTx.Status != "pending" {
@@ -943,7 +1006,7 @@ func (s *IbkrService) allocateIbkrTransactionTx(ctx context.Context, dbTx *sql.T
 	if len(allocations) == 0 {
 		config, err := s.ibkrRepo.WithTx(dbTx).GetIbkrConfig()
 		if err != nil && !errors.Is(err, apperrors.ErrIbkrConfigNotFound) {
-			return err
+			return fmt.Errorf("get ibkr config: %w", err)
 		}
 		if config != nil && config.DefaultAllocationEnabled && len(config.DefaultAllocations) > 0 {
 			allocations = make([]request.AllocationEntry, len(config.DefaultAllocations))
@@ -962,7 +1025,7 @@ func (s *IbkrService) allocateIbkrTransactionTx(ctx context.Context, dbTx *sql.T
 
 	fund, err := s.findFundByISINOrSymbol(ibkrTx.ISIN, ibkrTx.Symbol)
 	if err != nil {
-		return err
+		return fmt.Errorf("find fund by isin or symbol: %w", err)
 	}
 
 	now := time.Now().UTC()
@@ -978,7 +1041,7 @@ func (s *IbkrService) allocateIbkrTransactionTx(ctx context.Context, dbTx *sql.T
 				return fmt.Errorf("failed to retrieve created portfolio_fund: %w", err)
 			}
 		} else if err != nil {
-			return err
+			return fmt.Errorf("get portfolio fund: %w", err)
 		}
 
 		pct := alloc.Percentage / 100.0
@@ -1056,6 +1119,7 @@ func (s *IbkrService) allocateIbkrTransactionTx(ctx context.Context, dbTx *sql.T
 //
 //nolint:gocyclo // Dividend matching with per-dividend portfolio lookup and validation.
 func (s *IbkrService) MatchDividend(ctx context.Context, transactionID string, dividendIDs []string) error {
+	ibkrLog.DebugContext(ctx, "matching dividends to ibkr transaction", "transactionID", transactionID, "dividendIDs", len(dividendIDs))
 	dbTx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
@@ -1064,7 +1128,7 @@ func (s *IbkrService) MatchDividend(ctx context.Context, transactionID string, d
 
 	ibkrTx, err := s.ibkrRepo.WithTx(dbTx).GetIbkrTransaction(transactionID)
 	if err != nil {
-		return err
+		return fmt.Errorf("get ibkr transaction: %w", err)
 	}
 
 	if ibkrTx.Status != "processed" {
@@ -1072,7 +1136,7 @@ func (s *IbkrService) MatchDividend(ctx context.Context, transactionID string, d
 	}
 
 	if !strings.Contains(ibkrTx.Notes, "R") {
-		log.Printf("warning: IBKR transaction %s notes field does not contain 'R' (DRIP code), notes: %q", transactionID, ibkrTx.Notes)
+		ibkrLog.Warn("ibkr transaction notes field does not contain 'R' (DRIP code)", "transactionID", transactionID, "notes", ibkrTx.Notes)
 	}
 
 	allocationDetails, err := s.ibkrRepo.WithTx(dbTx).GetIbkrTransactionAllocations(transactionID)
@@ -1120,6 +1184,7 @@ func (s *IbkrService) MatchDividend(ctx context.Context, transactionID string, d
 		return fmt.Errorf("commit transaction: %w", err)
 	}
 
+	ibkrLog.InfoContext(ctx, "dividends matched to ibkr transaction", "transactionID", transactionID, "dividendCount", len(dividendIDs))
 	s.triggerRegenFromAllocations(transactionID, ibkrTx.TransactionDate)
 
 	return nil
@@ -1131,7 +1196,7 @@ func (s *IbkrService) MatchDividend(ctx context.Context, transactionID string, d
 func (s *IbkrService) collectPortfolioIDsFromAllocations(ibkrTransactionID string) []string {
 	allocs, err := s.ibkrRepo.GetIbkrTransactionAllocations(ibkrTransactionID)
 	if err != nil {
-		log.Printf("failed to get allocations for regen: %v", err)
+		ibkrLog.Warn("failed to get allocations for regen", "error", err, "ibkrTransactionID", ibkrTransactionID)
 		return nil
 	}
 	seen := make(map[string]bool)
@@ -1158,7 +1223,7 @@ func (s *IbkrService) triggerRegenFromAllocations(ibkrTransactionID string, txDa
 	//nolint:gosec // G118: Background context is intentional — goroutine outlives the HTTP request.
 	go func() {
 		if err := s.materializedInvalidator.RegenerateMaterializedTable(context.Background(), txDate, portfolioIDs, "", ""); err != nil {
-			log.Printf("failed to regenerate materialized table: %v", err)
+			ibkrLog.Warn("failed to regenerate materialized table", "error", err)
 		}
 	}()
 }

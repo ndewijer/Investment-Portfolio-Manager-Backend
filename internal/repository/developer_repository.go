@@ -4,13 +4,15 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/apperrors"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/logging"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 )
+
+var devLog = logging.NewLogger("developer")
 
 // DeveloperRepository provides data access methods for the Developer table.
 // It handles retrieving Developer records and reinvestment information.
@@ -54,6 +56,7 @@ func (r *DeveloperRepository) getQuerier() Querier {
 //
 //nolint:gocyclo,funlen // Complex filtering logic with dynamic WHERE clause requires length
 func (r *DeveloperRepository) GetLogs(filters *model.LogFilters) (*model.LogResponse, error) {
+	devLog.Debug("getting logs", "per_page", filters.PerPage, "sort_dir", filters.SortDir)
 	// Build dynamic WHERE clause
 	var whereClauses []string
 	var args []any
@@ -237,6 +240,7 @@ func (r *DeveloperRepository) GetLogs(filters *model.LogFilters) (*model.LogResp
 // If settings are not configured, returns default values: enabled=true, level="info".
 // Logs a warning message when default values are used.
 func (r *DeveloperRepository) GetLoggingConfig() (model.LoggingSetting, error) {
+	devLog.Debug("getting logging config")
 
 	queryEnabled := `
         SELECT value
@@ -257,24 +261,25 @@ func (r *DeveloperRepository) GetLoggingConfig() (model.LoggingSetting, error) {
 		&conf.Enabled,
 	)
 	if err == sql.ErrNoRows {
-		log.Println("Logging not set, defaulting to enabled")
+		devLog.Debug("logging not set, defaulting to enabled")
 	} else if err != nil {
-		return conf, err
+		return conf, fmt.Errorf("failed to query logging enabled setting: %w", err)
 	}
 
 	err = r.getQuerier().QueryRow(queryLevel).Scan(
 		&conf.Level,
 	)
 	if err == sql.ErrNoRows {
-		log.Println("Level not set, defaulting to INFO")
+		devLog.Debug("level not set, defaulting to INFO")
 	} else if err != nil {
-		return conf, err
+		return conf, fmt.Errorf("failed to query logging level setting: %w", err)
 	}
 
 	return conf, nil
 }
 
 func (r *DeveloperRepository) SetLoggingConfig(ctx context.Context, setting model.SystemSetting) error {
+	devLog.DebugContext(ctx, "setting logging config", "key", setting.Key, "value", setting.Value)
 	query := `
         INSERT INTO system_setting (id, key, value, updated_at)
         VALUES (?, ?, ?, ?)
@@ -303,6 +308,7 @@ func (r *DeveloperRepository) SetLoggingConfig(ctx context.Context, setting mode
 // Returns ErrExchangeRateNotFound if no matching rate exists.
 // The date parameter should be in the format YYYY-MM-DD.
 func (r *DeveloperRepository) GetExchangeRate(fromCurrency, toCurrency string, dateTime time.Time) (*model.ExchangeRate, error) {
+	devLog.Debug("getting exchange rate", "from", fromCurrency, "to", toCurrency, "date", dateTime.Format("2006-01-02"))
 
 	query := `
 	SELECT from_currency, to_currency, rate, date
@@ -323,6 +329,9 @@ func (r *DeveloperRepository) GetExchangeRate(fromCurrency, toCurrency string, d
 	if err == sql.ErrNoRows {
 		return nil, apperrors.ErrExchangeRateNotFound
 	}
+	if err != nil {
+		return nil, fmt.Errorf("get exchange rate %s→%s: %w", fromCurrency, toCurrency, err)
+	}
 
 	rate.Date, err = ParseTime(dateStr)
 	if err != nil || rate.Date.IsZero() {
@@ -335,6 +344,7 @@ func (r *DeveloperRepository) GetExchangeRate(fromCurrency, toCurrency string, d
 // UpdateExchangeRate upserts an exchange rate record.
 // On conflict (same from_currency, to_currency, date), updates the rate and created_at fields.
 func (r *DeveloperRepository) UpdateExchangeRate(ctx context.Context, exRate model.ExchangeRate) error {
+	devLog.DebugContext(ctx, "upserting exchange rate", "from", exRate.FromCurrency, "to", exRate.ToCurrency, "date", exRate.Date.Format("2006-01-02"))
 
 	query := `
         INSERT INTO exchange_rate (id, from_currency, to_currency, rate, date, created_at)
@@ -363,7 +373,8 @@ func (r *DeveloperRepository) UpdateExchangeRate(ctx context.Context, exRate mod
 }
 
 // AddLog inserts a single log entry into the log table.
-func (r *DeveloperRepository) AddLog(ctx context.Context, log model.Log) error {
+func (r *DeveloperRepository) AddLog(ctx context.Context, logEntry model.Log) error {
+	devLog.DebugContext(ctx, "adding log entry", "level", logEntry.Level, "category", logEntry.Category)
 
 	query := `
 		INSERT INTO log (id, timestamp, level, category, message, details, source, request_id, stack_trace, http_status, ip_address, user_agent)
@@ -371,18 +382,18 @@ func (r *DeveloperRepository) AddLog(ctx context.Context, log model.Log) error {
 	`
 
 	_, err := r.getQuerier().ExecContext(ctx, query,
-		log.ID,
-		log.Timestamp.Format("2006-01-02 15:04:05"),
-		log.Level,
-		log.Category,
-		log.Message,
-		log.Details,
-		log.Source,
-		log.RequestID,
-		log.StackTrace,
-		log.HTTPStatus,
-		log.IPAddress,
-		log.UserAgent,
+		logEntry.ID,
+		logEntry.Timestamp.Format("2006-01-02 15:04:05"),
+		logEntry.Level,
+		logEntry.Category,
+		logEntry.Message,
+		logEntry.Details,
+		logEntry.Source,
+		logEntry.RequestID,
+		logEntry.StackTrace,
+		logEntry.HTTPStatus,
+		logEntry.IPAddress,
+		logEntry.UserAgent,
 	)
 
 	if err != nil {
@@ -394,6 +405,7 @@ func (r *DeveloperRepository) AddLog(ctx context.Context, log model.Log) error {
 
 // DeleteLogs removes all entries from the log table.
 func (r *DeveloperRepository) DeleteLogs(ctx context.Context) error {
+	devLog.DebugContext(ctx, "deleting all logs")
 	query := `DELETE FROM log`
 
 	_, err := r.getQuerier().ExecContext(ctx, query)

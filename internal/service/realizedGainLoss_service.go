@@ -1,11 +1,15 @@
 package service
 
 import (
+	"fmt"
 	"time"
 
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/logging"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/repository"
 )
+
+var rglLog = logging.NewLogger("transaction")
 
 // RealizedGainLossService handles fund-related business logic operations.
 type RealizedGainLossService struct {
@@ -24,7 +28,12 @@ func NewRealizedGainLossService(
 // loadRealizedGainLoss retrieves realized gain/loss records for the given portfolios within the specified date range.
 // Results are grouped by portfolio ID.
 func (s *RealizedGainLossService) loadRealizedGainLoss(portfolio []string, startDate, endDate time.Time) (map[string][]model.RealizedGainLoss, error) {
-	return s.realizedgainlossRepo.GetRealizedGainLossByPortfolio(portfolio, startDate, endDate)
+	rglLog.Debug("loading realized gain/loss", "portfolios", len(portfolio), "startDate", startDate.Format("2006-01-02"), "endDate", endDate.Format("2006-01-02"))
+	result, err := s.realizedgainlossRepo.GetRealizedGainLossByPortfolio(portfolio, startDate, endDate)
+	if err != nil {
+		return nil, fmt.Errorf("get realized gain/loss by portfolio: %w", err)
+	}
+	return result, nil
 }
 
 // ProcessRealizedGainLossForDate calculates cumulative realized gains/losses as of the specified date.

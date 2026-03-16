@@ -3,6 +3,7 @@ package handlers_test
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -1064,7 +1065,7 @@ func TestFundHandler_DeleteFund(t *testing.T) {
 		if err == nil {
 			t.Error("Expected fund to be deleted")
 		}
-		if err != apperrors.ErrFundNotFound {
+		if !errors.Is(err, apperrors.ErrFundNotFound) {
 			t.Errorf("Expected ErrFundNotFound, got %v", err)
 		}
 	})

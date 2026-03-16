@@ -8,9 +8,12 @@ import (
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/request"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/response"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/apperrors"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/logging"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/service"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/validation"
 )
+
+var ibkrLog = logging.NewLogger("ibkr")
 
 // IbkrHandler handles HTTP requests for ibkr endpoints.
 // It serves as the HTTP layer adapter, parsing requests and delegating
@@ -33,10 +36,13 @@ func NewIbkrHandler(ibkrService *service.IbkrService) *IbkrHandler {
 // Endpoint: GET /api/ibkr/config
 // Response: 200 OK with IbkrConfig
 // Error: 500 Internal Server Error if retrieval fails
-func (h *IbkrHandler) GetConfig(w http.ResponseWriter, _ *http.Request) {
+func (h *IbkrHandler) GetConfig(w http.ResponseWriter, r *http.Request) {
+	ibkrLog.DebugContext(r.Context(), "get ibkr config request")
+
 	config, err := h.ibkrService.GetIbkrConfig()
 	if err != nil {
-		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToRetrieveIbkrConfig.Error(), err.Error())
+		ibkrLog.ErrorContext(r.Context(), "failed to get ibkr config", "error", err)
+		response.RespondInternalError(w, r, apperrors.ErrFailedToRetrieveIbkrConfig.Error())
 		return
 	}
 
@@ -49,10 +55,13 @@ func (h *IbkrHandler) GetConfig(w http.ResponseWriter, _ *http.Request) {
 // Endpoint: GET /api/ibkr/portfolios
 // Response: 200 OK with array of Portfolio
 // Error: 500 Internal Server Error if retrieval fails
-func (h *IbkrHandler) GetActivePortfolios(w http.ResponseWriter, _ *http.Request) {
+func (h *IbkrHandler) GetActivePortfolios(w http.ResponseWriter, r *http.Request) {
+	ibkrLog.DebugContext(r.Context(), "get active portfolios request")
+
 	config, err := h.ibkrService.GetActivePortfolios()
 	if err != nil {
-		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToRetrievePortfolios.Error(), err.Error())
+		ibkrLog.ErrorContext(r.Context(), "failed to get active portfolios", "error", err)
+		response.RespondInternalError(w, r, apperrors.ErrFailedToRetrievePortfolios.Error())
 		return
 	}
 
@@ -74,10 +83,13 @@ func (h *IbkrHandler) GetPendingDividends(w http.ResponseWriter, r *http.Request
 	symbol := r.URL.Query().Get("symbol")
 	isin := r.URL.Query().Get("isin")
 
+	ibkrLog.DebugContext(r.Context(), "get pending dividends request", "symbol", symbol, "isin", isin)
+
 	pendingDividend, err := h.ibkrService.GetPendingDividends(symbol, isin)
 
 	if err != nil {
-		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToRetrievePendingDividend.Error(), err.Error())
+		ibkrLog.ErrorContext(r.Context(), "failed to get pending dividends", "error", err, "symbol", symbol, "isin", isin)
+		response.RespondInternalError(w, r, apperrors.ErrFailedToRetrievePendingDividend.Error())
 		return
 	}
 
@@ -98,10 +110,13 @@ func (h *IbkrHandler) GetInbox(w http.ResponseWriter, r *http.Request) {
 	status := r.URL.Query().Get("status")
 	transactionType := r.URL.Query().Get("transactionType")
 
+	ibkrLog.DebugContext(r.Context(), "get inbox request", "status", status, "transaction_type", transactionType)
+
 	inbox, err := h.ibkrService.GetInbox(status, transactionType)
 
 	if err != nil {
-		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToRetrieveInboxTransactions.Error(), err.Error())
+		ibkrLog.ErrorContext(r.Context(), "failed to get inbox", "error", err, "status", status, "transaction_type", transactionType)
+		response.RespondInternalError(w, r, apperrors.ErrFailedToRetrieveInboxTransactions.Error())
 		return
 	}
 
@@ -115,12 +130,14 @@ func (h *IbkrHandler) GetInbox(w http.ResponseWriter, r *http.Request) {
 //
 // Response: 200 OK with {"count": <number>}
 // Error: 500 Internal Server Error if retrieval fails
-func (h *IbkrHandler) GetInboxCount(w http.ResponseWriter, _ *http.Request) {
+func (h *IbkrHandler) GetInboxCount(w http.ResponseWriter, r *http.Request) {
+	ibkrLog.DebugContext(r.Context(), "get inbox count request")
 
 	count, err := h.ibkrService.GetInboxCount()
 
 	if err != nil {
-		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToRetrieveInboxTransactions.Error(), err.Error())
+		ibkrLog.ErrorContext(r.Context(), "failed to get inbox count", "error", err)
+		response.RespondInternalError(w, r, apperrors.ErrFailedToRetrieveInboxTransactions.Error())
 		return
 	}
 
@@ -143,14 +160,17 @@ func (h *IbkrHandler) GetTransactionAllocations(w http.ResponseWriter, r *http.R
 	// UUID is already validated by ValidateUUIDMiddleware
 	transactionID := chi.URLParam(r, "uuid")
 
+	ibkrLog.DebugContext(r.Context(), "get transaction allocations request", "transaction_id", transactionID)
+
 	transactionAllocations, err := h.ibkrService.GetTransactionAllocations(transactionID)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrIBKRTransactionNotFound) {
-			response.RespondError(w, http.StatusNotFound, apperrors.ErrIBKRTransactionNotFound.Error(), err.Error())
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrIBKRTransactionNotFound.Error(), "")
 			return
 		}
 
-		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToGetTransactionAllocations.Error(), err.Error())
+		ibkrLog.ErrorContext(r.Context(), "failed to get transaction allocations", "error", err, "transaction_id", transactionID)
+		response.RespondInternalError(w, r, apperrors.ErrFailedToGetTransactionAllocations.Error())
 		return
 	}
 
@@ -176,14 +196,17 @@ func (h *IbkrHandler) GetEligiblePortfolios(w http.ResponseWriter, r *http.Reque
 	// UUID is already validated by ValidateUUIDMiddleware
 	transactionID := chi.URLParam(r, "uuid")
 
+	ibkrLog.DebugContext(r.Context(), "get eligible portfolios request", "transaction_id", transactionID)
+
 	eligiblePortfolios, err := h.ibkrService.GetEligiblePortfolios(transactionID)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrIBKRTransactionNotFound) {
-			response.RespondError(w, http.StatusNotFound, apperrors.ErrIBKRTransactionNotFound.Error(), err.Error())
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrIBKRTransactionNotFound.Error(), "")
 			return
 		}
 
-		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToGetEligiblePortfolios.Error(), err.Error())
+		ibkrLog.ErrorContext(r.Context(), "failed to get eligible portfolios", "error", err, "transaction_id", transactionID)
+		response.RespondInternalError(w, r, apperrors.ErrFailedToGetEligiblePortfolios.Error())
 		return
 	}
 
@@ -195,12 +218,16 @@ func (h *IbkrHandler) GetEligiblePortfolios(w http.ResponseWriter, r *http.Reque
 // Serves cached data if a valid cache entry exists, otherwise fetches from the IBKR API.
 // Returns a JSON response with the number of imported and skipped transactions.
 func (h *IbkrHandler) ImportFlexReport(w http.ResponseWriter, r *http.Request) {
+	ibkrLog.DebugContext(r.Context(), "import flex report request")
 
 	add, skipped, err := h.ibkrService.ImportFlexReport(r.Context())
 	if err != nil {
-		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToGetNewFlexReport.Error(), err.Error())
+		ibkrLog.ErrorContext(r.Context(), "failed to import flex report", "error", err)
+		response.RespondInternalError(w, r, apperrors.ErrFailedToGetNewFlexReport.Error())
 		return
 	}
+
+	ibkrLog.InfoContext(r.Context(), "flex report imported", "imported", add, "skipped", skipped)
 
 	type respStruct struct {
 		Success  bool `json:"success"`
@@ -223,6 +250,7 @@ func (h *IbkrHandler) ImportFlexReport(w http.ResponseWriter, r *http.Request) {
 // Error: 400 Bad Request on invalid body or validation failure
 // Error: 500 Internal Server Error if the update fails
 func (h *IbkrHandler) UpdateIbkrConfig(w http.ResponseWriter, r *http.Request) {
+	ibkrLog.DebugContext(r.Context(), "update ibkr config request")
 
 	req, err := parseJSON[request.UpdateIbkrConfigRequest](r)
 	if err != nil {
@@ -237,10 +265,12 @@ func (h *IbkrHandler) UpdateIbkrConfig(w http.ResponseWriter, r *http.Request) {
 
 	config, err := h.ibkrService.UpdateIbkrConfig(r.Context(), req)
 	if err != nil {
-		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToUpdateIbkrConfig.Error(), err.Error())
+		ibkrLog.ErrorContext(r.Context(), "failed to update ibkr config", "error", err)
+		response.RespondInternalError(w, r, apperrors.ErrFailedToUpdateIbkrConfig.Error())
 		return
 	}
 
+	ibkrLog.InfoContext(r.Context(), "ibkr config updated")
 	response.RespondJSON(w, http.StatusCreated, config)
 }
 
@@ -252,18 +282,22 @@ func (h *IbkrHandler) UpdateIbkrConfig(w http.ResponseWriter, r *http.Request) {
 // Error: 404 Not Found if no config is configured
 // Error: 500 Internal Server Error if deletion fails
 func (h *IbkrHandler) DeleteIbkrConfig(w http.ResponseWriter, r *http.Request) {
+	ibkrLog.DebugContext(r.Context(), "delete ibkr config request")
+
 	err := h.ibkrService.DeleteIbkrConfig(r.Context())
 	if err != nil {
 		if errors.Is(err, apperrors.ErrIbkrConfigNotFound) {
 
-			response.RespondError(w, http.StatusNotFound, apperrors.ErrIbkrConfigNotFound.Error(), err.Error())
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrIbkrConfigNotFound.Error(), "")
 			return
 		}
 
-		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToDeleteIbkrConfig.Error(), err.Error())
+		ibkrLog.ErrorContext(r.Context(), "failed to delete ibkr config", "error", err)
+		response.RespondInternalError(w, r, apperrors.ErrFailedToDeleteIbkrConfig.Error())
 		return
 	}
 
+	ibkrLog.InfoContext(r.Context(), "ibkr config deleted")
 	response.RespondJSON(w, http.StatusNoContent, nil)
 }
 
@@ -276,6 +310,7 @@ func (h *IbkrHandler) DeleteIbkrConfig(w http.ResponseWriter, r *http.Request) {
 // Error: 400 Bad Request if the request body is invalid or credentials fail validation
 // Error: 500 Internal Server Error if the IBKR API call fails
 func (h *IbkrHandler) TestIbkrConnection(w http.ResponseWriter, r *http.Request) {
+	ibkrLog.DebugContext(r.Context(), "test ibkr connection request")
 
 	req, err := parseJSON[request.TestIbkrConnectionRequest](r)
 	if err != nil {
@@ -290,9 +325,12 @@ func (h *IbkrHandler) TestIbkrConnection(w http.ResponseWriter, r *http.Request)
 
 	_, err = h.ibkrService.TestIbkrConnection(r.Context(), req)
 	if err != nil {
-		response.RespondError(w, http.StatusInternalServerError, "ibkr test connection failed", err.Error())
+		ibkrLog.ErrorContext(r.Context(), "ibkr test connection failed", "error", err)
+		response.RespondInternalError(w, r, "ibkr test connection failed")
 		return
 	}
+
+	ibkrLog.InfoContext(r.Context(), "ibkr connection test successful")
 	response.RespondJSON(w, http.StatusOK, map[string]bool{"success": true})
 }
 
@@ -306,13 +344,16 @@ func (h *IbkrHandler) TestIbkrConnection(w http.ResponseWriter, r *http.Request)
 func (h *IbkrHandler) GetTransaction(w http.ResponseWriter, r *http.Request) {
 	transactionID := chi.URLParam(r, "uuid")
 
+	ibkrLog.DebugContext(r.Context(), "get ibkr transaction request", "transaction_id", transactionID)
+
 	detail, err := h.ibkrService.GetIbkrTransactionDetail(transactionID)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrIBKRTransactionNotFound) {
-			response.RespondError(w, http.StatusNotFound, apperrors.ErrIBKRTransactionNotFound.Error(), err.Error())
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrIBKRTransactionNotFound.Error(), "")
 			return
 		}
-		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToGetIbkrTransaction.Error(), err.Error())
+		ibkrLog.ErrorContext(r.Context(), "failed to get ibkr transaction detail", "error", err, "transaction_id", transactionID)
+		response.RespondInternalError(w, r, apperrors.ErrFailedToGetIbkrTransaction.Error())
 		return
 	}
 
@@ -330,20 +371,24 @@ func (h *IbkrHandler) GetTransaction(w http.ResponseWriter, r *http.Request) {
 func (h *IbkrHandler) DeleteTransaction(w http.ResponseWriter, r *http.Request) {
 	transactionID := chi.URLParam(r, "uuid")
 
+	ibkrLog.DebugContext(r.Context(), "delete ibkr transaction request", "transaction_id", transactionID)
+
 	err := h.ibkrService.DeleteIbkrTransaction(r.Context(), transactionID)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrIBKRTransactionNotFound) {
-			response.RespondError(w, http.StatusNotFound, apperrors.ErrIBKRTransactionNotFound.Error(), err.Error())
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrIBKRTransactionNotFound.Error(), "")
 			return
 		}
 		if errors.Is(err, apperrors.ErrIBKRTransactionAlreadyProcessed) {
-			response.RespondError(w, http.StatusBadRequest, apperrors.ErrIBKRTransactionAlreadyProcessed.Error(), err.Error())
+			response.RespondError(w, http.StatusBadRequest, apperrors.ErrIBKRTransactionAlreadyProcessed.Error(), "")
 			return
 		}
-		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToDeleteIbkrTransaction.Error(), err.Error())
+		ibkrLog.ErrorContext(r.Context(), "failed to delete ibkr transaction", "error", err, "transaction_id", transactionID)
+		response.RespondInternalError(w, r, apperrors.ErrFailedToDeleteIbkrTransaction.Error())
 		return
 	}
 
+	ibkrLog.InfoContext(r.Context(), "ibkr transaction deleted", "transaction_id", transactionID)
 	response.RespondJSON(w, http.StatusNoContent, nil)
 }
 
@@ -358,20 +403,24 @@ func (h *IbkrHandler) DeleteTransaction(w http.ResponseWriter, r *http.Request) 
 func (h *IbkrHandler) IgnoreTransaction(w http.ResponseWriter, r *http.Request) {
 	transactionID := chi.URLParam(r, "uuid")
 
+	ibkrLog.DebugContext(r.Context(), "ignore ibkr transaction request", "transaction_id", transactionID)
+
 	err := h.ibkrService.IgnoreIbkrTransaction(r.Context(), transactionID)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrIBKRTransactionNotFound) {
-			response.RespondError(w, http.StatusNotFound, apperrors.ErrIBKRTransactionNotFound.Error(), err.Error())
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrIBKRTransactionNotFound.Error(), "")
 			return
 		}
 		if errors.Is(err, apperrors.ErrIBKRTransactionAlreadyProcessed) {
-			response.RespondError(w, http.StatusBadRequest, apperrors.ErrIBKRTransactionAlreadyProcessed.Error(), err.Error())
+			response.RespondError(w, http.StatusBadRequest, apperrors.ErrIBKRTransactionAlreadyProcessed.Error(), "")
 			return
 		}
-		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToIgnoreIbkrTransaction.Error(), err.Error())
+		ibkrLog.ErrorContext(r.Context(), "failed to ignore ibkr transaction", "error", err, "transaction_id", transactionID)
+		response.RespondInternalError(w, r, apperrors.ErrFailedToIgnoreIbkrTransaction.Error())
 		return
 	}
 
+	ibkrLog.InfoContext(r.Context(), "ibkr transaction ignored", "transaction_id", transactionID)
 	response.RespondJSON(w, http.StatusOK, map[string]bool{"success": true})
 }
 
@@ -386,6 +435,8 @@ func (h *IbkrHandler) IgnoreTransaction(w http.ResponseWriter, r *http.Request) 
 //   - 500: Internal server error
 func (h *IbkrHandler) AllocateTransaction(w http.ResponseWriter, r *http.Request) {
 	transactionID := chi.URLParam(r, "uuid")
+
+	ibkrLog.DebugContext(r.Context(), "allocate ibkr transaction request", "transaction_id", transactionID)
 
 	req, err := parseJSON[request.AllocateTransactionRequest](r)
 	if err != nil {
@@ -404,19 +455,21 @@ func (h *IbkrHandler) AllocateTransaction(w http.ResponseWriter, r *http.Request
 	err = h.ibkrService.AllocateIbkrTransaction(r.Context(), transactionID, req.Allocations)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrIBKRTransactionNotFound) {
-			response.RespondError(w, http.StatusNotFound, apperrors.ErrIBKRTransactionNotFound.Error(), err.Error())
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrIBKRTransactionNotFound.Error(), "")
 			return
 		}
 		if errors.Is(err, apperrors.ErrIBKRTransactionAlreadyProcessed) ||
 			errors.Is(err, apperrors.ErrIBKRInvalidAllocations) ||
 			errors.Is(err, apperrors.ErrIBKRFundNotMatched) {
-			response.RespondError(w, http.StatusBadRequest, err.Error(), err.Error())
+			response.RespondError(w, http.StatusBadRequest, err.Error(), "")
 			return
 		}
-		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToAllocateIbkrTransaction.Error(), err.Error())
+		ibkrLog.ErrorContext(r.Context(), "failed to allocate ibkr transaction", "error", err, "transaction_id", transactionID)
+		response.RespondInternalError(w, r, apperrors.ErrFailedToAllocateIbkrTransaction.Error())
 		return
 	}
 
+	ibkrLog.InfoContext(r.Context(), "ibkr transaction allocated", "transaction_id", transactionID)
 	response.RespondJSON(w, http.StatusOK, map[string]bool{"success": true})
 }
 
@@ -428,6 +481,8 @@ func (h *IbkrHandler) AllocateTransaction(w http.ResponseWriter, r *http.Request
 //   - 200: Results with success/failed counts and error details
 //   - 400: Validation error
 func (h *IbkrHandler) BulkAllocate(w http.ResponseWriter, r *http.Request) {
+	ibkrLog.DebugContext(r.Context(), "bulk allocate ibkr transactions request")
+
 	req, err := parseJSON[request.BulkAllocateRequest](r)
 	if err != nil {
 		response.RespondError(w, http.StatusBadRequest, "invalid request body", err.Error())
@@ -441,6 +496,7 @@ func (h *IbkrHandler) BulkAllocate(w http.ResponseWriter, r *http.Request) {
 
 	result := h.ibkrService.BulkAllocateIbkrTransactions(r.Context(), req)
 
+	ibkrLog.InfoContext(r.Context(), "bulk allocate completed", "transaction_count", len(req.TransactionIDs))
 	response.RespondJSON(w, http.StatusOK, result)
 }
 
@@ -454,6 +510,8 @@ func (h *IbkrHandler) BulkAllocate(w http.ResponseWriter, r *http.Request) {
 //   - 500: Internal server error
 func (h *IbkrHandler) ModifyAllocations(w http.ResponseWriter, r *http.Request) {
 	transactionID := chi.URLParam(r, "uuid")
+
+	ibkrLog.DebugContext(r.Context(), "modify allocations request", "transaction_id", transactionID)
 
 	req, err := parseJSON[request.ModifyAllocationsRequest](r)
 	if err != nil {
@@ -469,17 +527,19 @@ func (h *IbkrHandler) ModifyAllocations(w http.ResponseWriter, r *http.Request) 
 	err = h.ibkrService.ModifyAllocations(r.Context(), transactionID, req.Allocations)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrIBKRTransactionNotFound) {
-			response.RespondError(w, http.StatusNotFound, apperrors.ErrIBKRTransactionNotFound.Error(), err.Error())
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrIBKRTransactionNotFound.Error(), "")
 			return
 		}
 		if errors.Is(err, apperrors.ErrIBKRTransactionAlreadyProcessed) {
-			response.RespondError(w, http.StatusBadRequest, apperrors.ErrIBKRTransactionAlreadyProcessed.Error(), err.Error())
+			response.RespondError(w, http.StatusBadRequest, apperrors.ErrIBKRTransactionAlreadyProcessed.Error(), "")
 			return
 		}
-		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToModifyAllocations.Error(), err.Error())
+		ibkrLog.ErrorContext(r.Context(), "failed to modify allocations", "error", err, "transaction_id", transactionID)
+		response.RespondInternalError(w, r, apperrors.ErrFailedToModifyAllocations.Error())
 		return
 	}
 
+	ibkrLog.InfoContext(r.Context(), "allocations modified", "transaction_id", transactionID)
 	response.RespondJSON(w, http.StatusOK, map[string]bool{"success": true})
 }
 
@@ -495,20 +555,24 @@ func (h *IbkrHandler) ModifyAllocations(w http.ResponseWriter, r *http.Request) 
 func (h *IbkrHandler) UnallocateTransaction(w http.ResponseWriter, r *http.Request) {
 	transactionID := chi.URLParam(r, "uuid")
 
+	ibkrLog.DebugContext(r.Context(), "unallocate ibkr transaction request", "transaction_id", transactionID)
+
 	err := h.ibkrService.UnallocateIbkrTransaction(r.Context(), transactionID)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrIBKRTransactionNotFound) {
-			response.RespondError(w, http.StatusNotFound, apperrors.ErrIBKRTransactionNotFound.Error(), err.Error())
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrIBKRTransactionNotFound.Error(), "")
 			return
 		}
 		if errors.Is(err, apperrors.ErrIBKRTransactionAlreadyProcessed) {
-			response.RespondError(w, http.StatusBadRequest, apperrors.ErrIBKRTransactionAlreadyProcessed.Error(), err.Error())
+			response.RespondError(w, http.StatusBadRequest, apperrors.ErrIBKRTransactionAlreadyProcessed.Error(), "")
 			return
 		}
-		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToUnallocateIbkrTransaction.Error(), err.Error())
+		ibkrLog.ErrorContext(r.Context(), "failed to unallocate ibkr transaction", "error", err, "transaction_id", transactionID)
+		response.RespondInternalError(w, r, apperrors.ErrFailedToUnallocateIbkrTransaction.Error())
 		return
 	}
 
+	ibkrLog.InfoContext(r.Context(), "ibkr transaction unallocated", "transaction_id", transactionID)
 	response.RespondJSON(w, http.StatusOK, map[string]bool{"success": true})
 }
 
@@ -524,6 +588,8 @@ func (h *IbkrHandler) UnallocateTransaction(w http.ResponseWriter, r *http.Reque
 func (h *IbkrHandler) MatchDividend(w http.ResponseWriter, r *http.Request) {
 	transactionID := chi.URLParam(r, "uuid")
 
+	ibkrLog.DebugContext(r.Context(), "match dividend request", "transaction_id", transactionID)
+
 	req, err := parseJSON[request.MatchDividendRequest](r)
 	if err != nil {
 		response.RespondError(w, http.StatusBadRequest, "invalid request body", err.Error())
@@ -538,20 +604,22 @@ func (h *IbkrHandler) MatchDividend(w http.ResponseWriter, r *http.Request) {
 	err = h.ibkrService.MatchDividend(r.Context(), transactionID, req.DividendIDs)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrIBKRTransactionNotFound) {
-			response.RespondError(w, http.StatusNotFound, apperrors.ErrIBKRTransactionNotFound.Error(), err.Error())
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrIBKRTransactionNotFound.Error(), "")
 			return
 		}
 		if errors.Is(err, apperrors.ErrDividendNotFound) {
-			response.RespondError(w, http.StatusNotFound, apperrors.ErrDividendNotFound.Error(), err.Error())
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrDividendNotFound.Error(), "")
 			return
 		}
 		if errors.Is(err, apperrors.ErrIBKRTransactionAlreadyProcessed) {
-			response.RespondError(w, http.StatusBadRequest, err.Error(), err.Error())
+			response.RespondError(w, http.StatusBadRequest, apperrors.ErrIBKRTransactionAlreadyProcessed.Error(), "")
 			return
 		}
-		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToMatchDividend.Error(), err.Error())
+		ibkrLog.ErrorContext(r.Context(), "failed to match dividend", "error", err, "transaction_id", transactionID)
+		response.RespondInternalError(w, r, apperrors.ErrFailedToMatchDividend.Error())
 		return
 	}
 
+	ibkrLog.InfoContext(r.Context(), "dividend matched", "transaction_id", transactionID, "dividend_ids", req.DividendIDs)
 	response.RespondJSON(w, http.StatusOK, map[string]bool{"success": true})
 }

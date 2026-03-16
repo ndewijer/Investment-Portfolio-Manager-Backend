@@ -1,6 +1,7 @@
 package service
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
@@ -38,7 +39,7 @@ func (s *FundService) enrichPortfolioFundsWithMetrics(
 			realizedGainsByPF[fund.ID],
 		)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("calculate metrics for fund %s: %w", fund.ID, err)
 		}
 	}
 
@@ -76,7 +77,7 @@ func (s *FundService) calculateAndAssignFundMetrics(
 		date,
 	)
 	if err != nil {
-		return err
+		return fmt.Errorf("process dividend shares: %w", err)
 	}
 
 	fundMetrics, err := s.calculateFundMetrics(
@@ -89,7 +90,7 @@ func (s *FundService) calculateAndAssignFundMetrics(
 		true, // Use latest price
 	)
 	if err != nil {
-		return err
+		return fmt.Errorf("calculate fund metrics: %w", err)
 	}
 
 	// Calculate dividend amount
@@ -98,7 +99,7 @@ func (s *FundService) calculateAndAssignFundMetrics(
 		date,
 	)
 	if err != nil {
-		return err
+		return fmt.Errorf("process dividend amount: %w", err)
 	}
 
 	totalRealizedGainLoss, _, _, err := s.realizedGainLossService.processRealizedGainLossForDate(
@@ -106,7 +107,7 @@ func (s *FundService) calculateAndAssignFundMetrics(
 		date,
 	)
 	if err != nil {
-		return err
+		return fmt.Errorf("process realized gain loss: %w", err)
 	}
 
 	roundedShares := round(fundMetrics.Shares)

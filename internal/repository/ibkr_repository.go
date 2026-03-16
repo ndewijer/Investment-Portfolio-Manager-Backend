@@ -5,12 +5,14 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/apperrors"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/logging"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 )
+
+var ibkrLog = logging.NewLogger("ibkr")
 
 // IbkrRepository provides data access methods for the ibkr table.
 // It handles retrieving ibkr information.
@@ -44,6 +46,7 @@ func (r *IbkrRepository) getQuerier() Querier {
 // Returns a config with Configured=false if no configuration exists.
 // Parses nullable fields (token expiration, last import date, default allocations) safely.
 func (r *IbkrRepository) GetIbkrConfig() (*model.IbkrConfig, error) {
+	ibkrLog.Debug("getting ibkr config")
 	query := `
         SELECT id, flex_token, flex_query_id, token_expires_at, last_import_date, auto_import_enabled, created_at, updated_at, enabled, default_allocation_enabled, default_allocations
 		FROM ibkr_config
@@ -68,7 +71,7 @@ func (r *IbkrRepository) GetIbkrConfig() (*model.IbkrConfig, error) {
 		return &model.IbkrConfig{}, apperrors.ErrIbkrConfigNotFound
 	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to query ibkr_config: %w", err)
 	}
 
 	// Config exists in database
@@ -93,20 +96,21 @@ func (r *IbkrRepository) GetIbkrConfig() (*model.IbkrConfig, error) {
 	if defaultAllocationStr.Valid {
 		var defaultAllocation []model.Allocation
 		if err := json.Unmarshal([]byte(defaultAllocationStr.String), &defaultAllocation); err != nil {
-			log.Printf("warning: failed to parse allocation model: %v", err)
+			ibkrLog.Warn("failed to parse allocation model", "error", err)
 			// Continue without allocations
 		} else {
 			ic.DefaultAllocations = defaultAllocation
 		}
 	}
 
-	return &ic, err
+	return &ic, nil
 }
 
 // GetPendingDividends retrieves dividend records with reinvestment_status = 'PENDING'.
 // Optionally filters by fund symbol or ISIN by joining with the fund table.
 // Returns an empty slice if no pending dividends match the criteria.
 func (r *IbkrRepository) GetPendingDividends(symbol, isin string) ([]model.PendingDividend, error) {
+	ibkrLog.Debug("getting pending dividends", "symbol", symbol, "isin", isin)
 
 	var query string
 	var args []any
@@ -197,6 +201,7 @@ func (r *IbkrRepository) GetPendingDividends(symbol, isin string) ([]model.Pendi
 // Returns transactions ordered by transaction_date descending.
 // Returns an empty slice if no transactions match the criteria.
 func (r *IbkrRepository) GetInbox(status, transactionType string) ([]model.IBKRTransaction, error) {
+	ibkrLog.Debug("getting ibkr inbox", "status", status, "transaction_type", transactionType)
 	var query string
 	var args []any
 
@@ -283,6 +288,7 @@ func (r *IbkrRepository) GetInbox(status, transactionType string) ([]model.IBKRT
 // Uses a COUNT(*) query for efficiency rather than fetching all records.
 // Returns 0 if no transactions exist.
 func (r *IbkrRepository) GetIbkrInboxCount() (model.IBKRInboxCount, error) {
+	ibkrLog.Debug("getting ibkr inbox count")
 
 	query := `
         SELECT count(*)
@@ -298,10 +304,10 @@ func (r *IbkrRepository) GetIbkrInboxCount() (model.IBKRInboxCount, error) {
 		}, nil
 	}
 	if err != nil {
-		return model.IBKRInboxCount{}, err
+		return model.IBKRInboxCount{}, fmt.Errorf("failed to query ibkr inbox count: %w", err)
 	}
 
-	return count, err
+	return count, nil
 }
 
 // GetIbkrTransaction retrieves a single IBKR transaction by its ID.
@@ -312,6 +318,7 @@ func (r *IbkrRepository) GetIbkrInboxCount() (model.IBKRInboxCount, error) {
 //
 // Returns the transaction details or an error if not found or database error occurs.
 func (r *IbkrRepository) GetIbkrTransaction(transactionID string) (model.IBKRTransaction, error) {
+	ibkrLog.Debug("getting ibkr transaction", "transaction_id", transactionID)
 
 	query := `
         SELECT id, ibkr_transaction_id, transaction_date, symbol, isin, description, transaction_type, quantity, price, total_amount, currency, fees, status, imported_at, processed_at, report_date, notes
@@ -345,7 +352,7 @@ func (r *IbkrRepository) GetIbkrTransaction(transactionID string) (model.IBKRTra
 		return model.IBKRTransaction{}, apperrors.ErrIBKRTransactionNotFound
 	}
 	if err != nil {
-		return model.IBKRTransaction{}, err
+		return model.IBKRTransaction{}, fmt.Errorf("failed to query ibkr transaction: %w", err)
 	}
 
 	t.TransactionDate, err = ParseTime(transactionDateStr)
@@ -372,7 +379,7 @@ func (r *IbkrRepository) GetIbkrTransaction(transactionID string) (model.IBKRTra
 		t.ProcessedAt = &parsed
 	}
 
-	return t, err
+	return t, nil
 }
 
 // CompareIbkrTransaction checks whether a transaction already exists in the database by ibkr_transaction_id.
@@ -381,6 +388,7 @@ func (r *IbkrRepository) GetIbkrTransaction(transactionID string) (model.IBKRTra
 // inserts. The unique constraint on ibkr_transaction_id will catch any actual duplicates, and a future
 // logging/alerting system is expected to surface DB errors from that layer.
 func (r *IbkrRepository) CompareIbkrTransaction(t model.IBKRTransaction) bool {
+	ibkrLog.Debug("comparing ibkr transaction", "ibkr_transaction_id", t.IBKRTransactionID)
 
 	query := `
         SELECT count(*)
@@ -394,7 +402,7 @@ func (r *IbkrRepository) CompareIbkrTransaction(t model.IBKRTransaction) bool {
 	).Scan(&count)
 
 	if err != nil {
-		log.Printf("CompareIbkrTransaction: query error for %s, treating as existing: %v", t.IBKRTransactionID, err)
+		ibkrLog.Warn("query error, treating as existing", "ibkr_transaction_id", t.IBKRTransactionID, "error", err)
 		return true
 	}
 
@@ -411,6 +419,7 @@ func (r *IbkrRepository) CompareIbkrTransaction(t model.IBKRTransaction) bool {
 // Returns a slice of allocations with full details including portfolio names and transaction types,
 // or an error if the database query fails.
 func (r *IbkrRepository) GetIbkrTransactionAllocations(IBKRtransactionID string) ([]model.IBKRTransactionAllocation, error) {
+	ibkrLog.Debug("getting ibkr transaction allocations", "ibkr_transaction_id", IBKRtransactionID)
 
 	query := `
         SELECT i.id, i.ibkr_transaction_id, i.portfolio_id, p.name, i.allocation_percentage, i.allocated_amount, i.allocated_shares, i.transaction_id, t.type, i.created_at
@@ -475,6 +484,7 @@ func (r *IbkrRepository) GetIbkrTransactionAllocations(IBKRtransactionID string)
 // Returns nil immediately if the slice is empty.
 // Returns an error if any individual insert fails.
 func (r *IbkrRepository) AddIbkrTransactions(ctx context.Context, transactions []model.IBKRTransaction) error {
+	ibkrLog.DebugContext(ctx, "adding ibkr transactions", "count", len(transactions))
 	if len(transactions) == 0 {
 		return nil
 	}
@@ -526,6 +536,7 @@ func (r *IbkrRepository) AddIbkrTransactions(ctx context.Context, transactions [
 // Uses INSERT OR REPLACE on the cache_key unique constraint, so repeated writes
 // for the same query and date are safe and do not affect other cache entries.
 func (r *IbkrRepository) WriteImportCache(ctx context.Context, t model.IbkrImportCache) error {
+	ibkrLog.DebugContext(ctx, "writing import cache", "cache_key", t.CacheKey)
 
 	query := `
 		INSERT OR REPLACE INTO ibkr_import_cache (id, cache_key, data, created_at, expires_at)
@@ -550,6 +561,7 @@ func (r *IbkrRepository) WriteImportCache(ctx context.Context, t model.IbkrImpor
 // UpdateLastImportDate sets the last_import_date on the config row identified by queryID.
 // Scoped to a specific flex_query_id to support multiple flex queries in the future.
 func (r *IbkrRepository) UpdateLastImportDate(ctx context.Context, queryID string, t time.Time) error {
+	ibkrLog.DebugContext(ctx, "updating last import date", "query_id", queryID, "date", t.Format("2006-01-02 15:04:05"))
 	query := `UPDATE ibkr_config SET last_import_date = ? WHERE flex_query_id = ?`
 	_, err := r.getQuerier().ExecContext(ctx, query, t.Format("2006-01-02 15:04:05"), queryID)
 	if err != nil {
@@ -565,6 +577,7 @@ func (r *IbkrRepository) UpdateLastImportDate(ctx context.Context, queryID strin
 // All fields on c must be fully populated before calling; the service layer is responsible for
 // merging the request onto the existing config before invoking this method.
 func (r *IbkrRepository) UpdateIbkrConfig(ctx context.Context, overwriteConfig bool, c *model.IbkrConfig) error {
+	ibkrLog.DebugContext(ctx, "updating ibkr config", "overwrite", overwriteConfig)
 
 	if overwriteConfig {
 		query := `DELETE FROM ibkr_config`
@@ -622,6 +635,7 @@ func (r *IbkrRepository) UpdateIbkrConfig(ctx context.Context, overwriteConfig b
 // Returns ErrIbkrImportCacheNotFound if the cache is empty.
 // The caller should check ExpiresAt to determine whether the cached data is still valid.
 func (r *IbkrRepository) GetIbkrImportCache() (model.IbkrImportCache, error) {
+	ibkrLog.Debug("getting ibkr import cache")
 
 	query := `
 		SELECT id, cache_key, data, created_at, expires_at
@@ -644,7 +658,7 @@ func (r *IbkrRepository) GetIbkrImportCache() (model.IbkrImportCache, error) {
 	}
 
 	if err != nil {
-		return model.IbkrImportCache{}, err
+		return model.IbkrImportCache{}, fmt.Errorf("failed to query ibkr import cache: %w", err)
 	}
 
 	c.CreatedAt, err = ParseTime(createdAtStr)
@@ -663,6 +677,7 @@ func (r *IbkrRepository) GetIbkrImportCache() (model.IbkrImportCache, error) {
 // UpdateIbkrTransactionStatus updates the status and optional processed_at timestamp of an IBKR transaction.
 // Returns ErrIBKRTransactionNotFound if no transaction with the given ID exists.
 func (r *IbkrRepository) UpdateIbkrTransactionStatus(ctx context.Context, id, status string, processedAt *time.Time) error {
+	ibkrLog.DebugContext(ctx, "updating ibkr transaction status", "transaction_id", id, "status", status)
 	var processedAtStr any
 	if processedAt != nil {
 		processedAtStr = processedAt.Format("2006-01-02 15:04:05")
@@ -688,6 +703,7 @@ func (r *IbkrRepository) UpdateIbkrTransactionStatus(ctx context.Context, id, st
 // DeleteIbkrTransaction removes an IBKR transaction by its ID.
 // Returns ErrIBKRTransactionNotFound if no transaction with the given ID exists.
 func (r *IbkrRepository) DeleteIbkrTransaction(ctx context.Context, id string) error {
+	ibkrLog.DebugContext(ctx, "deleting ibkr transaction", "transaction_id", id)
 	query := `DELETE FROM ibkr_transaction WHERE id = ?`
 	result, err := r.getQuerier().ExecContext(ctx, query, id)
 	if err != nil {
@@ -707,6 +723,7 @@ func (r *IbkrRepository) DeleteIbkrTransaction(ctx context.Context, id string) e
 
 // InsertIbkrTransactionAllocation creates a new IBKR transaction allocation record.
 func (r *IbkrRepository) InsertIbkrTransactionAllocation(ctx context.Context, a model.IBKRTransactionAllocation) error {
+	ibkrLog.DebugContext(ctx, "inserting ibkr transaction allocation", "ibkr_transaction_id", a.IBKRTransactionID, "portfolio_id", a.PortfolioID)
 	query := `
 		INSERT INTO ibkr_transaction_allocation (id, ibkr_transaction_id, portfolio_id, allocation_percentage, allocated_amount, allocated_shares, transaction_id, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -737,6 +754,7 @@ func (r *IbkrRepository) InsertIbkrTransactionAllocation(ctx context.Context, a 
 // DeleteIbkrTransactionAllocations removes all allocation records for a given IBKR transaction.
 // Returns ErrIBKRTransactionNotFound if no allocations exist for the given transaction.
 func (r *IbkrRepository) DeleteIbkrTransactionAllocations(ctx context.Context, ibkrTransactionID string) error {
+	ibkrLog.DebugContext(ctx, "deleting ibkr transaction allocations", "ibkr_transaction_id", ibkrTransactionID)
 	query := `DELETE FROM ibkr_transaction_allocation WHERE ibkr_transaction_id = ?`
 	result, err := r.getQuerier().ExecContext(ctx, query, ibkrTransactionID)
 	if err != nil {
@@ -757,6 +775,7 @@ func (r *IbkrRepository) DeleteIbkrTransactionAllocations(ctx context.Context, i
 // GetTransactionIDsByIbkrTransaction retrieves all transaction IDs linked to an IBKR transaction via allocations.
 // Used during unallocation to clean up the created Transaction records.
 func (r *IbkrRepository) GetTransactionIDsByIbkrTransaction(ctx context.Context, ibkrTransactionID string) ([]string, error) {
+	ibkrLog.DebugContext(ctx, "getting transaction IDs by ibkr transaction", "ibkr_transaction_id", ibkrTransactionID)
 	query := `
 		SELECT transaction_id FROM ibkr_transaction_allocation
 		WHERE ibkr_transaction_id = ? AND transaction_id IS NOT NULL
@@ -786,6 +805,7 @@ func (r *IbkrRepository) GetTransactionIDsByIbkrTransaction(ctx context.Context,
 // GetIbkrTransactionIDByTransactionID finds the IBKR transaction ID linked to a given transaction
 // via the allocation table. Returns empty string if no allocation exists (not an error).
 func (r *IbkrRepository) GetIbkrTransactionIDByTransactionID(ctx context.Context, transactionID string) (string, error) {
+	ibkrLog.DebugContext(ctx, "getting ibkr transaction ID by transaction ID", "transaction_id", transactionID)
 	query := `SELECT ibkr_transaction_id FROM ibkr_transaction_allocation WHERE transaction_id = ?`
 
 	var ibkrTxnID string
@@ -803,6 +823,7 @@ func (r *IbkrRepository) GetIbkrTransactionIDByTransactionID(ctx context.Context
 // CountIbkrAllocationsByIbkrTransactionID counts how many allocation records exist for a given IBKR transaction.
 // Used to determine whether reverting status to "pending" is needed when deleting the last allocation.
 func (r *IbkrRepository) CountIbkrAllocationsByIbkrTransactionID(ctx context.Context, ibkrTransactionID string) (int, error) {
+	ibkrLog.DebugContext(ctx, "counting ibkr allocations", "ibkr_transaction_id", ibkrTransactionID)
 	query := `SELECT COUNT(*) FROM ibkr_transaction_allocation WHERE ibkr_transaction_id = ?`
 
 	var count int
@@ -817,6 +838,7 @@ func (r *IbkrRepository) CountIbkrAllocationsByIbkrTransactionID(ctx context.Con
 // DeleteIbkrConfig removes the IBKR configuration row from the database.
 // Returns ErrIbkrConfigNotFound if no config exists.
 func (r *IbkrRepository) DeleteIbkrConfig(ctx context.Context) error {
+	ibkrLog.DebugContext(ctx, "deleting ibkr config")
 	query := `DELETE FROM ibkr_config`
 
 	result, err := r.getQuerier().ExecContext(ctx, query)

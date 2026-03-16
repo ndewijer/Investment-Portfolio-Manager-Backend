@@ -18,7 +18,8 @@ func APIKeyMiddleware(validAPIKey string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if validAPIKey == "" {
-				response.RespondError(w, http.StatusInternalServerError, "Unauthorized", "Authentication not loaded")
+				log.ErrorContext(r.Context(), "API key middleware: authentication not configured")
+				response.RespondInternalError(w, r, "internal server error")
 				return
 			}
 

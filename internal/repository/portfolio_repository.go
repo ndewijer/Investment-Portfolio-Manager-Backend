@@ -6,8 +6,11 @@ import (
 	"fmt"
 
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/apperrors"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/logging"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 )
+
+var portfolioLog = logging.NewLogger("portfolio")
 
 // PortfolioRepository provides data access methods for portfolio and portfolio_fund tables.
 // It handles retrieving portfolio metadata and their associated fund relationships.
@@ -41,6 +44,7 @@ func (r *PortfolioRepository) getQuerier() Querier {
 // The filter allows control over whether archived and overview-excluded portfolios are included.
 // Returns an empty slice if no portfolios match the filter criteria.
 func (r *PortfolioRepository) GetPortfolios(filter model.PortfolioFilter) ([]model.Portfolio, error) {
+	portfolioLog.Debug("getting portfolios", "include_archived", filter.IncludeArchived, "include_excluded", filter.IncludeExcluded)
 	query := `
           SELECT id, name, description, is_archived, exclude_from_overview
           FROM portfolio
@@ -91,6 +95,7 @@ func (r *PortfolioRepository) GetPortfolios(filter model.PortfolioFilter) ([]mod
 }
 
 func (r *PortfolioRepository) GetPortfolioOnID(portfolioID string) (model.Portfolio, error) {
+	portfolioLog.Debug("getting portfolio by ID", "portfolio_id", portfolioID)
 	query := `
           SELECT id, name, description, is_archived, exclude_from_overview
           FROM portfolio
@@ -124,6 +129,7 @@ func (r *PortfolioRepository) GetPortfolioOnID(portfolioID string) (model.Portfo
 //
 // Returns a slice of portfolios that hold this fund, or an error if the database query fails.
 func (r *PortfolioRepository) GetPortfoliosByFundID(fundID string) ([]model.Portfolio, error) {
+	portfolioLog.Debug("getting portfolios by fund ID", "fund_id", fundID)
 
 	fundQuery := `
 		SELECT p.id, p.name, p.description, p.is_archived, p.exclude_from_overview
@@ -166,6 +172,7 @@ func (r *PortfolioRepository) GetPortfoliosByFundID(fundID string) ([]model.Port
 }
 
 func (r *PortfolioRepository) InsertPortfolio(ctx context.Context, p *model.Portfolio) error {
+	portfolioLog.DebugContext(ctx, "inserting portfolio", "portfolio_id", p.ID, "name", p.Name)
 	query := `
         INSERT INTO portfolio (id, name, description, is_archived, exclude_from_overview)
         VALUES (?, ?, ?, ?, ?)
@@ -187,6 +194,7 @@ func (r *PortfolioRepository) InsertPortfolio(ctx context.Context, p *model.Port
 }
 
 func (r *PortfolioRepository) UpdatePortfolio(ctx context.Context, p *model.Portfolio) error {
+	portfolioLog.DebugContext(ctx, "updating portfolio", "portfolio_id", p.ID)
 	query := `
         UPDATE portfolio
         SET name = ?, description = ?, is_archived = ?, exclude_from_overview = ?
@@ -218,6 +226,7 @@ func (r *PortfolioRepository) UpdatePortfolio(ctx context.Context, p *model.Port
 }
 
 func (r *PortfolioRepository) DeletePortfolio(ctx context.Context, portfolioID string) error {
+	portfolioLog.DebugContext(ctx, "deleting portfolio", "portfolio_id", portfolioID)
 	query := `DELETE FROM portfolio WHERE id = ?`
 
 	result, err := r.getQuerier().ExecContext(ctx, query, portfolioID)

@@ -8,9 +8,12 @@ import (
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/request"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/response"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/apperrors"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/logging"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/service"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/validation"
 )
+
+var divLog = logging.NewLogger("dividend")
 
 // DividendHandler handles HTTP requests for dividend endpoints.
 // It serves as the HTTP layer adapter, parsing requests and delegating
@@ -32,11 +35,13 @@ func NewDividendHandler(dividendService *service.DividendService) *DividendHandl
 // Endpoint: GET /api/dividend
 // Response: 200 OK with array of Dividend
 // Error: 500 Internal Server Error if retrieval fails
-func (h *DividendHandler) GetAllDividend(w http.ResponseWriter, _ *http.Request) {
+func (h *DividendHandler) GetAllDividend(w http.ResponseWriter, r *http.Request) {
+	divLog.DebugContext(r.Context(), "get all dividends request")
 
 	dividends, err := h.dividendService.GetAllDividend()
 	if err != nil {
-		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToRetrieveDividends.Error(), err.Error())
+		divLog.ErrorContext(r.Context(), "failed to get all dividends", "error", err)
+		response.RespondInternalError(w, r, apperrors.ErrFailedToRetrieveDividends.Error())
 		return
 	}
 
@@ -55,13 +60,16 @@ func (h *DividendHandler) DividendPerPortfolio(w http.ResponseWriter, r *http.Re
 
 	portfolioID := chi.URLParam(r, "uuid")
 
+	divLog.DebugContext(r.Context(), "get dividends per portfolio request", "portfolio_id", portfolioID)
+
 	dividends, err := h.dividendService.GetDividendFund(portfolioID, "")
 	if err != nil {
 		if errors.Is(err, apperrors.ErrPortfolioNotFound) {
-			response.RespondError(w, http.StatusNotFound, apperrors.ErrPortfolioNotFound.Error(), err.Error())
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrPortfolioNotFound.Error(), "")
 			return
 		}
-		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToRetrieveDividends.Error(), err.Error())
+		divLog.ErrorContext(r.Context(), "failed to get dividends per portfolio", "error", err, "portfolio_id", portfolioID)
+		response.RespondInternalError(w, r, apperrors.ErrFailedToRetrieveDividends.Error())
 		return
 	}
 	if len(dividends) == 0 {
@@ -85,13 +93,16 @@ func (h *DividendHandler) DividendPerFund(w http.ResponseWriter, r *http.Request
 
 	fundID := chi.URLParam(r, "uuid")
 
+	divLog.DebugContext(r.Context(), "get dividends per fund request", "fund_id", fundID)
+
 	dividends, err := h.dividendService.GetDividendFund("", fundID)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrFundNotFound) {
-			response.RespondError(w, http.StatusNotFound, apperrors.ErrFundNotFound.Error(), err.Error())
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrFundNotFound.Error(), "")
 			return
 		}
-		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToRetrieveDividends.Error(), err.Error())
+		divLog.ErrorContext(r.Context(), "failed to get dividends per fund", "error", err, "fund_id", fundID)
+		response.RespondInternalError(w, r, apperrors.ErrFailedToRetrieveDividends.Error())
 		return
 	}
 	if len(dividends) == 0 {
@@ -111,13 +122,16 @@ func (h *DividendHandler) DividendPerFund(w http.ResponseWriter, r *http.Request
 func (h *DividendHandler) GetDividend(w http.ResponseWriter, r *http.Request) {
 	dividendID := chi.URLParam(r, "uuid")
 
+	divLog.DebugContext(r.Context(), "get dividend request", "dividend_id", dividendID)
+
 	dividends, err := h.dividendService.GetDividend(dividendID)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrDividendNotFound) {
-			response.RespondError(w, http.StatusNotFound, apperrors.ErrDividendNotFound.Error(), err.Error())
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrDividendNotFound.Error(), "")
 			return
 		}
-		response.RespondError(w, http.StatusInternalServerError, apperrors.ErrFailedToRetrieveDividends.Error(), err.Error())
+		divLog.ErrorContext(r.Context(), "failed to get dividend", "error", err, "dividend_id", dividendID)
+		response.RespondInternalError(w, r, apperrors.ErrFailedToRetrieveDividends.Error())
 		return
 	}
 
@@ -133,6 +147,8 @@ func (h *DividendHandler) GetDividend(w http.ResponseWriter, r *http.Request) {
 // Error: 400 Bad Request if validation fails or request body is invalid
 // Error: 500 Internal Server Error if creation fails
 func (h *DividendHandler) CreateDividend(w http.ResponseWriter, r *http.Request) {
+	divLog.DebugContext(r.Context(), "create dividend request")
+
 	req, err := parseJSON[request.CreateDividendRequest](r)
 	if err != nil {
 		response.RespondError(w, http.StatusBadRequest, "invalid request body", err.Error())
@@ -146,10 +162,12 @@ func (h *DividendHandler) CreateDividend(w http.ResponseWriter, r *http.Request)
 
 	dividend, err := h.dividendService.CreateDividend(r.Context(), req)
 	if err != nil {
-		response.RespondError(w, http.StatusInternalServerError, "failed to create dividend", err.Error())
+		divLog.ErrorContext(r.Context(), "failed to create dividend", "error", err)
+		response.RespondInternalError(w, r, "failed to create dividend")
 		return
 	}
 
+	divLog.InfoContext(r.Context(), "dividend created", "id", dividend.ID)
 	response.RespondJSON(w, http.StatusCreated, dividend)
 }
 
@@ -165,6 +183,8 @@ func (h *DividendHandler) CreateDividend(w http.ResponseWriter, r *http.Request)
 func (h *DividendHandler) UpdateDividend(w http.ResponseWriter, r *http.Request) {
 	dividendID := chi.URLParam(r, "uuid")
 
+	divLog.DebugContext(r.Context(), "update dividend request", "dividend_id", dividendID)
+
 	req, err := parseJSON[request.UpdateDividendRequest](r)
 	if err != nil {
 		response.RespondError(w, http.StatusBadRequest, "invalid request body", err.Error())
@@ -179,14 +199,16 @@ func (h *DividendHandler) UpdateDividend(w http.ResponseWriter, r *http.Request)
 	dividend, err := h.dividendService.UpdateDividend(r.Context(), dividendID, req)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrDividendNotFound) {
-			response.RespondError(w, http.StatusNotFound, apperrors.ErrDividendNotFound.Error(), err.Error())
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrDividendNotFound.Error(), "")
 			return
 		}
 
-		response.RespondError(w, http.StatusInternalServerError, "failed to update dividend", err.Error())
+		divLog.ErrorContext(r.Context(), "failed to update dividend", "error", err, "dividend_id", dividendID)
+		response.RespondInternalError(w, r, "failed to update dividend")
 		return
 	}
 
+	divLog.InfoContext(r.Context(), "dividend updated", "id", dividend.ID)
 	response.RespondJSON(w, http.StatusOK, dividend)
 }
 
@@ -201,16 +223,20 @@ func (h *DividendHandler) UpdateDividend(w http.ResponseWriter, r *http.Request)
 func (h *DividendHandler) DeleteDividend(w http.ResponseWriter, r *http.Request) {
 	dividendID := chi.URLParam(r, "uuid")
 
+	divLog.DebugContext(r.Context(), "delete dividend request", "dividend_id", dividendID)
+
 	err := h.dividendService.DeleteDividend(r.Context(), dividendID)
 	if err != nil {
 		if errors.Is(err, apperrors.ErrDividendNotFound) {
-			response.RespondError(w, http.StatusNotFound, apperrors.ErrDividendNotFound.Error(), err.Error())
+			response.RespondError(w, http.StatusNotFound, apperrors.ErrDividendNotFound.Error(), "")
 			return
 		}
 
-		response.RespondError(w, http.StatusInternalServerError, "failed to delete dividend", err.Error())
+		divLog.ErrorContext(r.Context(), "failed to delete dividend", "error", err, "dividend_id", dividendID)
+		response.RespondInternalError(w, r, "failed to delete dividend")
 		return
 	}
 
+	divLog.InfoContext(r.Context(), "dividend deleted", "dividend_id", dividendID)
 	response.RespondJSON(w, http.StatusNoContent, nil)
 }

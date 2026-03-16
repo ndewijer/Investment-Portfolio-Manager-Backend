@@ -4,16 +4,18 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/logging"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/repository"
 )
+
+var matLog = logging.NewLogger("system")
 
 // MaterializedInvalidator defines the interface for invalidating and regenerating materialized data.
 // Services that modify source data (transactions, dividends, etc.) depend on this interface
@@ -148,10 +150,11 @@ func NewMaterializedService(db *sql.DB, opts ...MaterializedServiceOption) *Mate
 // Returns:
 // A slice of PortfolioHistory structs, one per date, each containing portfolio summaries for that date.
 func (s *MaterializedService) GetPortfolioHistoryMaterialized(requestedStartDate, requestedEndDate time.Time, portfolioID string) ([]model.PortfolioHistory, error) {
+	matLog.Debug("retrieving portfolio history from materialized view", "portfolioID", portfolioID, "startDate", requestedStartDate.Format("2006-01-02"), "endDate", requestedEndDate.Format("2006-01-02"))
 
 	portfolios, err := s.portfolioService.GetPortfoliosForRequest(portfolioID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get portfolios: %w", err)
 	}
 
 	portfolioIDs := make([]string, len(portfolios))
@@ -176,7 +179,7 @@ func (s *MaterializedService) GetPortfolioHistoryMaterialized(requestedStartDate
 	)
 
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get materialized history: %w", err)
 	}
 
 	// Iterate over actual results (sorted keys) instead of every calendar day
@@ -244,15 +247,16 @@ func (s *MaterializedService) GetPortfolioHistoryMaterialized(requestedStartDate
 // Returns a slice of PortfolioHistory, one entry per date, each containing portfolio
 // summaries with metrics like TotalValue, TotalCost, TotalGainLoss, etc.
 func (s *MaterializedService) GetPortfolioHistory(requestedStartDate, requestedEndDate time.Time, portfolioID string) ([]model.PortfolioHistory, error) {
+	matLog.Debug("calculating portfolio history on-demand", "portfolioID", portfolioID, "startDate", requestedStartDate.Format("2006-01-02"), "endDate", requestedEndDate.Format("2006-01-02"))
 
 	portfolios, err := s.portfolioService.GetPortfoliosForRequest(portfolioID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get portfolios: %w", err)
 	}
 
 	data, err := s.dataLoaderService.LoadForPortfolios(portfolios, requestedStartDate, requestedEndDate)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("load portfolio data: %w", err)
 	}
 
 	displayStart, displayEnd := s.calculateDisplayDateRange(
@@ -305,39 +309,37 @@ func (s *MaterializedService) GetPortfolioHistoryWithFallback(
 	startDate, endDate time.Time,
 	portfolioID string,
 ) ([]model.PortfolioHistory, error) {
+	matLog.Debug("getting portfolio history with fallback", "start_date", startDate.Format("2006-01-02"), "end_date", endDate.Format("2006-01-02"), "portfolio_id", portfolioID)
 
 	portfolios, err := s.portfolioService.GetPortfoliosForRequest(portfolioID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get portfolios: %w", err)
 	}
 	portfolioIDs := make([]string, len(portfolios))
 	for i, p := range portfolios {
 		portfolioIDs[i] = p.ID
 	}
 
-	log.Printf("portfolio history: resolved %d portfolio(s) %v for range %s–%s",
-		len(portfolios), portfolioIDs, startDate.Format("2006-01-02"), endDate.Format("2006-01-02"))
+	matLog.Debug("portfolio history: resolved portfolios for range", "count", len(portfolios), "portfolioIDs", portfolioIDs, "startDate", startDate.Format("2006-01-02"), "endDate", endDate.Format("2006-01-02"))
 
 	stale := s.checkStaleData(portfolioIDs, endDate)
 
 	if !stale {
 		materialized, mErr := s.GetPortfolioHistoryMaterialized(startDate, endDate, portfolioID)
 		if mErr == nil && len(materialized) > 0 {
-			log.Printf("portfolio history: serving from materialized view (%d dates) — %s",
-				len(materialized), summarisePortfolioResult(materialized))
+			matLog.Debug("portfolio history: serving from materialized view", "dates", len(materialized), "summary", summarisePortfolioResult(materialized))
 			return materialized, nil
 		}
-		log.Printf("portfolio history: materialized view returned 0 entries (err=%v), falling back", mErr)
+		matLog.Debug("portfolio history: materialized view returned 0 entries, falling back", "error", mErr)
 	}
 
-	log.Printf("portfolio history: cache stale or empty, falling back to on-demand calculation")
+	matLog.Debug("portfolio history: cache stale or empty, falling back to on-demand calculation")
 	result, err := s.GetPortfolioHistory(startDate, endDate, portfolioID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("calculate portfolio history on-demand: %w", err)
 	}
 
-	log.Printf("portfolio history: on-demand calculation returned %d dates — %s",
-		len(result), summarisePortfolioResult(result))
+	matLog.Debug("portfolio history: on-demand calculation completed", "dates", len(result), "summary", summarisePortfolioResult(result))
 
 	s.triggerBackgroundRegeneration(portfolioIDs, startDate)
 
@@ -354,9 +356,10 @@ func (s *MaterializedService) GetPortfolioHistoryWithFallback(
 //
 // Returns portfolio summaries for the most recent available date.
 func (s *MaterializedService) GetPortfolioSummaryWithFallback(portfolioID string) ([]model.PortfolioSummary, error) {
+	matLog.Debug("retrieving portfolio summary with fallback", "portfolioID", portfolioID)
 	portfolios, err := s.portfolioService.GetPortfoliosForRequest(portfolioID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get portfolios: %w", err)
 	}
 	portfolioIDs := make([]string, len(portfolios))
 	portfolioNames := make(map[string]string, len(portfolios))
@@ -393,19 +396,19 @@ func (s *MaterializedService) GetPortfolioSummaryWithFallback(portfolioID string
 			},
 		)
 		if err == nil && len(summaries) > 0 {
-			log.Printf("portfolio summary: serving from materialized view (latest-only, %d portfolios)", len(summaries))
+			matLog.Debug("portfolio summary: serving from materialized view", "portfolios", len(summaries))
 			return summaries, nil
 		}
-		log.Printf("portfolio summary: materialized latest returned 0 entries (err=%v), falling back", err)
+		matLog.Debug("portfolio summary: materialized latest returned 0 entries, falling back", "error", err)
 	}
 
 	// Fallback: compute full history and take the last entry.
 	// Pass zero-time as startDate — LoadForPortfolios unconditionally loads
 	// from the oldest transaction date regardless of the requested start.
-	log.Printf("portfolio summary: cache stale or empty, falling back to on-demand calculation")
+	matLog.Debug("portfolio summary: cache stale or empty, falling back to on-demand calculation")
 	history, err := s.GetPortfolioHistory(time.Time{}, endDate, portfolioID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("calculate portfolio history on-demand: %w", err)
 	}
 
 	// Use the actual earliest date from the result for background regen,
@@ -441,6 +444,7 @@ func (s *MaterializedService) GetPortfolioSummaryWithFallback(portfolioID string
 //
 // Returns a slice of FundHistoryResponse, one entry per date with all funds for that date.
 func (s *MaterializedService) GetFundHistoryMaterialized(portfolioID string, startDate, endDate time.Time) ([]model.FundHistoryResponse, error) {
+	matLog.Debug("retrieving fund history from materialized view", "portfolioID", portfolioID, "startDate", startDate.Format("2006-01-02"), "endDate", endDate.Format("2006-01-02"))
 	fundHistoryByDate := make(map[string][]model.FundHistoryEntry)
 
 	err := s.materializedRepo.GetFundHistoryMaterialized(
@@ -454,7 +458,7 @@ func (s *MaterializedService) GetFundHistoryMaterialized(portfolioID string, sta
 		},
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get fund history materialized: %w", err)
 	}
 
 	if len(fundHistoryByDate) > 0 {
@@ -523,15 +527,16 @@ func (s *MaterializedService) formatFundHistoryFromMaterialized(fundHistoryByDat
 //
 // Returns a slice of FundHistoryResponse, one per date, with per-fund metrics for that date.
 func (s *MaterializedService) calculateFundHistoryOnFly(portfolioID string, startDate, endDate time.Time) ([]model.FundHistoryResponse, error) {
+	matLog.Debug("calculating fund history on the fly", "portfolioID", portfolioID, "startDate", startDate.Format("2006-01-02"), "endDate", endDate.Format("2006-01-02"))
 
 	portfolio, err := s.portfolioService.GetPortfoliosForRequest(portfolioID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get portfolios: %w", err)
 	}
 
 	data, err := s.dataLoaderService.LoadForPortfolios(portfolio, startDate, endDate)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("load portfolio data: %w", err)
 	}
 
 	if len(data.PFIDs) == 0 {
@@ -577,21 +582,22 @@ func (s *MaterializedService) GetFundHistoryWithFallback(
 	portfolioID string,
 	startDate, endDate time.Time,
 ) ([]model.FundHistoryResponse, error) {
+	matLog.Debug("retrieving fund history with fallback", "portfolioID", portfolioID, "startDate", startDate.Format("2006-01-02"), "endDate", endDate.Format("2006-01-02"))
 
 	stale := s.checkStaleData([]string{portfolioID}, endDate)
 
 	if !stale {
 		materialized, mErr := s.GetFundHistoryMaterialized(portfolioID, startDate, endDate)
 		if mErr == nil && len(materialized) > 0 {
-			log.Printf("fund history: serving from materialized view (%d entries, portfolio %s)", len(materialized), portfolioID)
+			matLog.Debug("fund history: serving from materialized view", "entries", len(materialized), "portfolioID", portfolioID)
 			return materialized, nil
 		}
 	}
 
-	log.Printf("fund history: cache stale or empty, falling back to on-demand calculation (portfolio %s)", portfolioID)
+	matLog.Debug("fund history: cache stale or empty, falling back to on-demand calculation", "portfolioID", portfolioID)
 	result, err := s.calculateFundHistoryOnFly(portfolioID, startDate, endDate)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("calculate fund history on-demand: %w", err)
 	}
 
 	s.triggerBackgroundRegeneration([]string{portfolioID}, startDate)
@@ -618,55 +624,49 @@ func (s *MaterializedService) GetFundHistoryWithFallback(
 func (s *MaterializedService) checkStaleData(portfolioIDs []string, endDate time.Time) bool {
 	matDate, matCalc, ok, err := s.materializedRepo.GetLatestMaterializedDate(portfolioIDs)
 	if err != nil {
-		log.Printf("stale check [%v]: error getting materialized date: %v — treating as stale", portfolioIDs, err)
+		matLog.Debug("stale check: error getting materialized date, treating as stale", "portfolioIDs", portfolioIDs, "error", err)
 		return true // Assume stale on error
 	}
 	if !ok {
-		log.Printf("stale check [%v]: no materialized data found — stale", portfolioIDs)
+		matLog.Debug("stale check: no materialized data found", "portfolioIDs", portfolioIDs)
 		return true // No materialized data at all
 	}
 
-	log.Printf("stale check [%v]: materialized coverage up to %s, calculated_at %s, endDate requested %s",
-		portfolioIDs, matDate.Format("2006-01-02"), matCalc.Format(time.RFC3339), endDate.Format("2006-01-02"))
+	matLog.Debug("stale check: materialized coverage", "portfolioIDs", portfolioIDs, "coverageEnd", matDate.Format("2006-01-02"), "calculatedAt", matCalc.Format(time.RFC3339), "endDate", endDate.Format("2006-01-02"))
 
 	// Check date coverage (truncate to date-only since matDate is midnight UTC)
 	if matDate.Before(endDate.Truncate(24 * time.Hour)) {
-		log.Printf("stale check [%v]: stale — coverage ends %s, need %s",
-			portfolioIDs, matDate.Format("2006-01-02"), endDate.Format("2006-01-02"))
+		matLog.Debug("stale check: stale, coverage insufficient", "portfolioIDs", portfolioIDs, "coverageEnd", matDate.Format("2006-01-02"), "needed", endDate.Format("2006-01-02"))
 		return true
 	}
 
 	latestTxn, latestPrice, latestDiv, err := s.materializedRepo.GetLatestSourceDates(portfolioIDs)
 	if err != nil {
-		log.Printf("stale check [%v]: error getting source dates: %v — treating as stale", portfolioIDs, err)
+		matLog.Debug("stale check: error getting source dates, treating as stale", "portfolioIDs", portfolioIDs, "error", err)
 		return true
 	}
 
-	log.Printf("stale check [%v]: source dates — txn %s, price %s, div %s",
-		portfolioIDs, latestTxn.Format(time.RFC3339), latestPrice.Format("2006-01-02"), latestDiv.Format(time.RFC3339))
+	matLog.Debug("stale check: source dates", "portfolioIDs", portfolioIDs, "latestTxn", latestTxn.Format(time.RFC3339), "latestPrice", latestPrice.Format("2006-01-02"), "latestDiv", latestDiv.Format(time.RFC3339))
 
 	// Transaction created_at is a datetime - compare directly against calculated_at
 	if !latestTxn.IsZero() && latestTxn.After(matCalc) {
-		log.Printf("stale check [%v]: stale — latest txn %s is after calculated_at %s",
-			portfolioIDs, latestTxn.Format(time.RFC3339), matCalc.Format(time.RFC3339))
+		matLog.Debug("stale check: stale, latest txn after calculated_at", "portfolioIDs", portfolioIDs, "latestTxn", latestTxn.Format(time.RFC3339), "calculatedAt", matCalc.Format(time.RFC3339))
 		return true
 	}
 
 	// Price date is a date - if latest price date > materialized date coverage, it's stale
 	if !latestPrice.IsZero() && latestPrice.After(matDate) {
-		log.Printf("stale check [%v]: stale — latest price date %s is after materialized coverage %s",
-			portfolioIDs, latestPrice.Format("2006-01-02"), matDate.Format("2006-01-02"))
+		matLog.Debug("stale check: stale, latest price after materialized coverage", "portfolioIDs", portfolioIDs, "latestPrice", latestPrice.Format("2006-01-02"), "coverageEnd", matDate.Format("2006-01-02"))
 		return true
 	}
 
 	// Dividend created_at is a datetime - compare against calculated_at
 	if !latestDiv.IsZero() && latestDiv.After(matCalc) {
-		log.Printf("stale check [%v]: stale — latest dividend %s is after calculated_at %s",
-			portfolioIDs, latestDiv.Format(time.RFC3339), matCalc.Format(time.RFC3339))
+		matLog.Debug("stale check: stale, latest dividend after calculated_at", "portfolioIDs", portfolioIDs, "latestDiv", latestDiv.Format(time.RFC3339), "calculatedAt", matCalc.Format(time.RFC3339))
 		return true
 	}
 
-	log.Printf("stale check [%v]: fresh", portfolioIDs)
+	matLog.Debug("stale check: fresh", "portfolioIDs", portfolioIDs)
 	return false
 }
 
@@ -689,10 +689,10 @@ func (s *MaterializedService) triggerBackgroundRegeneration(portfolioIDs []strin
 		existing, running := s.regenInFlight[pid]
 		if running {
 			if startDate.Before(existing) {
-				log.Printf("regen: portfolio %s — superseding with earlier date %s (was %s)", pid, startDate.Format("2006-01-02"), existing.Format("2006-01-02"))
+				matLog.Debug("regen: superseding with earlier date", "portfolioID", pid, "newDate", startDate.Format("2006-01-02"), "oldDate", existing.Format("2006-01-02"))
 				s.regenInFlight[pid] = startDate
 			} else {
-				log.Printf("regen: portfolio %s — skipped, already in flight from %s", pid, existing.Format("2006-01-02"))
+				matLog.Debug("regen: skipped, already in flight", "portfolioID", pid, "from", existing.Format("2006-01-02"))
 			}
 			continue
 		}
@@ -702,7 +702,7 @@ func (s *MaterializedService) triggerBackgroundRegeneration(portfolioIDs []strin
 	s.regenMu.Unlock()
 
 	for _, pid := range toStart {
-		log.Printf("regen: portfolio %s — queued from %s", pid, startDate.Format("2006-01-02"))
+		matLog.Debug("regen: queued", "portfolioID", pid, "from", startDate.Format("2006-01-02"))
 		go s.runRegenLoop(pid)
 	}
 }
@@ -725,21 +725,21 @@ func (s *MaterializedService) runRegenLoop(portfolioID string) {
 		}
 		s.regenMu.Unlock()
 
-		log.Printf("regen: portfolio %s — starting from %s", portfolioID, startDate.Format("2006-01-02"))
+		matLog.Debug("regen: starting", "portfolioID", portfolioID, "from", startDate.Format("2006-01-02"))
 		start := time.Now()
 		err := s.RegenerateMaterializedTable(
 			context.Background(), startDate, []string{portfolioID}, "", "",
 		)
 		if err != nil {
-			log.Printf("regen: portfolio %s — failed after %s: %v", portfolioID, time.Since(start).Round(time.Millisecond), err)
+			matLog.Warn("regen: failed", "portfolioID", portfolioID, "duration", time.Since(start).Round(time.Millisecond), "error", err)
 			failures++
 		} else {
-			log.Printf("regen: portfolio %s — completed in %s", portfolioID, time.Since(start).Round(time.Millisecond))
+			matLog.Info("regen: completed", "portfolioID", portfolioID, "duration", time.Since(start).Round(time.Millisecond))
 			failures = 0
 		}
 
 		if failures >= maxRegenRetries {
-			log.Printf("regen: portfolio %s — aborting after %d consecutive failures", portfolioID, failures)
+			matLog.Warn("regen: aborting after consecutive failures", "portfolioID", portfolioID, "failures", failures)
 			s.regenMu.Lock()
 			delete(s.regenInFlight, portfolioID)
 			s.regenMu.Unlock()
@@ -755,7 +755,7 @@ func (s *MaterializedService) runRegenLoop(portfolioID string) {
 			return
 		}
 		// An earlier date was requested — loop again with the new date
-		log.Printf("regen: portfolio %s — follow-up needed from %s (was %s)", portfolioID, current.Format("2006-01-02"), startDate.Format("2006-01-02"))
+		matLog.Debug("regen: follow-up needed", "portfolioID", portfolioID, "newFrom", current.Format("2006-01-02"), "previousFrom", startDate.Format("2006-01-02"))
 		s.regenMu.Unlock()
 	}
 }
@@ -779,7 +779,7 @@ func (s *MaterializedService) processTransactionsForDate(transactionsMap map[str
 			pfID, fundID, date, transactions, dividendShares[pfID], prices, false)
 
 		if err != nil {
-			return TransactionMetrics{}, err
+			return TransactionMetrics{}, fmt.Errorf("calculate fund metrics: %w", err)
 		}
 
 		totalValue += fundMetrics.Value
@@ -816,6 +816,7 @@ func (s *MaterializedService) processTransactionsForDate(transactionsMap map[str
 //
 //nolint:gocyclo // Core regen: resolve portfolios, calculate, collect pfIDs, invalidate+insert in tx
 func (s *MaterializedService) RegenerateMaterializedTable(ctx context.Context, startDate time.Time, portfolioIDs []string, fundID, portfolioFundID string) error {
+	matLog.DebugContext(ctx, "regenerating materialized table", "startDate", startDate.Format("2006-01-02"), "portfolioIDs", portfolioIDs, "fundID", fundID, "portfolioFundID", portfolioFundID)
 	s.regenWriteMu.Lock()
 	defer s.regenWriteMu.Unlock()
 
@@ -823,7 +824,7 @@ func (s *MaterializedService) RegenerateMaterializedTable(ctx context.Context, s
 		if fundID != "" {
 			pfs, err := s.pfRepo.GetPortfolioFundsbyFundID(fundID)
 			if err != nil {
-				return err
+				return fmt.Errorf("get portfolio funds by fund ID: %w", err)
 			}
 			seen := make(map[string]bool)
 			for _, v := range pfs {
@@ -835,7 +836,7 @@ func (s *MaterializedService) RegenerateMaterializedTable(ctx context.Context, s
 		} else if portfolioFundID != "" {
 			pf, err := s.pfRepo.GetPortfolioFund(portfolioFundID)
 			if err != nil {
-				return err
+				return fmt.Errorf("get portfolio fund: %w", err)
 			}
 			portfolioIDs = append(portfolioIDs, pf.PortfolioID)
 		} else {
@@ -850,7 +851,7 @@ func (s *MaterializedService) RegenerateMaterializedTable(ctx context.Context, s
 	for _, pid := range portfolioIDs {
 		entries, err := s.calculateFundHistoryOnFly(pid, startDate, endDate)
 		if err != nil {
-			return err
+			return fmt.Errorf("calculate fund history: %w", err)
 		}
 		allEntries = append(allEntries, entries...)
 	}
@@ -884,11 +885,11 @@ func (s *MaterializedService) RegenerateMaterializedTable(ctx context.Context, s
 	defer func() { _ = tx.Rollback() }() //nolint:errcheck // Rollback is a no-op after Commit; error is intentionally ignored.
 
 	if err := s.materializedRepo.WithTx(tx).InvalidateMaterializedTable(ctx, startDate, pfIDs); err != nil {
-		return err
+		return fmt.Errorf("invalidate materialized table: %w", err)
 	}
 
 	if err := s.materializedRepo.WithTx(tx).InsertMaterializedEntries(ctx, fundHistoryEntries); err != nil {
-		return err
+		return fmt.Errorf("insert materialized entries: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
