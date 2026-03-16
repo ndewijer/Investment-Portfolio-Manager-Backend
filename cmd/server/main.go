@@ -105,8 +105,10 @@ func main() {
 	defer cancel()
 
 	// Drain both in parallel under the same 30s window
+	var shutdownErr bool
 	if err := server.Shutdown(ctx); err != nil {
 		log.Printf("Server shutdown error: %v", err)
+		shutdownErr = true
 	}
 
 	select {
@@ -114,8 +116,12 @@ func main() {
 		log.Println("Cron jobs finished cleanly")
 	case <-ctx.Done():
 		log.Println("Cron jobs did not finish in time")
+		shutdownErr = true
 	}
 
+	if shutdownErr {
+		log.Fatalf("Shutdown completed with errors")
+	}
 	log.Println("Server exited")
 }
 
