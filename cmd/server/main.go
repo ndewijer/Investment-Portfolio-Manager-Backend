@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -21,6 +22,7 @@ import (
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/repository"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/service"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/yahoo"
+	"github.com/robfig/cron/v3"
 )
 
 func main() {
@@ -88,6 +90,29 @@ func main() {
 			log.Fatalf("Server failed to start: %v", err)
 		}
 	}()
+
+	c := cron.New(cron.WithLocation(time.UTC))
+	// Schedule the price update task to run at 00:55 UTC time every weekday
+	_, err = c.AddFunc("55 00 * * 1-5", func() {
+		if _, err := fundService.UpdateAllFundHistory(context.Background()); err != nil {
+			slog.Error("scheduled fund price update failed", "error", err)
+		}
+	})
+	if err != nil {
+		log.Printf("error: %v", err)
+	}
+	// Schedule the IBKR Import task to run between 06:30 and 08:30 local time Tue-Sat
+	// (fetches previous business day's close-of-business report)
+	_, err = c.AddFunc("30 5-7 * * 2-6", func() {
+		if _, _, err := ibkrService.ImportFlexReport(context.Background()); err != nil {
+			slog.Error("scheduled IBKR import failed", "error", err)
+		}
+	})
+	if err != nil {
+		log.Printf("error: %v", err)
+	}
+	c.Start()
+	defer c.Stop()
 
 	// Wait for interrupt signal for graceful shutdown
 	quit := make(chan os.Signal, 1)
