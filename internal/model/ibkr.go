@@ -71,7 +71,7 @@ type IBKRAllocation struct {
 // Used in API responses to show how a transaction's amount, shares, and fees were allocated to a specific portfolio.
 // Fees are aggregated from separate fee transactions and included in the AllocatedCommission field.
 type IBKRTransactionAllocationResponse struct {
-	PortfolioID          string  `json:"portfolioID"`
+	PortfolioID          string  `json:"portfolioId"`
 	PortfolioName        string  `json:"PortfolioName"`
 	AllocationPercentage float64 `json:"allocationPercentage"`
 	AllocatedAmount      float64 `json:"allocatedAmount"`
