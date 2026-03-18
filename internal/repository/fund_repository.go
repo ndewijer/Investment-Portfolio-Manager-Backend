@@ -71,6 +71,7 @@ func (r *FundRepository) GetAllFunds() ([]model.Fund, error) {
 
 	for rows.Next() {
 		var f model.Fund
+		// Fix: LatestPrice was not being scanned from the query result (always zero).
 		var priceStr sql.NullFloat64
 
 		err := rows.Scan(
@@ -122,6 +123,7 @@ func (r *FundRepository) GetFund(fundID string) (model.Fund, error) {
 		`
 
 	var f model.Fund
+	// Fix: LatestPrice was not being scanned from the query result (always zero).
 	var priceStr sql.NullFloat64
 	err := r.getQuerier().QueryRow(query, fundID).Scan(
 		&f.ID,
@@ -187,6 +189,7 @@ func (r *FundRepository) GetFunds(fundIDs []string) ([]model.Fund, error) {
 
 	for rows.Next() {
 		var f model.Fund
+		// Fix: LatestPrice was not being scanned from the query result (always zero).
 		var priceStr sql.NullFloat64
 
 		err := rows.Scan(

@@ -722,7 +722,7 @@ func TestFundRepository_WithTx(t *testing.T) {
 		}
 		err = txRepo.InsertFund(ctx, f)
 		if err != nil {
-			_ = tx.Rollback()
+			_ = tx.Rollback() //nolint:errcheck // rollback in test cleanup
 			t.Fatalf("unexpected error: %v", err)
 		}
 
@@ -759,7 +759,7 @@ func TestFundRepository_WithTx(t *testing.T) {
 		}
 		err = txRepo.InsertFund(ctx, f)
 		if err != nil {
-			_ = tx.Rollback()
+			_ = tx.Rollback() //nolint:errcheck // rollback in test cleanup
 			t.Fatalf("unexpected error: %v", err)
 		}
 
@@ -775,6 +775,7 @@ func TestFundRepository_WithTx(t *testing.T) {
 	})
 }
 
+//nolint:gocyclo // Test function with multiple subtests and assertions.
 func TestFundRepository_GetFunds(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	repo := repository.NewFundRepository(db)

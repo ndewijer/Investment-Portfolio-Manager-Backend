@@ -743,7 +743,7 @@ func TestTransactionRepository_WithTx(t *testing.T) {
 
 		err = txRepo.InsertTransaction(context.Background(), txn)
 		if err != nil {
-			_ = tx.Rollback()
+			_ = tx.Rollback() //nolint:errcheck // rollback in test cleanup
 			t.Fatalf("unexpected error: %v", err)
 		}
 

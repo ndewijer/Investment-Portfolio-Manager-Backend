@@ -9,7 +9,7 @@ import (
 func TestLogger_RecordsStatusCode(t *testing.T) {
 	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusTeapot)
-		_, _ = w.Write([]byte("teapot"))
+		_, _ = w.Write([]byte("teapot")) //nolint:errcheck // test handler
 	})
 
 	handler := Logger(inner)
@@ -27,7 +27,7 @@ func TestLogger_RecordsStatusCode(t *testing.T) {
 func TestLogger_DefaultStatusOK(t *testing.T) {
 	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		// No explicit WriteHeader — should default to 200.
-		_, _ = w.Write([]byte("ok"))
+		_, _ = w.Write([]byte("ok")) //nolint:errcheck // test handler
 	})
 
 	handler := Logger(inner)

@@ -11,6 +11,7 @@ import (
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/testutil"
 )
 
+//nolint:gocyclo // Test function with multiple subtests and assertions.
 func TestPortfolioRepository_GetPortfolios(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	repo := repository.NewPortfolioRepository(db)
@@ -303,7 +304,7 @@ func TestPortfolioRepository_WithTx(t *testing.T) {
 		}
 		err = txRepo.InsertPortfolio(ctx, p)
 		if err != nil {
-			_ = tx.Rollback()
+			_ = tx.Rollback() //nolint:errcheck // rollback in test cleanup
 			t.Fatalf("unexpected error: %v", err)
 		}
 
@@ -335,7 +336,7 @@ func TestPortfolioRepository_WithTx(t *testing.T) {
 		}
 		err = txRepo.InsertPortfolio(ctx, p)
 		if err != nil {
-			_ = tx.Rollback()
+			_ = tx.Rollback() //nolint:errcheck // rollback in test cleanup
 			t.Fatalf("unexpected error: %v", err)
 		}
 

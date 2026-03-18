@@ -66,6 +66,7 @@ func TestDeveloperRepository_AddLogAndGetLogs(t *testing.T) {
 	})
 }
 
+//nolint:gocyclo // Test function with multiple subtests and assertions.
 func TestDeveloperRepository_GetLogs_Filters(t *testing.T) {
 	t.Run("filter by level", func(t *testing.T) {
 		db := testutil.SetupTestDB(t)

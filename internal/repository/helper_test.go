@@ -5,6 +5,7 @@ import (
 	"time"
 )
 
+//nolint:gocyclo // Test function with multiple subtests and assertions.
 func TestParseTime(t *testing.T) {
 	t.Run("valid date-only format", func(t *testing.T) {
 		result, err := ParseTime("2024-03-15")

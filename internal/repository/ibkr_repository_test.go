@@ -17,6 +17,7 @@ import (
 // GetIbkrConfig
 // ---------------------------------------------------------------------------
 
+//nolint:gocyclo // Test function with multiple subtests and assertions.
 func TestIbkrRepository_GetIbkrConfig(t *testing.T) {
 	t.Run("not found returns sentinel error", func(t *testing.T) {
 		db := testutil.SetupTestDB(t)
@@ -107,11 +108,13 @@ func TestIbkrRepository_GetIbkrConfig(t *testing.T) {
 		if err != nil {
 			t.Fatalf("GetIbkrConfig: %v", err)
 		}
-		// NOTE: UpdateIbkrConfig sets sql.NullString.String but not .Valid for
-		// TokenExpiresAt and LastImportDate, so they are stored as NULL.
-		// This is a source-code bug — the test documents current behaviour.
+		// Known bug: UpdateIbkrConfig doesn't set NullString.Valid, so dates are stored as NULL.
+		// This test asserts the current (broken) behavior. When the bug is fixed, update this test.
 		if got.TokenExpiresAt != nil {
-			t.Log("TokenExpiresAt unexpectedly set (bug may have been fixed)")
+			t.Error("TokenExpiresAt is now set — the NullString.Valid bug may be fixed; update this test")
+		}
+		if got.LastImportDate != nil {
+			t.Error("LastImportDate is now set — the NullString.Valid bug may be fixed; update this test")
 		}
 		if len(got.DefaultAllocations) != 2 {
 			t.Fatalf("expected 2 allocations, got %d", len(got.DefaultAllocations))
@@ -574,6 +577,7 @@ func TestIbkrRepository_DeleteIbkrTransaction(t *testing.T) {
 // Transaction Allocation CRUD
 // ---------------------------------------------------------------------------
 
+//nolint:gocyclo // Test function with multiple subtests and assertions.
 func TestIbkrRepository_TransactionAllocationCRUD(t *testing.T) {
 	t.Run("insert and get allocations", func(t *testing.T) {
 		db := testutil.SetupTestDB(t)

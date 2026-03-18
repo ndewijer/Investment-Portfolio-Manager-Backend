@@ -173,6 +173,7 @@ func TestDividendService_GetDividendFund(t *testing.T) {
 // DividendService.CreateDividend
 // =============================================================================
 
+//nolint:gocyclo // Test function with multiple subtests and assertions.
 func TestDividendService_CreateDividend(t *testing.T) {
 	t.Run("creates dividend for CASH fund", func(t *testing.T) {
 		db := testutil.SetupTestDB(t)
@@ -683,7 +684,8 @@ func TestDividendService_LoadDividendPerPF_ViaCreateAndGet(t *testing.T) {
 // =============================================================================
 // DividendService.updateReinvestmentTransaction (tested via UpdateDividend)
 // =============================================================================
-
+//
+//nolint:gocyclo // Test function with multiple subtests and assertions.
 func TestDividendService_UpdateReinvestmentTransaction(t *testing.T) {
 	t.Run("updates existing reinvestment transaction via UpdateDividend", func(t *testing.T) {
 		db := testutil.SetupTestDB(t)

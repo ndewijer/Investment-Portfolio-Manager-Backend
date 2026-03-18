@@ -756,6 +756,7 @@ func TestFundService_UpdateAllFundHistory(t *testing.T) {
 // FundService.GetPortfolioFunds — enriched metrics
 // =============================================================================
 
+//nolint:gocyclo // Test function with multiple subtests and assertions.
 func TestFundService_GetPortfolioFunds(t *testing.T) {
 	t.Run("returns empty slice for portfolio with no funds", func(t *testing.T) {
 		db := testutil.SetupTestDB(t)

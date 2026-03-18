@@ -816,6 +816,7 @@ func TestIbkrService_GetTransactionAllocations(t *testing.T) {
 
 // --- parseIBKRFlexReport Tests ---
 
+//nolint:gocyclo // Test function with multiple subtests and assertions.
 func TestIbkrService_ParseIBKRFlexReport(t *testing.T) {
 	t.Run("parses trades from flex report", func(t *testing.T) {
 		db := testutil.SetupTestDB(t)

@@ -12,6 +12,7 @@ import (
 
 // --- GetRealizedGainLossByPortfolio ---
 
+//nolint:gocyclo // Test function with multiple subtests and assertions.
 func TestRealizedGainLossRepository_GetRealizedGainLossByPortfolio(t *testing.T) {
 	t.Run("returns empty map for empty portfolio slice", func(t *testing.T) {
 		db := testutil.SetupTestDB(t)
@@ -358,7 +359,7 @@ func TestRealizedGainLossRepository_WithTx(t *testing.T) {
 
 		err = txRepo.InsertRealizedGainLoss(context.Background(), rgl)
 		if err != nil {
-			_ = tx.Rollback()
+			_ = tx.Rollback() //nolint:errcheck // rollback in test cleanup
 			t.Fatalf("unexpected error: %v", err)
 		}
 

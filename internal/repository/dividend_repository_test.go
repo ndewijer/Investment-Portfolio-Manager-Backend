@@ -546,7 +546,7 @@ func TestDividendRepository_WithTx(t *testing.T) {
 
 		err = txRepo.InsertDividend(context.Background(), div)
 		if err != nil {
-			_ = tx.Rollback()
+			_ = tx.Rollback() //nolint:errcheck // rollback in test cleanup
 			t.Fatalf("unexpected error: %v", err)
 		}
 

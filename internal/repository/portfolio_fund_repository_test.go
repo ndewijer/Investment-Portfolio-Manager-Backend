@@ -249,6 +249,7 @@ func TestPortfolioFundRepository_GetPortfolioFundsbyFundID(t *testing.T) {
 	})
 }
 
+//nolint:gocyclo // Test function with multiple subtests and assertions.
 func TestPortfolioFundRepository_GetPortfolioFundsOnPortfolioID(t *testing.T) {
 	db := testutil.SetupTestDB(t)
 	repo := repository.NewPortfolioFundRepository(db)
@@ -497,7 +498,7 @@ func TestPortfolioFundRepository_WithTx(t *testing.T) {
 		txRepo := repo.WithTx(tx)
 		err = txRepo.InsertPortfolioFund(ctx, portfolio.ID, fund.ID)
 		if err != nil {
-			_ = tx.Rollback()
+			_ = tx.Rollback() //nolint:errcheck // rollback in test cleanup
 			t.Fatalf("unexpected error: %v", err)
 		}
 
@@ -526,7 +527,7 @@ func TestPortfolioFundRepository_WithTx(t *testing.T) {
 		txRepo := repo.WithTx(tx)
 		err = txRepo.InsertPortfolioFund(ctx, portfolio.ID, fund2.ID)
 		if err != nil {
-			_ = tx.Rollback()
+			_ = tx.Rollback() //nolint:errcheck // rollback in test cleanup
 			t.Fatalf("unexpected error: %v", err)
 		}
 
