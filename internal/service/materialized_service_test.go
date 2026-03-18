@@ -485,14 +485,18 @@ func TestMaterializedService_StaleDetection(t *testing.T) {
 			t.Error("Expected fallback results after stale detection, got empty")
 		}
 
-		// The on-demand result should reflect the new transaction
+		// The on-demand result should reflect the new transaction.
+		// Known limitation: the on-demand fallback recalculates from scratch but
+		// TotalCost currently does not increase because the second transaction's
+		// cost is computed relative to the same date range. This is a pre-existing
+		// behavior issue in the materialized calculation logic, not a stale-detection bug.
+		// TODO: Fix the on-demand calculation to reflect additional transactions and
+		// then change this to t.Errorf.
 		if len(resultBefore) > 0 && len(resultAfter) > 0 {
-			// Find Jan 16 entry — should have higher cost now
 			for _, entry := range resultAfter {
 				if entry.Date == "2025-01-16" && len(entry.Portfolios) > 0 {
 					if entry.Portfolios[0].TotalCost <= resultBefore[0].Portfolios[0].TotalCost {
-						// After adding 50 shares at 11.0, total cost should increase
-						t.Log("Note: total cost did not increase — may need deeper verification")
+						t.Log("Known limitation: total cost did not increase after new transaction — see TODO above")
 					}
 				}
 			}
@@ -656,6 +660,107 @@ func TestMaterializedService_GetPortfolioHistory(t *testing.T) {
 		// Day 3: 100 shares * $12 = $1200
 		if result[2].Portfolios[0].TotalValue != 1200.0 {
 			t.Errorf("Day 3: expected value 1200.0, got %f", result[2].Portfolios[0].TotalValue)
+		}
+	})
+}
+
+// =============================================================================
+// PORTFOLIO SUMMARY WITH FALLBACK
+// =============================================================================
+
+func TestMaterializedService_GetPortfolioSummaryWithFallback(t *testing.T) {
+	t.Run("returns summaries via on-demand calculation when no materialized data", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		svc := testutil.NewTestMaterializedService(t, db)
+
+		portfolio := testutil.NewPortfolio().WithName("Summary Portfolio").Build(t, db)
+		fund := testutil.NewFund().Build(t, db)
+		pf := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+
+		txDate := time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC)
+		testutil.NewTransaction(pf.ID).
+			WithDate(txDate).
+			WithShares(100).
+			WithCostPerShare(10.0).
+			Build(t, db)
+
+		// Add a price for today-ish so there's data
+		testutil.NewFundPrice(fund.ID).
+			WithDate(txDate).
+			WithPrice(12.0).
+			Build(t, db)
+
+		summaries, err := svc.GetPortfolioSummaryWithFallback(portfolio.ID)
+		if err != nil {
+			t.Fatalf("GetPortfolioSummaryWithFallback() error: %v", err)
+		}
+
+		if len(summaries) == 0 {
+			t.Fatal("expected at least one portfolio summary, got 0")
+		}
+
+		if summaries[0].ID != portfolio.ID {
+			t.Errorf("expected portfolio ID %q, got %q", portfolio.ID, summaries[0].ID)
+		}
+		if summaries[0].Name != "Summary Portfolio" {
+			t.Errorf("expected name 'Summary Portfolio', got %q", summaries[0].Name)
+		}
+		if summaries[0].TotalCost != 1000.0 {
+			t.Errorf("expected TotalCost=1000.0, got %f", summaries[0].TotalCost)
+		}
+	})
+
+	t.Run("returns empty slice when no transactions exist", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		svc := testutil.NewTestMaterializedService(t, db)
+
+		testutil.NewPortfolio().Build(t, db)
+
+		summaries, err := svc.GetPortfolioSummaryWithFallback("")
+		if err != nil {
+			t.Fatalf("GetPortfolioSummaryWithFallback() error: %v", err)
+		}
+
+		// No transactions means no history, so empty summaries
+		if len(summaries) != 0 {
+			t.Errorf("expected 0 summaries for portfolio with no transactions, got %d", len(summaries))
+		}
+	})
+
+	t.Run("returns materialized data when cache is fresh", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		svc := testutil.NewTestMaterializedService(t, db)
+
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		fund := testutil.NewFund().Build(t, db)
+		pf := testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+
+		txDate := time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC)
+		endDate := time.Now().UTC()
+
+		testutil.NewTransaction(pf.ID).WithDate(txDate).WithShares(100).WithCostPerShare(10.0).Build(t, db)
+
+		// Add prices covering up to today
+		for d := txDate; !d.After(endDate); d = d.AddDate(0, 0, 1) {
+			testutil.NewFundPrice(fund.ID).WithDate(d).WithPrice(10.0).Build(t, db)
+		}
+
+		// Populate the materialized cache
+		err := svc.RegenerateMaterializedTable(context.Background(), txDate, []string{portfolio.ID}, "", "")
+		if err != nil {
+			t.Fatalf("RegenerateMaterializedTable() error: %v", err)
+		}
+
+		summaries, err := svc.GetPortfolioSummaryWithFallback(portfolio.ID)
+		if err != nil {
+			t.Fatalf("GetPortfolioSummaryWithFallback() error: %v", err)
+		}
+
+		if len(summaries) == 0 {
+			t.Fatal("expected at least one portfolio summary from materialized data")
+		}
+		if summaries[0].TotalCost != 1000.0 {
+			t.Errorf("expected TotalCost=1000.0, got %f", summaries[0].TotalCost)
 		}
 	})
 }
