@@ -40,7 +40,7 @@ func TestRespondJSON(t *testing.T) {
 		w := httptest.NewRecorder()
 
 		// Channels cannot be JSON encoded
-		data := map[string]interface{}{
+		data := map[string]any{
 			"channel": make(chan int),
 		}
 

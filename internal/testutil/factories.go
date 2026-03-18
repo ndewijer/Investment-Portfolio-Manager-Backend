@@ -128,7 +128,7 @@ func CreatePortfolios(t *testing.T, db *sql.DB, count int) []model.Portfolio {
 	t.Helper()
 
 	portfolios := make([]model.Portfolio, count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		portfolios[i] = NewPortfolio().Build(t, db)
 	}
 	return portfolios
@@ -266,7 +266,7 @@ func CreateFunds(t *testing.T, db *sql.DB, count int) []model.Fund {
 	t.Helper()
 
 	funds := make([]model.Fund, count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		funds[i] = NewFund().Build(t, db)
 	}
 	return funds

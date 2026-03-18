@@ -63,7 +63,7 @@ type FundHistoryEntry struct {
 	PortfolioFundID string    `json:"portfolioFundId"` // Portfolio fund relationship ID
 	FundID          string    `json:"fundId"`          // Fund identifier
 	FundName        string    `json:"fundName"`        // Fund name (from JOIN)
-	Date            time.Time `json:"date,omitempty"`  // Date of this snapshot
+	Date            time.Time `json:"date"`            // Date of this snapshot
 	Shares          float64   `json:"shares"`          // Total shares held
 	Price           float64   `json:"price"`           // Price per share on this date
 	Value           float64   `json:"value"`           // Market value (shares × price)

@@ -40,7 +40,7 @@ func ApplyGoldenSchema(db *sql.DB) error {
 	// may appear before their parent tables. Execute CREATE TABLE/CREATE INDEX
 	// in two passes to avoid "no such table" errors.
 	var tables, indexes []string
-	for _, stmt := range strings.Split(goldenSchema, "\n\n") {
+	for stmt := range strings.SplitSeq(goldenSchema, "\n\n") {
 		stmt = strings.TrimSpace(stmt)
 		if stmt == "" {
 			continue

@@ -92,7 +92,7 @@ func CreateMockYahooResponse(days int) yahoo.Response {
 
 	// Generate realistic price data for testing
 	basePrice := 100.0
-	for i := 0; i < days; i++ {
+	for i := range days {
 		date := yesterday.AddDate(0, 0, -days+i+1)
 		timestamps[i] = date.Unix()
 

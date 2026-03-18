@@ -96,7 +96,7 @@ func TestRespondError_NilDetails(t *testing.T) {
 
 	RespondError(w, http.StatusConflict, "conflict", nil)
 
-	var got map[string]interface{}
+	var got map[string]any
 	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
 		t.Fatalf("decode error: %v", err)
 	}

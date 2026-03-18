@@ -67,7 +67,7 @@ func (c *FinanceClient) RetreiveIbkrFlexReport(ctx context.Context, token string
 
 	log.Debug("retrieving IBKR flex report", "query_id", queryID)
 
-	v, err, _ := c.sf.Do(queryID, func() (interface{}, error) {
+	v, err, _ := c.sf.Do(queryID, func() (any, error) {
 		request, err := c.requestIBKRFlexReport(ctx, token, queryID)
 		if err != nil {
 			return nil, err
@@ -101,7 +101,7 @@ func (c *FinanceClient) TestIbkrConnection(ctx context.Context, token string, qu
 
 	log.Debug("testing IBKR connection", "query_id", queryID)
 
-	_, err, _ := c.sf.Do("test:"+queryID, func() (interface{}, error) {
+	_, err, _ := c.sf.Do("test:"+queryID, func() (any, error) {
 		_, err := c.requestIBKRFlexReport(ctx, token, queryID)
 		return nil, err
 	})
@@ -183,7 +183,7 @@ func (c *FinanceClient) retrieveIBKRFlexReport(ctx context.Context, token string
 	maxBackoff := 30 * time.Second
 	maxAttempts := 10
 
-	for attempt := 0; attempt < maxAttempts; attempt++ {
+	for attempt := range maxAttempts {
 		if attempt > 0 {
 			log.Warn("IBKR report not ready, retrying",
 				"attempt", attempt+1,

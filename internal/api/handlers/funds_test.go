@@ -722,7 +722,7 @@ func TestFundHandler_CreateFund(t *testing.T) {
 			t.Errorf("Expected status 400, got %d", w.Code)
 		}
 
-		var response map[string]interface{}
+		var response map[string]any
 
 		//nolint:errcheck // Test assertion - decode failure would cause test to fail anyway
 		json.NewDecoder(w.Body).Decode(&response)

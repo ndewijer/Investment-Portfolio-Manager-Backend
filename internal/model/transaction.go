@@ -30,7 +30,7 @@ type Transaction struct {
 	Type            string    `json:"type"`
 	Shares          float64   `json:"shares"`
 	CostPerShare    float64   `json:"costPerShare"`
-	CreatedAt       time.Time `json:"createdAt,omitempty"`
+	CreatedAt       time.Time `json:"createdAt"`
 }
 
 // TransactionResponse represents a transaction with enriched data for API responses.

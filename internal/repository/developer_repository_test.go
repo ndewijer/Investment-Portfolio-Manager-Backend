@@ -143,7 +143,7 @@ func TestDeveloperRepository_GetLogs_Filters(t *testing.T) {
 
 		base := time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC)
 
-		for i := 0; i < 5; i++ {
+		for i := range 5 {
 			log := model.Log{
 				ID:        testutil.MakeID(),
 				Timestamp: base.Add(time.Duration(i) * 24 * time.Hour),
@@ -253,7 +253,7 @@ func TestDeveloperRepository_GetLogs_Filters(t *testing.T) {
 		ctx := context.Background()
 
 		base := time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC)
-		for i := 0; i < 5; i++ {
+		for i := range 5 {
 			log := model.Log{
 				ID:        testutil.MakeID(),
 				Timestamp: base.Add(time.Duration(i) * time.Second),
@@ -307,7 +307,7 @@ func TestDeveloperRepository_GetLogs_Filters(t *testing.T) {
 		ctx := context.Background()
 
 		base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-		for i := 0; i < 3; i++ {
+		for i := range 3 {
 			log := model.Log{
 				ID:        testutil.MakeID(),
 				Timestamp: base.Add(time.Duration(i) * time.Hour),
@@ -575,7 +575,7 @@ func TestDeveloperRepository_DeleteLogs(t *testing.T) {
 		ctx := context.Background()
 
 		now := time.Now().UTC().Truncate(time.Second)
-		for i := 0; i < 3; i++ {
+		for range 3 {
 			log := model.Log{
 				ID:        testutil.MakeID(),
 				Timestamp: now,

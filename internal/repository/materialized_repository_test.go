@@ -265,7 +265,7 @@ func TestMaterializedRepository_GetMaterializedHistory(t *testing.T) {
 
 		base := time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC)
 		var entries []model.FundHistoryEntry
-		for i := 0; i < 5; i++ {
+		for i := range 5 {
 			entries = append(entries, model.FundHistoryEntry{
 				ID:              testutil.MakeID(),
 				PortfolioFundID: pf.ID,
@@ -624,7 +624,7 @@ func TestMaterializedRepository_GetFundHistoryMaterialized(t *testing.T) {
 
 		base := time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC)
 		var entries []model.FundHistoryEntry
-		for i := 0; i < 5; i++ {
+		for i := range 5 {
 			entries = append(entries, model.FundHistoryEntry{
 				ID:              testutil.MakeID(),
 				PortfolioFundID: pf.ID,

@@ -37,8 +37,8 @@ func ParseLogFilters(
 
 	// Parse levels (comma-separated)
 	if levelsParam != "" {
-		levels := strings.Split(levelsParam, ",")
-		for _, level := range levels {
+		levels := strings.SplitSeq(levelsParam, ",")
+		for level := range levels {
 			level = strings.TrimSpace(strings.ToLower(level))
 			if !model.ValidLogLevels[model.LogLevel(level)] {
 				return nil, fmt.Errorf("invalid log level: %s", level)
@@ -49,8 +49,8 @@ func ParseLogFilters(
 
 	// Parse categories (comma-separated)
 	if categoriesParam != "" {
-		categories := strings.Split(categoriesParam, ",")
-		for _, category := range categories {
+		categories := strings.SplitSeq(categoriesParam, ",")
+		for category := range categories {
 			category = strings.TrimSpace(strings.ToLower(category))
 			if !model.ValidLogCategories[model.LogCategory(category)] {
 				return nil, fmt.Errorf("invalid category: %s", category)
