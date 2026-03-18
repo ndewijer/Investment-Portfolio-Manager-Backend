@@ -136,7 +136,7 @@ func (h *DeveloperHandler) SetLoggingConfig(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	devLog.InfoContext(r.Context(), "logging config updated", "enabled", req.Enabled, "level", req.Level)
+	devLog.InfoContext(r.Context(), "logging config updated", "enabled", logSetting.Enabled, "level", logSetting.Level)
 	response.RespondJSON(w, http.StatusOK, logSetting)
 }
 
