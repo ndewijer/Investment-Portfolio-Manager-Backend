@@ -187,6 +187,7 @@ func (r *FundRepository) GetFunds(fundIDs []string) ([]model.Fund, error) {
 
 	for rows.Next() {
 		var f model.Fund
+		var priceStr sql.NullFloat64
 
 		err := rows.Scan(
 
@@ -198,10 +199,16 @@ func (r *FundRepository) GetFunds(fundIDs []string) ([]model.Fund, error) {
 			&f.Exchange,
 			&f.InvestmentType,
 			&f.DividendType,
+			&priceStr,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan fund table results: %w", err)
 		}
+
+		if priceStr.Valid {
+			f.LatestPrice = priceStr.Float64
+		}
+
 		funds = append(funds, f)
 	}
 	if err = rows.Err(); err != nil {
