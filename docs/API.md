@@ -94,6 +94,7 @@ All endpoints are served under `/api`. IDs are UUIDs unless noted otherwise.
 | Method | Path                                 | Description                          |
 |--------|--------------------------------------|--------------------------------------|
 | GET    | `/developer/logs`                    | Get system logs (cursor-based)       |
+| GET    | `/developer/logs/filter-options`     | Distinct values for log filter picklists |
 | DELETE | `/developer/logs`                    | Clear all system logs                |
 | GET    | `/developer/system-settings/logging` | Get logging configuration            |
 | PUT    | `/developer/system-settings/logging` | Update logging configuration         |

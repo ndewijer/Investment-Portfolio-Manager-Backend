@@ -56,7 +56,7 @@ All endpoints are served under `/api`. See [docs/API.md](docs/API.md) for the fu
 | `/transaction` | 6         | CRUD, per-portfolio listing                    |
 | `/dividend`    | 7         | CRUD, per-portfolio and per-fund listing       |
 | `/ibkr`        | 19        | Config, import, inbox, allocation, matching    |
-| `/developer`   | 12        | Logs, settings, CSV import, exchange rates     |
+| `/developer`   | 13        | Logs, settings, CSV import, exchange rates     |
 
 ## Documentation
 
