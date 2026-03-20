@@ -15,6 +15,9 @@ type Logger struct {
 }
 
 // NewLogger creates a Logger with the given category.
+// The category is stored as a "category" attr on the handler. Callers must
+// not pass "category" as a log arg key — it will override the logger's
+// category in the DB. Use a prefixed key (e.g. "filter_category") instead.
 func NewLogger(category string) *Logger {
 	return &Logger{category: category}
 }

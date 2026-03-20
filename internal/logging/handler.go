@@ -61,7 +61,13 @@ func (h *DBHandler) Handle(ctx context.Context, record slog.Record) error {
 	}
 
 	// Extract category from pre-bound attrs (default "SYSTEM").
+	// IMPORTANT: "category" and "status" are reserved attr keys — they map
+	// to dedicated DB columns. If caller code passes either as a log arg
+	// (e.g. devLog.Debug("msg", "category", value)), the record-level attr
+	// overrides the pre-bound value. Use prefixed keys instead (e.g.
+	// "filter_category", "response_status").
 	category := "SYSTEM"
+	var httpStatus *int
 	var details []string
 
 	for _, a := range h.attrs {
@@ -69,13 +75,25 @@ func (h *DBHandler) Handle(ctx context.Context, record slog.Record) error {
 			category = strings.ToUpper(a.Value.String())
 			continue
 		}
+		if a.Key == "status" {
+			if v, ok := a.Value.Any().(int); ok {
+				httpStatus = &v
+			}
+			continue
+		}
 		details = append(details, fmt.Sprintf("%s=%s", a.Key, a.Value.String()))
 	}
 
-	// Also check record attrs for category override; collect everything else as details.
+	// Also check record attrs for category/status; collect everything else as details.
 	record.Attrs(func(a slog.Attr) bool {
 		if a.Key == "category" {
 			category = strings.ToUpper(a.Value.String())
+			return true
+		}
+		if a.Key == "status" {
+			if v, ok := a.Value.Any().(int); ok {
+				httpStatus = &v
+			}
 			return true
 		}
 		details = append(details, fmt.Sprintf("%s=%s", a.Key, a.Value.String()))
@@ -120,7 +138,7 @@ func (h *DBHandler) Handle(ctx context.Context, record slog.Record) error {
 		source,
 		requestID,
 		stackTrace,
-		nil, // http_status — not available from slog context
+		httpStatus, // http_status — extracted from "status" attr if present
 		ipAddress,
 		userAgent,
 	)

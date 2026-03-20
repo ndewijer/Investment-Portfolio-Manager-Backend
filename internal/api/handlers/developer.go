@@ -74,9 +74,9 @@ func (h *DeveloperHandler) GetLogFilterOptions(w http.ResponseWriter, r *http.Re
 // Error: 500 Internal Server Error if retrieval fails
 func (h *DeveloperHandler) GetLogs(w http.ResponseWriter, r *http.Request) {
 	devLog.DebugContext(r.Context(), "get logs request",
-		"level", r.URL.Query().Get("level"),
-		"category", r.URL.Query().Get("category"),
-		"sort_dir", r.URL.Query().Get("sortDir"),
+		"filter_level", r.URL.Query().Get("level"),
+		"filter_category", r.URL.Query().Get("category"),
+		"filter_sort_dir", r.URL.Query().Get("sortDir"),
 	)
 
 	// Parse filter parameters
