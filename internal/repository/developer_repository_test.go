@@ -672,3 +672,162 @@ func TestDeveloperRepository_AddLog_OptionalFields(t *testing.T) {
 		}
 	})
 }
+
+// ---------------------------------------------------------------------------
+// GetLogFilterOptions
+// ---------------------------------------------------------------------------
+
+//nolint:gocyclo // Comprehensive integration test with multiple subtests
+func TestDeveloperRepository_GetLogFilterOptions(t *testing.T) {
+	t.Run("returns empty options when no logs exist", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		repo := repository.NewDeveloperRepository(db)
+
+		opts, err := repo.GetLogFilterOptions()
+		if err != nil {
+			t.Fatalf("GetLogFilterOptions: %v", err)
+		}
+		if opts == nil {
+			t.Fatal("GetLogFilterOptions returned nil")
+		}
+		if len(opts.Levels) != 0 {
+			t.Errorf("expected 0 levels, got %d", len(opts.Levels))
+		}
+		if len(opts.Categories) != 0 {
+			t.Errorf("expected 0 categories, got %d", len(opts.Categories))
+		}
+		if len(opts.Sources) != 0 {
+			t.Errorf("expected 0 sources, got %d", len(opts.Sources))
+		}
+		if len(opts.Messages) != 0 {
+			t.Errorf("expected 0 messages, got %d", len(opts.Messages))
+		}
+	})
+
+	t.Run("returns distinct values from logs", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		repo := repository.NewDeveloperRepository(db)
+		ctx := context.Background()
+
+		now := time.Now().UTC().Truncate(time.Second)
+		logs := []model.Log{
+			{
+				ID:        testutil.MakeID(),
+				Timestamp: now,
+				Level:     "INFO",
+				Category:  "SYSTEM",
+				Message:   "System started",
+				Source:    "handler/system",
+			},
+			{
+				ID:        testutil.MakeID(),
+				Timestamp: now.Add(time.Second),
+				Level:     "ERROR",
+				Category:  "FUND",
+				Message:   "Fund update failed",
+				Source:    "service/fund",
+			},
+			{
+				ID:        testutil.MakeID(),
+				Timestamp: now.Add(2 * time.Second),
+				Level:     "INFO",
+				Category:  "SYSTEM",
+				Message:   "System started",
+				Source:    "handler/system",
+			},
+		}
+		for _, l := range logs {
+			if err := repo.AddLog(ctx, l); err != nil {
+				t.Fatalf("AddLog: %v", err)
+			}
+		}
+
+		opts, err := repo.GetLogFilterOptions()
+		if err != nil {
+			t.Fatalf("GetLogFilterOptions: %v", err)
+		}
+
+		// Should have 2 distinct levels (INFO, ERROR)
+		if len(opts.Levels) != 2 {
+			t.Errorf("expected 2 distinct levels, got %d: %v", len(opts.Levels), opts.Levels)
+		}
+		// Should have 2 distinct categories (SYSTEM, FUND)
+		if len(opts.Categories) != 2 {
+			t.Errorf("expected 2 distinct categories, got %d: %v", len(opts.Categories), opts.Categories)
+		}
+		// Should have 2 distinct sources (handler/system, service/fund)
+		if len(opts.Sources) != 2 {
+			t.Errorf("expected 2 distinct sources, got %d: %v", len(opts.Sources), opts.Sources)
+		}
+		// Should have 2 distinct messages
+		if len(opts.Messages) != 2 {
+			t.Errorf("expected 2 distinct messages, got %d: %v", len(opts.Messages), opts.Messages)
+		}
+	})
+
+	t.Run("levels and categories are uppercase", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		repo := repository.NewDeveloperRepository(db)
+		ctx := context.Background()
+
+		now := time.Now().UTC().Truncate(time.Second)
+		log := model.Log{
+			ID:        testutil.MakeID(),
+			Timestamp: now,
+			Level:     "info",
+			Category:  "system",
+			Message:   "test msg",
+			Source:    "test-src",
+		}
+		if err := repo.AddLog(ctx, log); err != nil {
+			t.Fatalf("AddLog: %v", err)
+		}
+
+		opts, err := repo.GetLogFilterOptions()
+		if err != nil {
+			t.Fatalf("GetLogFilterOptions: %v", err)
+		}
+
+		if len(opts.Levels) != 1 || opts.Levels[0] != "INFO" {
+			t.Errorf("expected levels=[INFO], got %v", opts.Levels)
+		}
+		if len(opts.Categories) != 1 || opts.Categories[0] != "SYSTEM" {
+			t.Errorf("expected categories=[SYSTEM], got %v", opts.Categories)
+		}
+	})
+
+	t.Run("results are sorted", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		repo := repository.NewDeveloperRepository(db)
+		ctx := context.Background()
+
+		now := time.Now().UTC().Truncate(time.Second)
+		// Insert in reverse alphabetical order
+		for _, level := range []string{"WARNING", "INFO", "ERROR"} {
+			log := model.Log{
+				ID:        testutil.MakeID(),
+				Timestamp: now,
+				Level:     level,
+				Category:  "SYSTEM",
+				Message:   "msg",
+				Source:    "src",
+			}
+			if err := repo.AddLog(ctx, log); err != nil {
+				t.Fatalf("AddLog: %v", err)
+			}
+		}
+
+		opts, err := repo.GetLogFilterOptions()
+		if err != nil {
+			t.Fatalf("GetLogFilterOptions: %v", err)
+		}
+
+		if len(opts.Levels) != 3 {
+			t.Fatalf("expected 3 levels, got %d", len(opts.Levels))
+		}
+		// Should be sorted: ERROR, INFO, WARNING
+		if opts.Levels[0] != "ERROR" || opts.Levels[1] != "INFO" || opts.Levels[2] != "WARNING" {
+			t.Errorf("expected sorted levels [ERROR, INFO, WARNING], got %v", opts.Levels)
+		}
+	})
+}

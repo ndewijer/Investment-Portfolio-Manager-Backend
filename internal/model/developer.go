@@ -52,6 +52,15 @@ var ValidLogCategories = map[LogCategory]bool{
 	LogCategoryDeveloper:   true,
 }
 
+// LogFilterOptions contains distinct values for log filter columns.
+// Used by the frontend to populate filter picklists.
+type LogFilterOptions struct {
+	Levels     []string `json:"levels"`
+	Categories []string `json:"categories"`
+	Sources    []string `json:"sources"`
+	Messages   []string `json:"messages"`
+}
+
 // LogFilters represents parsed and validated parameters for querying system logs.
 // All fields are optional and can be combined. Populated by the HTTP layer and
 // consumed directly by the repository — no API-layer dependency required.

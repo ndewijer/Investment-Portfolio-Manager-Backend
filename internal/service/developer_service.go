@@ -59,6 +59,13 @@ func (s *DeveloperService) SetLogHandler(h *logging.DBHandler) {
 	s.logHandler = h
 }
 
+// GetLogFilterOptions retrieves distinct values for log filter columns.
+// Used by the frontend to populate filter picklists.
+func (s *DeveloperService) GetLogFilterOptions() (*model.LogFilterOptions, error) {
+	devLog.Debug("retrieving log filter options")
+	return s.developerRepo.GetLogFilterOptions()
+}
+
 // GetLogs retrieves system logs with the specified filters and pagination.
 // Returns a paginated response with cursor for fetching subsequent pages.
 // The context parameter is currently unused but reserved for future cancellation support.

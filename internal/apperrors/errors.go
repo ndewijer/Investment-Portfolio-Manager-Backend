@@ -134,6 +134,7 @@ var (
 	ErrFailedToGetVersionInfo = errors.New("failed to get version information")
 
 	// Developer operation errors
+	ErrFailedToRetrieveLogFilterOpts = errors.New("failed to retrieve log filter options")
 	ErrFailedToRetrieveLogs          = errors.New("failed to retrieve logs")
 	ErrFailedToRetrieveLoggingConfig = errors.New("failed to retrieve logging configuration")
 	ErrFailedToRetrieveExchangeRate  = errors.New("failed to retrieve exchange rate")
