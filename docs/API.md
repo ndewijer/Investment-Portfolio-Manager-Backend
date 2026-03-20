@@ -22,6 +22,7 @@ All endpoints are served under `/api`. IDs are UUIDs unless noted otherwise.
 | POST   | `/portfolio/{id}/unarchive`   | Unarchive portfolio              |
 | GET    | `/portfolio/summary`          | Portfolio summary (materialized) |
 | GET    | `/portfolio/history`          | Portfolio history (materialized) |
+| GET    | `/portfolio/funds`            | List all portfolio-fund relationships |
 | GET    | `/portfolio/funds/{id}`       | Funds in a portfolio             |
 | POST   | `/portfolio/funds`            | Add fund to portfolio            |
 | DELETE | `/portfolio/fund/{id}`        | Remove fund from portfolio       |

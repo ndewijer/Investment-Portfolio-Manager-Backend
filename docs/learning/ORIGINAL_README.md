@@ -1,3 +1,5 @@
+> **Note:** This is a historical snapshot of the original README, preserved for reference. Technical details (ports, toolchain plans, file paths) may be outdated. See the [current README](../../README.md) and [docs/](../) for up-to-date information.
+
 # Investment Portfolio Manager - Go Backend
 
 A personal learning project rebuilding the Investment Portfolio Manager backend in Go. This project is part of my journey to learn Go by reimplementing a production Python/Flask backend that manages investment fund portfolios, transactions, and dividend tracking.
@@ -224,18 +226,18 @@ Investment-Portfolio-Manager-Backend/
 
 ### Learning Resources
 
-- **[Architecture Decisions](docs/ARCHITECTURE_DECISIONS.md)** - Deep dive into why specific technologies and patterns were chosen
-- **[Implementation Plan](docs/GO_IMPLEMENTATION_PLAN.md)** - Phased roadmap for building the backend
-- **[Setup Explained](docs/SETUP_EXPLAINED.md)** - Detailed explanation of how everything works
-- **[Go Pointers Guide](docs/GO_POINTERS_EXPLAINED.md)** - Understanding pointers in Go
-- **[Testing Guide](docs/GO_TESTING_GUIDE.md)** - Testing patterns and practices
-- **[Testing Quick Reference](docs/TESTING_QUICK_REFERENCE.md)** - Quick reference for test commands and builders
-- **[Endpoint Testing Guide](docs/ENDPOINT_TESTING_GUIDE.md)** - Patterns for testing HTTP endpoints
-- **[Repository Transaction Patterns](docs/REPOSITORY_TRANSACTION_PATTERNS.md)** - Transaction management patterns
-- **[Write Operations Guide](docs/WRITE_OPERATIONS_GUIDE.md)** - Patterns for POST/PUT/DELETE handlers
-- **[Go Best Practices](docs/GO_BEST_PRACTICES.md)** - Project-specific Go conventions
-- **[Logging Implementation](docs/LOGGING_IMPLEMENTATION.md)** - Structured logging setup and usage
-- **[Tooling Recommendations](docs/TOOLING_RECOMMENDATIONS.md)** - Recommended tools and CI/CD setup
+- **[Architecture Decisions](docs/learning/ARCHITECTURE_DECISIONS.md)** - Deep dive into why specific technologies and patterns were chosen
+- **[Implementation Plan](docs/learning/GO_IMPLEMENTATION_PLAN.md)** - Phased roadmap for building the backend
+- **[Setup Explained](docs/learning/SETUP_EXPLAINED.md)** - Detailed explanation of how everything works
+- **[Go Pointers Guide](docs/learning/GO_POINTERS_EXPLAINED.md)** - Understanding pointers in Go
+- **[Testing Guide](docs/learning/GO_TESTING_GUIDE.md)** - Testing patterns and practices
+- **[Testing Quick Reference](docs/learning/TESTING_QUICK_REFERENCE.md)** - Quick reference for test commands and builders
+- **[Endpoint Testing Guide](docs/learning/ENDPOINT_TESTING_GUIDE.md)** - Patterns for testing HTTP endpoints
+- **[Repository Transaction Patterns](docs/learning/REPOSITORY_TRANSACTION_PATTERNS.md)** - Transaction management patterns
+- **[Write Operations Guide](docs/learning/WRITE_OPERATIONS_GUIDE.md)** - Patterns for POST/PUT/DELETE handlers
+- **[Go Best Practices](docs/learning/GO_BEST_PRACTICES.md)** - Project-specific Go conventions
+- **[Logging Implementation](docs/learning/LOGGING_IMPLEMENTATION.md)** - Structured logging setup and usage
+- **[Tooling Recommendations](docs/learning/TOOLING_RECOMMENDATIONS.md)** - Recommended tools and CI/CD setup
 
 ### Architecture Overview
 

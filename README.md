@@ -76,7 +76,7 @@ The notes from building this project are preserved in [docs/learning/](docs/lear
 - **Database:** SQLite via [modernc.org/sqlite](https://pkg.go.dev/modernc.org/sqlite) (pure Go, no CGO)
 - **Migrations:** [Goose](https://github.com/pressly/goose)
 - **Scheduling:** [robfig/cron](https://github.com/robfig/cron)
-- **Testing:** Go testing + testify/assert
+- **Testing:** Go standard library `testing` package
 
 ## License
 

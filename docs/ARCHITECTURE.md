@@ -25,11 +25,14 @@ internal/
     router.go               Route definitions (Chi)
     handlers/                HTTP handlers, one file per domain
     middleware/              CORS, logging, UUID validation, API key auth
-    response.go             Shared response helpers
+    request/                Request parsing types, one file per domain
+    response/               Shared response helpers
+  model/                    Domain model types
   service/                  Business logic, one file per domain
   repository/               Database access, one file per domain
   database/
-    database.go             Connection setup, migration runner
+    database.go             Connection setup
+    migrate.go              Migration runner
     migrations/             Goose SQL migration files
   config/                   Environment-based configuration
   logging/                  Structured logging with DB-configurable levels
