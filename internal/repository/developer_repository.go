@@ -235,6 +235,65 @@ func (r *DeveloperRepository) GetLogs(filters *model.LogFilters) (*model.LogResp
 	}, nil
 }
 
+// GetLogFilterOptions retrieves distinct non-null values for log filter columns.
+// Returns sorted lists of levels, categories, sources, and messages for frontend picklists.
+// Levels and categories are returned in uppercase.
+func (r *DeveloperRepository) GetLogFilterOptions() (*model.LogFilterOptions, error) {
+	devLog.Debug("getting log filter options")
+
+	options := &model.LogFilterOptions{}
+	var err error
+
+	options.Levels, err = r.queryDistinctColumn("level", true)
+	if err != nil {
+		return nil, err
+	}
+	options.Categories, err = r.queryDistinctColumn("category", true)
+	if err != nil {
+		return nil, err
+	}
+	options.Sources, err = r.queryDistinctColumn("source", false)
+	if err != nil {
+		return nil, err
+	}
+	options.Messages, err = r.queryDistinctColumn("message", false)
+	if err != nil {
+		return nil, err
+	}
+
+	return options, nil
+}
+
+// queryDistinctColumn returns sorted distinct non-empty values for a single log table column.
+// When upper is true the values are returned in uppercase.
+func (r *DeveloperRepository) queryDistinctColumn(column string, upper bool) ([]string, error) {
+	colExpr := column
+	if upper {
+		colExpr = "UPPER(" + column + ")"
+	}
+	//nolint:gosec // G202: column and colExpr are hardcoded strings, not user input
+	query := "SELECT DISTINCT " + colExpr + " FROM log WHERE " + column + " IS NOT NULL AND " + column + " != '' ORDER BY " + colExpr
+
+	rows, err := r.getQuerier().Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query distinct %s: %w", column, err)
+	}
+	defer rows.Close()
+
+	var values []string
+	for rows.Next() {
+		var val string
+		if err := rows.Scan(&val); err != nil {
+			return nil, fmt.Errorf("failed to scan distinct %s: %w", column, err)
+		}
+		values = append(values, val)
+	}
+	if values == nil {
+		values = []string{}
+	}
+	return values, nil
+}
+
 // GetLoggingConfig retrieves the current logging configuration from system_setting table.
 // Returns the LOGGING_ENABLED and LOGGING_LEVEL settings.
 // If settings are not configured, returns default values: enabled=true, level="info".

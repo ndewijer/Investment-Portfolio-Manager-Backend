@@ -34,6 +34,25 @@ func NewDeveloperHandler(DeveloperService *service.DeveloperService) *DeveloperH
 	}
 }
 
+// GetLogFilterOptions handles GET requests to retrieve distinct values for log filter columns.
+// Returns sorted lists of levels, categories, sources, and messages for frontend picklists.
+//
+// Endpoint: GET /api/developer/logs/filter-options
+// Response: 200 OK with LogFilterOptions
+// Error: 500 Internal Server Error if retrieval fails
+func (h *DeveloperHandler) GetLogFilterOptions(w http.ResponseWriter, r *http.Request) {
+	devLog.DebugContext(r.Context(), "get log filter options request")
+
+	options, err := h.DeveloperService.GetLogFilterOptions()
+	if err != nil {
+		devLog.ErrorContext(r.Context(), "failed to get log filter options", "error", err)
+		response.RespondInternalError(w, r, apperrors.ErrFailedToRetrieveLogFilterOpts.Error())
+		return
+	}
+
+	response.RespondJSON(w, http.StatusOK, options)
+}
+
 // GetLogs handles GET requests to retrieve system logs with filtering and pagination.
 // Returns logs with cursor-based pagination for efficient traversal of large result sets.
 // Supports filtering by level, category, date range, source, and message content.
