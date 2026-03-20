@@ -15,9 +15,11 @@ type Logger struct {
 }
 
 // NewLogger creates a Logger with the given category.
-// The category is stored as a "category" attr on the handler. Callers must
-// not pass "category" as a log arg key — it will override the logger's
-// category in the DB. Use a prefixed key (e.g. "filter_category") instead.
+// The category is stored as a "category" attr on the handler. "category",
+// "status", and "source" are reserved attr keys that map to dedicated DB
+// columns. Callers must not use these as log arg keys unless intentionally
+// overriding (e.g. the middleware passes "source" to set the route pattern).
+// Use prefixed keys for data values (e.g. "filter_category").
 func NewLogger(category string) *Logger {
 	return &Logger{category: category}
 }
