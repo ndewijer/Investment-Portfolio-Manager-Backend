@@ -14,8 +14,8 @@ import (
 
 var devLog = logging.NewLogger("developer")
 
-// DeveloperRepository provides data access methods for the Developer table.
-// It handles retrieving Developer records and reinvestment information.
+// DeveloperRepository provides data access methods for developer and system
+// utilities: logs, logging configuration, exchange rates, fund prices, and CSV imports.
 type DeveloperRepository struct {
 	db *sql.DB
 	tx *sql.Tx
@@ -287,6 +287,9 @@ func (r *DeveloperRepository) queryDistinctColumn(column string, upper bool) ([]
 			return nil, fmt.Errorf("failed to scan distinct %s: %w", column, err)
 		}
 		values = append(values, val)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating distinct %s: %w", column, err)
 	}
 	if values == nil {
 		values = []string{}
