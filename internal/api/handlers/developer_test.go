@@ -1297,6 +1297,7 @@ func TestDeveloperHandler_ImportTransactions(t *testing.T) {
 
 // ---- GetLogFilterOptions ----
 
+//nolint:gocyclo // Comprehensive integration test with multiple subtests
 func TestDeveloperHandler_GetLogFilterOptions(t *testing.T) {
 	t.Run("returns filter options successfully with empty database", func(t *testing.T) {
 		handler := newDeveloperHandler(t)

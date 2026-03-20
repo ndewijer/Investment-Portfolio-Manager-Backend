@@ -726,6 +726,7 @@ func TestDeveloperService_DeleteLogs(t *testing.T) {
 // GET LOG FILTER OPTIONS
 // =============================================================================
 
+//nolint:gocyclo // Comprehensive integration test with multiple subtests
 func TestDeveloperService_GetLogFilterOptions(t *testing.T) {
 	t.Run("returns empty options when no logs exist", func(t *testing.T) {
 		db := testutil.SetupTestDB(t)

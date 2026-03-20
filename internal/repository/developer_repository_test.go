@@ -677,6 +677,7 @@ func TestDeveloperRepository_AddLog_OptionalFields(t *testing.T) {
 // GetLogFilterOptions
 // ---------------------------------------------------------------------------
 
+//nolint:gocyclo // Comprehensive integration test with multiple subtests
 func TestDeveloperRepository_GetLogFilterOptions(t *testing.T) {
 	t.Run("returns empty options when no logs exist", func(t *testing.T) {
 		db := testutil.SetupTestDB(t)
