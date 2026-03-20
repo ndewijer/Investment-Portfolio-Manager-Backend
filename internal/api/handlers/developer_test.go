@@ -1294,3 +1294,97 @@ func TestDeveloperHandler_ImportTransactions(t *testing.T) {
 		}
 	})
 }
+
+// ---- GetLogFilterOptions ----
+
+//nolint:gocyclo // Comprehensive integration test with multiple subtests
+func TestDeveloperHandler_GetLogFilterOptions(t *testing.T) {
+	t.Run("returns filter options successfully with empty database", func(t *testing.T) {
+		handler := newDeveloperHandler(t)
+		req := httptest.NewRequest(http.MethodGet, "/api/developer/logs/filter-options", nil)
+		w := httptest.NewRecorder()
+
+		handler.GetLogFilterOptions(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var opts model.LogFilterOptions
+		if err := json.NewDecoder(w.Body).Decode(&opts); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		// All fields should be empty slices (no logs in DB)
+		if len(opts.Levels) != 0 {
+			t.Errorf("expected 0 levels, got %d", len(opts.Levels))
+		}
+		if len(opts.Categories) != 0 {
+			t.Errorf("expected 0 categories, got %d", len(opts.Categories))
+		}
+		if len(opts.Sources) != 0 {
+			t.Errorf("expected 0 sources, got %d", len(opts.Sources))
+		}
+		if len(opts.Messages) != 0 {
+			t.Errorf("expected 0 messages, got %d", len(opts.Messages))
+		}
+	})
+
+	t.Run("returns populated filter options after logs are created", func(t *testing.T) {
+		handler := newDeveloperHandler(t)
+
+		// Seed a log entry by calling DeleteLogs (creates an INFO-level audit log)
+		delReq := httptest.NewRequest(http.MethodDelete, "/api/developer/logs", nil)
+		handler.DeleteLogs(httptest.NewRecorder(), delReq)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/developer/logs/filter-options", nil)
+		w := httptest.NewRecorder()
+
+		handler.GetLogFilterOptions(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var opts model.LogFilterOptions
+		if err := json.NewDecoder(w.Body).Decode(&opts); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if len(opts.Levels) == 0 {
+			t.Error("expected at least one level after seeding logs")
+		}
+		if len(opts.Categories) == 0 {
+			t.Error("expected at least one category after seeding logs")
+		}
+		if len(opts.Sources) == 0 {
+			t.Error("expected at least one source after seeding logs")
+		}
+		if len(opts.Messages) == 0 {
+			t.Error("expected at least one message after seeding logs")
+		}
+	})
+
+	t.Run("response has correct JSON structure with all four fields", func(t *testing.T) {
+		handler := newDeveloperHandler(t)
+		req := httptest.NewRequest(http.MethodGet, "/api/developer/logs/filter-options", nil)
+		w := httptest.NewRecorder()
+
+		handler.GetLogFilterOptions(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("expected 200, got %d", w.Code)
+		}
+
+		var raw map[string]json.RawMessage
+		if err := json.NewDecoder(w.Body).Decode(&raw); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		for _, field := range []string{"levels", "categories", "sources", "messages"} {
+			if _, ok := raw[field]; !ok {
+				t.Errorf("expected JSON field %q to be present in response", field)
+			}
+		}
+		if len(raw) != 4 {
+			t.Errorf("expected exactly 4 JSON fields, got %d", len(raw))
+		}
+	})
+}

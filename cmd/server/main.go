@@ -15,6 +15,7 @@ import (
 
 	"github.com/fernet/fernet-go"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api"
+	custommiddleware "github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/middleware"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/config"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/database"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/ibkr"
@@ -81,6 +82,9 @@ func main() {
 		developerService,
 		cfg,
 	)
+
+	// Build route -> handler function name lookup for request logging.
+	custommiddleware.InitHandlerSources(router)
 
 	// Create HTTP server
 	server := &http.Server{

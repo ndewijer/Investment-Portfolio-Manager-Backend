@@ -61,7 +61,13 @@ func (h *DBHandler) Handle(ctx context.Context, record slog.Record) error {
 	}
 
 	// Extract category from pre-bound attrs (default "SYSTEM").
+	// IMPORTANT: "category", "status", and "source" are reserved attr keys —
+	// they map to dedicated DB columns. If caller code passes any of these as
+	// a log arg, the record-level attr overrides the default value. Use
+	// prefixed keys instead (e.g. "filter_category", "response_status").
 	category := "SYSTEM"
+	var httpStatus *int
+	var sourceOverride string
 	var details []string
 
 	for _, a := range h.attrs {
@@ -69,13 +75,31 @@ func (h *DBHandler) Handle(ctx context.Context, record slog.Record) error {
 			category = strings.ToUpper(a.Value.String())
 			continue
 		}
+		if a.Key == "status" {
+			v := int(a.Value.Int64())
+			httpStatus = &v
+			continue
+		}
+		if a.Key == "source" {
+			sourceOverride = a.Value.String()
+			continue
+		}
 		details = append(details, fmt.Sprintf("%s=%s", a.Key, a.Value.String()))
 	}
 
-	// Also check record attrs for category override; collect everything else as details.
+	// Also check record attrs for reserved keys; collect everything else as details.
 	record.Attrs(func(a slog.Attr) bool {
 		if a.Key == "category" {
 			category = strings.ToUpper(a.Value.String())
+			return true
+		}
+		if a.Key == "status" {
+			v := int(a.Value.Int64())
+			httpStatus = &v
+			return true
+		}
+		if a.Key == "source" {
+			sourceOverride = a.Value.String()
 			return true
 		}
 		details = append(details, fmt.Sprintf("%s=%s", a.Key, a.Value.String()))
@@ -87,9 +111,9 @@ func (h *DBHandler) Handle(ctx context.Context, record slog.Record) error {
 	ipAddress := IPFromContext(ctx)
 	userAgent := UserAgentFromContext(ctx)
 
-	// Source from record.PC.
-	source := ""
-	if record.PC != 0 {
+	// Source: use explicit override if provided, otherwise derive from PC.
+	source := sourceOverride
+	if source == "" && record.PC != 0 {
 		frames := runtime.CallersFrames([]uintptr{record.PC})
 		f, _ := frames.Next()
 		if f.Function != "" {
@@ -120,7 +144,7 @@ func (h *DBHandler) Handle(ctx context.Context, record slog.Record) error {
 		source,
 		requestID,
 		stackTrace,
-		nil, // http_status — not available from slog context
+		httpStatus, // http_status — extracted from "status" attr if present
 		ipAddress,
 		userAgent,
 	)

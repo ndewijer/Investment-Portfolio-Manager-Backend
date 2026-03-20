@@ -3,6 +3,7 @@ package service_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -717,6 +718,108 @@ func TestDeveloperService_DeleteLogs(t *testing.T) {
 		// Should only have 1 entry (from the second delete)
 		if resp.Count != 1 {
 			t.Errorf("Expected 1 log entry after second delete, got %d", resp.Count)
+		}
+	})
+}
+
+// =============================================================================
+// GET LOG FILTER OPTIONS
+// =============================================================================
+
+//nolint:gocyclo // Comprehensive integration test with multiple subtests
+func TestDeveloperService_GetLogFilterOptions(t *testing.T) {
+	t.Run("returns empty options when no logs exist", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		svc := testutil.NewTestDeveloperService(t, db)
+
+		opts, err := svc.GetLogFilterOptions()
+		if err != nil {
+			t.Fatalf("GetLogFilterOptions() returned unexpected error: %v", err)
+		}
+		if opts == nil {
+			t.Fatal("GetLogFilterOptions() returned nil")
+		}
+		if len(opts.Levels) != 0 {
+			t.Errorf("Expected 0 levels, got %d", len(opts.Levels))
+		}
+		if len(opts.Categories) != 0 {
+			t.Errorf("Expected 0 categories, got %d", len(opts.Categories))
+		}
+		if len(opts.Sources) != 0 {
+			t.Errorf("Expected 0 sources, got %d", len(opts.Sources))
+		}
+		if len(opts.Messages) != 0 {
+			t.Errorf("Expected 0 messages, got %d", len(opts.Messages))
+		}
+	})
+
+	t.Run("returns populated options after logs are created", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		svc := testutil.NewTestDeveloperService(t, db)
+
+		// Seed a log entry via DeleteLogs (creates an INFO-level audit log)
+		err := svc.DeleteLogs(context.Background(), nil, "test-agent")
+		if err != nil {
+			t.Fatalf("DeleteLogs() error: %v", err)
+		}
+
+		opts, err := svc.GetLogFilterOptions()
+		if err != nil {
+			t.Fatalf("GetLogFilterOptions() returned unexpected error: %v", err)
+		}
+		if len(opts.Levels) == 0 {
+			t.Error("Expected at least one level after seeding logs")
+		}
+		if len(opts.Categories) == 0 {
+			t.Error("Expected at least one category after seeding logs")
+		}
+		if len(opts.Sources) == 0 {
+			t.Error("Expected at least one source after seeding logs")
+		}
+		if len(opts.Messages) == 0 {
+			t.Error("Expected at least one message after seeding logs")
+		}
+	})
+
+	t.Run("levels are returned in uppercase", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		svc := testutil.NewTestDeveloperService(t, db)
+
+		// Seed a log via DeleteLogs
+		err := svc.DeleteLogs(context.Background(), nil, "test-agent")
+		if err != nil {
+			t.Fatalf("DeleteLogs() error: %v", err)
+		}
+
+		opts, err := svc.GetLogFilterOptions()
+		if err != nil {
+			t.Fatalf("GetLogFilterOptions() error: %v", err)
+		}
+		for _, level := range opts.Levels {
+			if level != strings.ToUpper(level) {
+				t.Errorf("Expected level %q to be uppercase", level)
+			}
+		}
+	})
+
+	t.Run("categories are returned in uppercase", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		svc := testutil.NewTestDeveloperService(t, db)
+
+		// Seed a log via DeleteLogs
+		err := svc.DeleteLogs(context.Background(), nil, "test-agent")
+		if err != nil {
+			t.Fatalf("DeleteLogs() error: %v", err)
+		}
+
+		opts, err := svc.GetLogFilterOptions()
+		if err != nil {
+			t.Fatalf("GetLogFilterOptions() error: %v", err)
+		}
+		for _, cat := range opts.Categories {
+			if cat != strings.ToUpper(cat) {
+				t.Errorf("Expected category %q to be uppercase", cat)
+			}
 		}
 	})
 }
