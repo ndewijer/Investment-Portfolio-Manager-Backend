@@ -50,7 +50,7 @@ func (h *DBHandler) Enabled(_ context.Context, level slog.Level) bool {
 
 // Handle writes the log record to console (always) and database (if enabled).
 //
-//nolint:funlen // Dual-write logic with DB fallback needs the length.
+//nolint:funlen, gocyclo // Dual-write logic with DB fallback needs the length.
 func (h *DBHandler) Handle(ctx context.Context, record slog.Record) error {
 	// Always write to console — the console handler has pre-bound attrs from WithAttrs.
 	_ = h.console.Handle(ctx, record) //nolint:errcheck // Console write is best-effort; nothing to do on failure.
@@ -76,8 +76,12 @@ func (h *DBHandler) Handle(ctx context.Context, record slog.Record) error {
 			continue
 		}
 		if a.Key == "status" {
-			v := int(a.Value.Int64())
-			httpStatus = &v
+			if a.Value.Kind() == slog.KindInt64 {
+				v := int(a.Value.Int64())
+				httpStatus = &v
+			} else {
+				details = append(details, fmt.Sprintf("%s=%s", a.Key, a.Value.String()))
+			}
 			continue
 		}
 		if a.Key == "source" {
@@ -94,8 +98,12 @@ func (h *DBHandler) Handle(ctx context.Context, record slog.Record) error {
 			return true
 		}
 		if a.Key == "status" {
-			v := int(a.Value.Int64())
-			httpStatus = &v
+			if a.Value.Kind() == slog.KindInt64 {
+				v := int(a.Value.Int64())
+				httpStatus = &v
+			} else {
+				details = append(details, fmt.Sprintf("%s=%s", a.Key, a.Value.String()))
+			}
 			return true
 		}
 		if a.Key == "source" {
