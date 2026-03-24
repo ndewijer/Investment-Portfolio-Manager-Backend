@@ -673,6 +673,92 @@ func TestDeveloperRepository_AddLog_OptionalFields(t *testing.T) {
 	})
 }
 
+func TestDeveloperRepository_AddLog_HTTPStatus(t *testing.T) {
+	t.Run("numeric string is stored as integer", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		repo := repository.NewDeveloperRepository(db)
+		ctx := context.Background()
+
+		log := model.Log{
+			ID:         testutil.MakeID(),
+			Timestamp:  time.Now().UTC().Truncate(time.Second),
+			Level:      "INFO",
+			Category:   "SYSTEM",
+			Message:    "status int test",
+			Source:     "test",
+			HTTPStatus: "200",
+		}
+		if err := repo.AddLog(ctx, log); err != nil {
+			t.Fatalf("AddLog: %v", err)
+		}
+
+		var status int
+		err := db.QueryRow(`SELECT http_status FROM log WHERE message = 'status int test'`).Scan(&status)
+		if err != nil {
+			t.Fatalf("query: %v", err)
+		}
+		if status != 200 {
+			t.Errorf("http_status = %d, want 200", status)
+		}
+	})
+
+	t.Run("empty string is stored as NULL", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		repo := repository.NewDeveloperRepository(db)
+		ctx := context.Background()
+
+		log := model.Log{
+			ID:         testutil.MakeID(),
+			Timestamp:  time.Now().UTC().Truncate(time.Second),
+			Level:      "INFO",
+			Category:   "SYSTEM",
+			Message:    "status null test",
+			Source:     "test",
+			HTTPStatus: "",
+		}
+		if err := repo.AddLog(ctx, log); err != nil {
+			t.Fatalf("AddLog: %v", err)
+		}
+
+		var status *int
+		err := db.QueryRow(`SELECT http_status FROM log WHERE message = 'status null test'`).Scan(&status)
+		if err != nil {
+			t.Fatalf("query: %v", err)
+		}
+		if status != nil {
+			t.Errorf("http_status = %d, want NULL", *status)
+		}
+	})
+
+	t.Run("non-numeric string is stored as NULL", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		repo := repository.NewDeveloperRepository(db)
+		ctx := context.Background()
+
+		log := model.Log{
+			ID:         testutil.MakeID(),
+			Timestamp:  time.Now().UTC().Truncate(time.Second),
+			Level:      "INFO",
+			Category:   "SYSTEM",
+			Message:    "status bad test",
+			Source:     "test",
+			HTTPStatus: "not-a-number",
+		}
+		if err := repo.AddLog(ctx, log); err != nil {
+			t.Fatalf("AddLog: %v", err)
+		}
+
+		var status *int
+		err := db.QueryRow(`SELECT http_status FROM log WHERE message = 'status bad test'`).Scan(&status)
+		if err != nil {
+			t.Fatalf("query: %v", err)
+		}
+		if status != nil {
+			t.Errorf("http_status = %d, want NULL", *status)
+		}
+	})
+}
+
 // ---------------------------------------------------------------------------
 // GetLogFilterOptions
 // ---------------------------------------------------------------------------
