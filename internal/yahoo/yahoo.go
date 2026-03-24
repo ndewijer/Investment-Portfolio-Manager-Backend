@@ -1,6 +1,7 @@
 package yahoo
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,14 +14,21 @@ import (
 
 var log = logging.NewLogger("fund")
 
+// Retry constants.
+const (
+	maxAttempts    = 3               // Total attempts per request.
+	initialBackoff = 1 * time.Second // First retry wait.
+	maxBackoff     = 4 * time.Second // Backoff cap.
+)
+
 // Client defines the interface for fetching financial data from Yahoo Finance API.
 // This interface enables dependency injection and testing with mock implementations.
 type Client interface {
 	// QueryYahooFiveDaySymbol fetches the last 5 days of daily price data for a symbol.
-	QueryYahooFiveDaySymbol(symbol string) (Response, error)
+	QueryYahooFiveDaySymbol(ctx context.Context, symbol string) (Response, error)
 
 	// QueryYahooSymbolByDateRange fetches daily price data for a symbol within a date range.
-	QueryYahooSymbolByDateRange(symbol string, startDate, endDate time.Time) (Response, error)
+	QueryYahooSymbolByDateRange(ctx context.Context, symbol string, startDate, endDate time.Time) (Response, error)
 
 	// ParseChart converts a raw Yahoo Finance API response into a structured price chart.
 	ParseChart(yahooResult Response) (PriceChart, error)
@@ -164,17 +172,18 @@ func (c PriceChart) GetIndicatorForDate(target time.Time) (Indicators, bool) {
 // automatically selects the most recent 5 trading days.
 //
 // Parameters:
+//   - ctx: Context for cancellation and timeout
 //   - symbol: Stock ticker symbol (e.g., "AAPL", "MSFT")
 //
 // Returns:
 //   - Response: Raw API response containing price data
 //   - error: If the HTTP request fails, API returns an error, or no results found
-func (c *FinanceClient) QueryYahooFiveDaySymbol(symbol string) (Response, error) {
+func (c *FinanceClient) QueryYahooFiveDaySymbol(ctx context.Context, symbol string) (Response, error) {
 	queryURL := fmt.Sprintf("https://query1.finance.yahoo.com/v8/finance/chart/%s?interval=1d&range=5d", url.PathEscape(symbol))
 
-	log.Debug("querying yahoo 5-day symbol", "symbol", symbol, "url", queryURL)
+	log.DebugContext(ctx, "querying yahoo 5-day symbol", "symbol", symbol, "url", queryURL)
 
-	result, err := c.queryYahoo(queryURL)
+	result, err := c.queryYahoo(ctx, queryURL)
 	if err != nil {
 		return Response{}, fmt.Errorf("yahoo 5-day query for %s: %w", symbol, err)
 	}
@@ -182,7 +191,7 @@ func (c *FinanceClient) QueryYahooFiveDaySymbol(symbol string) (Response, error)
 		return Response{}, fmt.Errorf("no results returned for symbol %s", symbol)
 	}
 
-	log.Info("yahoo 5-day query successful", "symbol", symbol, "result_count", len(result.Chart.Result))
+	log.InfoContext(ctx, "yahoo 5-day query successful", "symbol", symbol, "result_count", len(result.Chart.Result))
 	return result, nil
 }
 
@@ -194,6 +203,7 @@ func (c *FinanceClient) QueryYahooFiveDaySymbol(symbol string) (Response, error)
 // providing precise control over the requested date range.
 //
 // Parameters:
+//   - ctx: Context for cancellation and timeout
 //   - symbol: Stock ticker symbol (e.g., "AAPL", "MSFT")
 //   - startDate: Beginning of date range (inclusive)
 //   - endDate: End of date range (inclusive)
@@ -201,7 +211,7 @@ func (c *FinanceClient) QueryYahooFiveDaySymbol(symbol string) (Response, error)
 // Returns:
 //   - Response: Raw API response containing price data for the range
 //   - error: If the HTTP request fails, API returns an error, or no results found
-func (c *FinanceClient) QueryYahooSymbolByDateRange(symbol string, startDate, endDate time.Time) (Response, error) {
+func (c *FinanceClient) QueryYahooSymbolByDateRange(ctx context.Context, symbol string, startDate, endDate time.Time) (Response, error) {
 	// Yahoo's period2 parameter is exclusive, so add 1 day to endDate to ensure
 	// we get all data up to and including the endDate
 	adjustedEndDate := endDate.AddDate(0, 0, 1)
@@ -213,14 +223,14 @@ func (c *FinanceClient) QueryYahooSymbolByDateRange(symbol string, startDate, en
 		adjustedEndDate.Unix(),
 	)
 
-	log.Debug("querying yahoo by date range",
+	log.DebugContext(ctx, "querying yahoo by date range",
 		"symbol", symbol,
 		"start_date", startDate.Format("2006-01-02"),
 		"end_date", endDate.Format("2006-01-02"),
 		"url", queryURL,
 	)
 
-	result, err := c.queryYahoo(queryURL)
+	result, err := c.queryYahoo(ctx, queryURL)
 	if err != nil {
 		return Response{}, fmt.Errorf("yahoo date-range query for %s (%s to %s): %w",
 			symbol, startDate.Format("2006-01-02"), endDate.Format("2006-01-02"), err)
@@ -229,7 +239,7 @@ func (c *FinanceClient) QueryYahooSymbolByDateRange(symbol string, startDate, en
 		return Response{}, fmt.Errorf("no results returned for symbol %s", symbol)
 	}
 
-	log.Info("yahoo date-range query successful",
+	log.InfoContext(ctx, "yahoo date-range query successful",
 		"symbol", symbol,
 		"start_date", startDate.Format("2006-01-02"),
 		"end_date", endDate.Format("2006-01-02"),
@@ -238,62 +248,107 @@ func (c *FinanceClient) QueryYahooSymbolByDateRange(symbol string, startDate, en
 	return result, nil
 }
 
-// queryYahoo is an internal helper that executes HTTP requests to Yahoo Finance API.
-// This method handles the common logic for making authenticated requests, reading responses,
-// parsing JSON, and checking for API errors.
+// isRetryableStatus returns true for HTTP status codes that warrant a retry.
+func isRetryableStatus(code int) bool {
+	return code == http.StatusTooManyRequests || (code >= 500 && code <= 599)
+}
+
+// queryYahoo executes an HTTP request to Yahoo Finance API with retry logic.
+// Retries up to 3 times with exponential backoff (1s → 2s → 4s) on transient
+// failures: HTTP 5xx, 429 (rate limit), and network/timeout errors.
+// Permanent failures (4xx except 429, JSON parse errors, Yahoo API errors) fail immediately.
 //
-// The method sets required headers:
-//   - User-Agent: Mimics a browser to avoid API blocking
-//   - Accept: Requests JSON response format
-//
-// Parameters:
-//   - url: Fully-formed Yahoo Finance API URL
-//
-// Returns:
-//   - Response: Parsed API response
-//   - error: If HTTP request fails, response parsing fails, or Yahoo API returns an error
-func (c *FinanceClient) queryYahoo(queryURL string) (Response, error) {
-	req, err := http.NewRequest("GET", queryURL, nil)
-	if err != nil {
-		return Response{}, fmt.Errorf("creating request: %w", err)
+//nolint:gocyclo // Retry loop with error classification needs the branches.
+func (c *FinanceClient) queryYahoo(ctx context.Context, queryURL string) (Response, error) {
+	backoff := initialBackoff
+	var lastErr error
+
+	for attempt := range maxAttempts {
+		if attempt > 0 {
+			log.WarnContext(ctx, "yahoo API request failed, retrying",
+				"attempt", attempt+1,
+				"max_attempts", maxAttempts,
+				"backoff", backoff.String(),
+				"error", lastErr.Error(),
+				"url", queryURL,
+			)
+			select {
+			case <-ctx.Done():
+				return Response{}, fmt.Errorf("context cancelled waiting for retry: %w", ctx.Err())
+			case <-time.After(backoff):
+			}
+			backoff *= 2
+			if backoff > maxBackoff {
+				backoff = maxBackoff
+			}
+		}
+
+		req, err := http.NewRequestWithContext(ctx, "GET", queryURL, nil)
+		if err != nil {
+			return Response{}, fmt.Errorf("creating request: %w", err)
+		}
+
+		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+		req.Header.Set("Accept", "application/json")
+
+		start := time.Now()
+
+		//nolint:gosec // G704: URL is constructed from a hardcoded Yahoo Finance base with url.PathEscape applied to the symbol; the host cannot be redirected by user input.
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			// Network/timeout errors are retryable.
+			lastErr = fmt.Errorf("executing request (attempt %d): %w", attempt+1, err)
+			continue
+		}
+
+		data, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			lastErr = fmt.Errorf("reading response body (attempt %d): %w", attempt+1, err)
+			continue
+		}
+
+		elapsed := time.Since(start)
+		if elapsed > 5*time.Second {
+			log.WarnContext(ctx, "slow yahoo API response",
+				"elapsed", elapsed.String(),
+				"attempt", attempt+1,
+				"url", queryURL,
+			)
+		}
+
+		log.DebugContext(ctx, "yahoo API response received",
+			"attempt", attempt+1,
+			"status_code", resp.StatusCode,
+			"body_size", len(data),
+			"elapsed", elapsed.String(),
+		)
+
+		// Retry on transient HTTP errors (5xx, 429).
+		if isRetryableStatus(resp.StatusCode) {
+			lastErr = fmt.Errorf("HTTP %d (attempt %d)", resp.StatusCode, attempt+1)
+			continue
+		}
+
+		// Non-retryable HTTP error — fail immediately.
+		if resp.StatusCode != http.StatusOK {
+			return Response{}, fmt.Errorf("HTTP %d from yahoo API", resp.StatusCode)
+		}
+
+		var response Response
+		if err := json.Unmarshal(data, &response); err != nil {
+			// JSON parse failure is not retryable — the server returned garbage or a non-JSON page.
+			return Response{}, fmt.Errorf("parsing JSON response: %w", err)
+		}
+
+		if response.Chart.Error != nil {
+			// Yahoo API-level errors are not retryable (bad symbol, invalid range, etc.).
+			return response, fmt.Errorf("yahoo error: %s", *response.Chart.Error)
+		}
+
+		return response, nil
 	}
 
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-	req.Header.Set("Accept", "application/json")
-
-	start := time.Now()
-
-	//nolint:gosec // G704: URL is constructed from a hardcoded Yahoo Finance base with url.PathEscape applied to the symbol; the host cannot be redirected by user input.
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return Response{}, fmt.Errorf("executing request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	elapsed := time.Since(start)
-	if elapsed > 5*time.Second {
-		log.Warn("slow yahoo API response", "elapsed", elapsed.String(), "url", queryURL)
-	}
-
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return Response{}, fmt.Errorf("reading response body: %w", err)
-	}
-
-	log.Debug("yahoo API response received",
-		"status_code", resp.StatusCode,
-		"body_size", len(data),
-		"elapsed", elapsed.String(),
-	)
-
-	var response Response
-	if err := json.Unmarshal(data, &response); err != nil {
-		return Response{}, fmt.Errorf("parsing JSON response: %w", err)
-	}
-
-	if response.Chart.Error != nil {
-		return response, fmt.Errorf("yahoo error: %s", *response.Chart.Error)
-	}
-
-	return response, nil
+	// All attempts exhausted.
+	return Response{}, fmt.Errorf("yahoo API request failed after %d attempts: %w", maxAttempts, lastErr)
 }
