@@ -132,7 +132,7 @@ func (s *FundService) GetSymbol(symbol string) (*model.Symbol, error) {
 		return sym, nil
 	}
 
-	raw, err := s.yahooClient.QueryYahooFiveDaySymbol(symbol)
+	raw, err := s.yahooClient.QueryYahooFiveDaySymbol(context.Background(), symbol)
 	if err != nil {
 		return nil, fmt.Errorf("yahoo lookup failed: %w", err)
 	}
@@ -530,7 +530,7 @@ func (s *FundService) UpdateCurrentFundPrice(ctx context.Context, fundID string)
 		return existingPrice, false, nil
 	}
 
-	chart, err := s.fetchYahooChart(fund.Symbol)
+	chart, err := s.fetchYahooChart(ctx, fund.Symbol)
 	if err != nil {
 		return model.FundPrice{}, false, fmt.Errorf("fetch yahoo chart: %w", err)
 	}
@@ -594,8 +594,8 @@ func (s *FundService) checkExistingPrice(fundID string, date time.Time) (model.F
 }
 
 // fetchYahooChart fetches and parses Yahoo Finance data for a symbol.
-func (s *FundService) fetchYahooChart(symbol string) (yahoo.PriceChart, error) {
-	raw, err := s.yahooClient.QueryYahooFiveDaySymbol(symbol)
+func (s *FundService) fetchYahooChart(ctx context.Context, symbol string) (yahoo.PriceChart, error) {
+	raw, err := s.yahooClient.QueryYahooFiveDaySymbol(ctx, symbol)
 	if err != nil {
 		return yahoo.PriceChart{}, fmt.Errorf("query yahoo five day: %w", err)
 	}
@@ -729,7 +729,7 @@ func (s *FundService) UpdateHistoricalFundPrice(ctx context.Context, fundID stri
 		return 0, nil // nothing to do
 	}
 
-	raw, err := s.yahooClient.QueryYahooSymbolByDateRange(fund.Symbol, oldestDate, yesterdayDate)
+	raw, err := s.yahooClient.QueryYahooSymbolByDateRange(ctx, fund.Symbol, oldestDate, yesterdayDate)
 	if err != nil {
 		return 0, fmt.Errorf("query yahoo by date range: %w", err)
 	}

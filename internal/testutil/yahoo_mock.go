@@ -1,6 +1,7 @@
 package testutil
 
 import (
+	"context"
 	"time"
 
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/yahoo"
@@ -29,7 +30,7 @@ func NewMockYahooClient() *MockYahooClient {
 
 // QueryYahooFiveDaySymbol mocks the 5-day symbol query with predefined test data.
 // It returns the configured MockResponse and MockError.
-func (m *MockYahooClient) QueryYahooFiveDaySymbol(_ string) (yahoo.Response, error) {
+func (m *MockYahooClient) QueryYahooFiveDaySymbol(_ context.Context, _ string) (yahoo.Response, error) {
 	m.QueryCount++
 	if m.MockError != nil {
 		return yahoo.Response{}, m.MockError
@@ -39,7 +40,7 @@ func (m *MockYahooClient) QueryYahooFiveDaySymbol(_ string) (yahoo.Response, err
 
 // QueryYahooSymbolByDateRange mocks the date range query with predefined test data.
 // It returns the configured MockResponse and MockError.
-func (m *MockYahooClient) QueryYahooSymbolByDateRange(_ string, _, _ time.Time) (yahoo.Response, error) {
+func (m *MockYahooClient) QueryYahooSymbolByDateRange(_ context.Context, _ string, _, _ time.Time) (yahoo.Response, error) {
 	m.QueryCount++
 	if m.MockError != nil {
 		return yahoo.Response{}, m.MockError
