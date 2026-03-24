@@ -97,11 +97,13 @@ func lastLog(t *testing.T, db *sql.DB) logRow {
 
 func TestDBHandler_WritesToDB(t *testing.T) {
 	db := setupTestDB(t)
-	h := NewDBHandler(db)
+	h := NewLogHandler(db)
+	defer h.Close()
 	h.SetLevel(slog.LevelDebug)
 	logger := slog.New(h)
 
 	logger.Info("hello world", "key", "val")
+	h.Flush()
 
 	if got := countLogs(t, db); got != 1 {
 		t.Fatalf("expected 1 log row, got %d", got)
@@ -123,11 +125,13 @@ func TestDBHandler_WritesToDB(t *testing.T) {
 
 func TestDBHandler_CategoryFromWithAttrs(t *testing.T) {
 	db := setupTestDB(t)
-	h := NewDBHandler(db)
+	h := NewLogHandler(db)
+	defer h.Close()
 	h.SetLevel(slog.LevelDebug)
 	logger := slog.New(h.WithAttrs([]slog.Attr{slog.String("category", "fund")}))
 
 	logger.Info("price updated")
+	h.Flush()
 
 	row := lastLog(t, db)
 	if row.category != "FUND" {
@@ -137,11 +141,13 @@ func TestDBHandler_CategoryFromWithAttrs(t *testing.T) {
 
 func TestDBHandler_CategoryFromRecordAttr(t *testing.T) {
 	db := setupTestDB(t)
-	h := NewDBHandler(db)
+	h := NewLogHandler(db)
+	defer h.Close()
 	h.SetLevel(slog.LevelDebug)
 	logger := slog.New(h)
 
 	logger.Info("test", "category", "ibkr")
+	h.Flush()
 
 	row := lastLog(t, db)
 	if row.category != "IBKR" {
@@ -151,7 +157,8 @@ func TestDBHandler_CategoryFromRecordAttr(t *testing.T) {
 
 func TestDBHandler_LevelGating(t *testing.T) {
 	db := setupTestDB(t)
-	h := NewDBHandler(db)
+	h := NewLogHandler(db)
+	defer h.Close()
 	h.SetLevel(slog.LevelWarn) // only WARN and above
 	logger := slog.New(h)
 
@@ -159,6 +166,7 @@ func TestDBHandler_LevelGating(t *testing.T) {
 	logger.Info("should be filtered")
 	logger.Warn("should pass")
 	logger.Error("should pass")
+	h.Flush()
 
 	if got := countLogs(t, db); got != 2 {
 		t.Fatalf("expected 2 log rows (WARN+ERROR), got %d", got)
@@ -167,17 +175,20 @@ func TestDBHandler_LevelGating(t *testing.T) {
 
 func TestDBHandler_SetLevelAtRuntime(t *testing.T) {
 	db := setupTestDB(t)
-	h := NewDBHandler(db)
+	h := NewLogHandler(db)
+	defer h.Close()
 	h.SetLevel(slog.LevelError) // start restrictive
 	logger := slog.New(h)
 
 	logger.Info("filtered out")
+	h.Flush()
 	if got := countLogs(t, db); got != 0 {
 		t.Fatalf("expected 0, got %d", got)
 	}
 
 	h.SetLevel(slog.LevelDebug) // open up
 	logger.Info("now visible")
+	h.Flush()
 	if got := countLogs(t, db); got != 1 {
 		t.Fatalf("expected 1, got %d", got)
 	}
@@ -185,12 +196,14 @@ func TestDBHandler_SetLevelAtRuntime(t *testing.T) {
 
 func TestDBHandler_DisabledSkipsDB(t *testing.T) {
 	db := setupTestDB(t)
-	h := NewDBHandler(db)
+	h := NewLogHandler(db)
+	defer h.Close()
 	h.SetLevel(slog.LevelDebug)
 	h.SetEnabled(false)
 	logger := slog.New(h)
 
 	logger.Info("should not be in DB")
+	h.Flush()
 
 	if got := countLogs(t, db); got != 0 {
 		t.Fatalf("expected 0 log rows (disabled), got %d", got)
@@ -199,18 +212,21 @@ func TestDBHandler_DisabledSkipsDB(t *testing.T) {
 
 func TestDBHandler_SetEnabledAtRuntime(t *testing.T) {
 	db := setupTestDB(t)
-	h := NewDBHandler(db)
+	h := NewLogHandler(db)
+	defer h.Close()
 	h.SetLevel(slog.LevelDebug)
 	h.SetEnabled(false)
 	logger := slog.New(h)
 
 	logger.Info("invisible")
+	h.Flush()
 	if got := countLogs(t, db); got != 0 {
 		t.Fatalf("expected 0, got %d", got)
 	}
 
 	h.SetEnabled(true)
 	logger.Info("visible")
+	h.Flush()
 	if got := countLogs(t, db); got != 1 {
 		t.Fatalf("expected 1, got %d", got)
 	}
@@ -218,12 +234,14 @@ func TestDBHandler_SetEnabledAtRuntime(t *testing.T) {
 
 func TestDBHandler_ContextMetadata(t *testing.T) {
 	db := setupTestDB(t)
-	h := NewDBHandler(db)
+	h := NewLogHandler(db)
+	defer h.Close()
 	h.SetLevel(slog.LevelDebug)
 	logger := slog.New(h)
 
 	ctx := WithRequestInfo(context.Background(), "req-123", "10.0.0.1", "TestAgent/1.0")
 	logger.InfoContext(ctx, "with context")
+	h.Flush()
 
 	row := lastLog(t, db)
 	if row.requestID != "req-123" {
@@ -239,11 +257,13 @@ func TestDBHandler_ContextMetadata(t *testing.T) {
 
 func TestDBHandler_StackTraceOnError(t *testing.T) {
 	db := setupTestDB(t)
-	h := NewDBHandler(db)
+	h := NewLogHandler(db)
+	defer h.Close()
 	h.SetLevel(slog.LevelDebug)
 	logger := slog.New(h)
 
 	logger.Error("something broke")
+	h.Flush()
 	row := lastLog(t, db)
 	if row.stackTrace == "" {
 		t.Error("expected stack trace for ERROR, got empty string")
@@ -251,6 +271,7 @@ func TestDBHandler_StackTraceOnError(t *testing.T) {
 
 	// DEBUG should NOT have stack trace
 	logger.Debug("just debug")
+	h.Flush()
 	var st sql.NullString
 	err := db.QueryRow(`SELECT stack_trace FROM log WHERE message = 'just debug'`).Scan(&st)
 	if err != nil {
@@ -263,11 +284,13 @@ func TestDBHandler_StackTraceOnError(t *testing.T) {
 
 func TestDBHandler_CriticalLevel(t *testing.T) {
 	db := setupTestDB(t)
-	h := NewDBHandler(db)
+	h := NewLogHandler(db)
+	defer h.Close()
 	h.SetLevel(slog.LevelDebug)
 	logger := slog.New(h)
 
 	logger.Log(context.Background(), LevelCritical, "data integrity issue")
+	h.Flush()
 
 	row := lastLog(t, db)
 	if row.level != "CRITICAL" {
@@ -287,17 +310,20 @@ func TestDBHandler_DBFailureFallback(t *testing.T) {
 	}
 	t.Cleanup(func() { db.Close() })
 
-	h := NewDBHandler(db)
+	h := NewLogHandler(db)
+	defer h.Close()
 	h.SetLevel(slog.LevelDebug)
 	logger := slog.New(h)
 
 	// Should not panic — falls back to stderr.
 	logger.Info("this should not crash")
+	h.Flush()
 }
 
 func TestDBHandler_ConcurrentWrites(t *testing.T) {
 	db := setupTestDB(t)
-	h := NewDBHandler(db)
+	h := NewLogHandler(db)
+	defer h.Close()
 	h.SetLevel(slog.LevelDebug)
 	logger := slog.New(h)
 
@@ -314,6 +340,7 @@ func TestDBHandler_ConcurrentWrites(t *testing.T) {
 		}(i)
 	}
 	wg.Wait()
+	h.Flush()
 
 	expected := goroutines * msgsPerGoroutine
 	if got := countLogs(t, db); got != expected {
@@ -323,13 +350,15 @@ func TestDBHandler_ConcurrentWrites(t *testing.T) {
 
 func TestDBHandler_WithAttrsSharesAtomics(t *testing.T) {
 	db := setupTestDB(t)
-	h := NewDBHandler(db)
+	h := NewLogHandler(db)
+	defer h.Close()
 	h.SetLevel(slog.LevelError) // restrictive
 
 	child := h.WithAttrs([]slog.Attr{slog.String("category", "fund")})
 	childLogger := slog.New(child)
 
 	childLogger.Info("filtered")
+	h.Flush()
 	if got := countLogs(t, db); got != 0 {
 		t.Fatalf("expected 0 (level=ERROR), got %d", got)
 	}
@@ -337,6 +366,7 @@ func TestDBHandler_WithAttrsSharesAtomics(t *testing.T) {
 	// Change level on parent — child should see it.
 	h.SetLevel(slog.LevelDebug)
 	childLogger.Info("now visible")
+	h.Flush()
 	if got := countLogs(t, db); got != 1 {
 		t.Fatalf("expected 1 (parent level changed to DEBUG), got %d", got)
 	}
@@ -344,11 +374,13 @@ func TestDBHandler_WithAttrsSharesAtomics(t *testing.T) {
 
 func TestDBHandler_Source(t *testing.T) {
 	db := setupTestDB(t)
-	h := NewDBHandler(db)
+	h := NewLogHandler(db)
+	defer h.Close()
 	h.SetLevel(slog.LevelDebug)
 	logger := slog.New(h)
 
 	logger.Info("source test")
+	h.Flush()
 
 	row := lastLog(t, db)
 	if row.source == "" {
@@ -362,15 +394,106 @@ func TestDBHandler_Source(t *testing.T) {
 
 func TestDBHandler_MultipleDetails(t *testing.T) {
 	db := setupTestDB(t)
-	h := NewDBHandler(db)
+	h := NewLogHandler(db)
+	defer h.Close()
 	h.SetLevel(slog.LevelDebug)
 	logger := slog.New(h)
 
 	logger.Info("multi", "a", "1", "b", "2", "c", "3")
+	h.Flush()
 
 	row := lastLog(t, db)
 	if row.details != "a=1; b=2; c=3" {
 		t.Errorf("details = %q, want 'a=1; b=2; c=3'", row.details)
+	}
+}
+
+func TestLogHandler_HTTPStatus_IntAttr(t *testing.T) {
+	db := setupTestDB(t)
+	h := NewLogHandler(db)
+	defer h.Close()
+	h.SetLevel(slog.LevelDebug)
+	logger := slog.New(h)
+
+	logger.Info("request complete", "status", 200)
+	h.Flush()
+
+	// Verify http_status is stored as an integer, not a string.
+	var status sql.NullInt64
+	err := db.QueryRow(`SELECT http_status FROM log WHERE message = 'request complete'`).Scan(&status)
+	if err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if !status.Valid {
+		t.Fatal("expected http_status to be non-NULL")
+	}
+	if status.Int64 != 200 {
+		t.Errorf("http_status = %d, want 200", status.Int64)
+	}
+}
+
+func TestLogHandler_HTTPStatus_StringAttr_GoesToDetails(t *testing.T) {
+	db := setupTestDB(t)
+	h := NewLogHandler(db)
+	defer h.Close()
+	h.SetLevel(slog.LevelDebug)
+	logger := slog.New(h)
+
+	// When "status" is a non-int string, it should go to details, not http_status.
+	logger.Info("weird status", "status", "ok")
+	h.Flush()
+
+	var status sql.NullInt64
+	var details sql.NullString
+	err := db.QueryRow(`SELECT http_status, details FROM log WHERE message = 'weird status'`).Scan(&status, &details)
+	if err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if status.Valid {
+		t.Errorf("expected http_status to be NULL for non-int status, got %d", status.Int64)
+	}
+	if !details.Valid || details.String != "status=ok" {
+		t.Errorf("details = %q, want 'status=ok'", details.String)
+	}
+}
+
+func TestLogHandler_HTTPStatus_Absent_IsNULL(t *testing.T) {
+	db := setupTestDB(t)
+	h := NewLogHandler(db)
+	defer h.Close()
+	h.SetLevel(slog.LevelDebug)
+	logger := slog.New(h)
+
+	logger.Info("no status attr")
+	h.Flush()
+
+	var status sql.NullInt64
+	err := db.QueryRow(`SELECT http_status FROM log WHERE message = 'no status attr'`).Scan(&status)
+	if err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if status.Valid {
+		t.Errorf("expected http_status to be NULL when no status attr, got %d", status.Int64)
+	}
+}
+
+func TestLogHandler_HTTPStatus_WithAttrs_IntStatus(t *testing.T) {
+	db := setupTestDB(t)
+	h := NewLogHandler(db)
+	defer h.Close()
+	h.SetLevel(slog.LevelDebug)
+	logger := slog.New(h.WithAttrs([]slog.Attr{slog.Int("status", 404)}))
+
+	logger.Info("not found")
+	h.Flush()
+
+	var status sql.NullInt64
+	err := db.QueryRow(`SELECT http_status FROM log WHERE message = 'not found'`).Scan(&status)
+	if err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if !status.Valid || status.Int64 != 404 {
+		t.Errorf("http_status = %v (valid=%v), want 404", status.Int64, status.Valid)
 	}
 }
 
@@ -467,6 +590,7 @@ func TestInit_DefaultsWhenNoConfig(t *testing.T) {
 
 	// No system_setting rows — Init should use defaults.
 	h := Init(db)
+	defer h.Close()
 
 	if !h.enabled.Load() {
 		t.Error("expected enabled=true by default")
@@ -493,6 +617,7 @@ func TestInit_ReadsConfigFromDB(t *testing.T) {
 	}
 
 	h := Init(db)
+	defer h.Close()
 
 	if h.enabled.Load() {
 		t.Error("expected enabled=false from DB config")
@@ -506,13 +631,15 @@ func TestInit_ReadsConfigFromDB(t *testing.T) {
 
 func TestLogger_DelegatesToDefault(t *testing.T) {
 	db := setupTestDB(t)
-	h := NewDBHandler(db)
+	h := NewLogHandler(db)
+	defer h.Close()
 	h.SetLevel(slog.LevelDebug)
 	slog.SetDefault(slog.New(h))
 	t.Cleanup(func() { slog.SetDefault(slog.Default()) })
 
 	log := NewLogger("fund")
 	log.Info("test message", "key", "val")
+	h.Flush()
 
 	if got := countLogs(t, db); got != 1 {
 		t.Fatalf("expected 1, got %d", got)
@@ -528,7 +655,8 @@ func TestLogger_DelegatesToDefault(t *testing.T) {
 
 func TestLogger_AllLevels(t *testing.T) {
 	db := setupTestDB(t)
-	h := NewDBHandler(db)
+	h := NewLogHandler(db)
+	defer h.Close()
 	h.SetLevel(slog.LevelDebug)
 	slog.SetDefault(slog.New(h))
 	t.Cleanup(func() { slog.SetDefault(slog.Default()) })
@@ -545,6 +673,7 @@ func TestLogger_AllLevels(t *testing.T) {
 	log.Error("e")
 	log.ErrorContext(ctx, "ec")
 	log.Log(ctx, LevelCritical, "c")
+	h.Flush()
 
 	if got := countLogs(t, db); got != 9 {
 		t.Errorf("expected 9 logs (all levels), got %d", got)
@@ -553,7 +682,8 @@ func TestLogger_AllLevels(t *testing.T) {
 
 func TestLogger_RespectsLevelGating(t *testing.T) {
 	db := setupTestDB(t)
-	h := NewDBHandler(db)
+	h := NewLogHandler(db)
+	defer h.Close()
 	h.SetLevel(slog.LevelWarn)
 	slog.SetDefault(slog.New(h))
 	t.Cleanup(func() { slog.SetDefault(slog.Default()) })
@@ -563,6 +693,7 @@ func TestLogger_RespectsLevelGating(t *testing.T) {
 	log.Info("filtered")
 	log.Warn("pass")
 	log.Error("pass")
+	h.Flush()
 
 	if got := countLogs(t, db); got != 2 {
 		t.Errorf("expected 2 (WARN+ERROR), got %d", got)

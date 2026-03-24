@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -443,6 +444,18 @@ func (r *DeveloperRepository) AddLog(ctx context.Context, logEntry model.Log) er
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
+	// Convert HTTPStatus string → *int for the INTEGER column.
+	// Empty string becomes NULL; non-numeric strings are dropped to NULL with a warning.
+	var httpStatus *int
+	if logEntry.HTTPStatus != "" {
+		if v, err := strconv.Atoi(logEntry.HTTPStatus); err == nil {
+			httpStatus = &v
+		} else {
+			devLog.Warn("non-numeric http_status in log entry, storing as NULL",
+				"http_status", logEntry.HTTPStatus, "log_id", logEntry.ID)
+		}
+	}
+
 	_, err := r.getQuerier().ExecContext(ctx, query,
 		logEntry.ID,
 		logEntry.Timestamp.Format("2006-01-02 15:04:05"),
@@ -453,7 +466,7 @@ func (r *DeveloperRepository) AddLog(ctx context.Context, logEntry model.Log) er
 		logEntry.Source,
 		logEntry.RequestID,
 		logEntry.StackTrace,
-		logEntry.HTTPStatus,
+		httpStatus,
 		logEntry.IPAddress,
 		logEntry.UserAgent,
 	)

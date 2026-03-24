@@ -5,14 +5,14 @@ import (
 	"log/slog"
 )
 
-// Init creates a DBHandler, reads logging config from system_setting, and
+// Init creates a LogHandler, reads logging config from system_setting, and
 // sets slog.SetDefault. Returns the handler for runtime config wiring.
 //
 // Chicken-and-egg: If called before migrations (table doesn't exist yet),
 // config queries fail gracefully and defaults apply. DB writes will fail
 // until the log table is created, falling back to stderr.
-func Init(db *sql.DB) *DBHandler {
-	h := NewDBHandler(db)
+func Init(db *sql.DB) *LogHandler {
+	h := NewLogHandler(db)
 
 	// Read LOGGING_ENABLED (direct query — no repo import).
 	var enabledStr string

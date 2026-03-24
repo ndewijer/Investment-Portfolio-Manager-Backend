@@ -28,7 +28,7 @@ type DeveloperService struct {
 	transactionRepo         *repository.TransactionRepository
 	pfRepo                  *repository.PortfolioFundRepository
 	materializedInvalidator MaterializedInvalidator
-	logHandler              *logging.DBHandler
+	logHandler              *logging.LogHandler
 }
 
 // NewDeveloperService creates a new DeveloperService with the provided repository dependencies.
@@ -54,8 +54,8 @@ func (s *DeveloperService) SetMaterializedInvalidator(m MaterializedInvalidator)
 	s.materializedInvalidator = m
 }
 
-// SetLogHandler injects the logging DBHandler for runtime config updates.
-func (s *DeveloperService) SetLogHandler(h *logging.DBHandler) {
+// SetLogHandler injects the logging LogHandler for runtime config updates.
+func (s *DeveloperService) SetLogHandler(h *logging.LogHandler) {
 	s.logHandler = h
 }
 

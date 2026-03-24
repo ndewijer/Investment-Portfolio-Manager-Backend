@@ -45,6 +45,7 @@ func main() {
 
 	// Initialize structured logging (reads config from DB if available).
 	logHandler := logging.Init(db)
+	defer logHandler.Close() // Flush remaining log entries before db.Close() (LIFO).
 
 	if err := database.Migrate(db); err != nil {
 		log.Fatalf("Failed to run database migrations: %v", err)
