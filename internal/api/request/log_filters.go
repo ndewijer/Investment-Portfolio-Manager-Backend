@@ -27,7 +27,7 @@ import (
 //nolint:gocyclo // Complex validation logic is intentional and clear
 func ParseLogFilters(
 	levelsParam, categoriesParam, startDateParam, endDateParam,
-	sourceParam, messageParam, sortDirParam, cursorParam, perPageParam string,
+	sourceParam, messageParam, sortDirParam, cursorParam, perPageParam, skipParam string,
 ) (*model.LogFilters, error) {
 	filters := &model.LogFilters{
 		Cursor:  cursorParam,
@@ -94,12 +94,24 @@ func ParseLogFilters(
 		if err != nil {
 			return nil, fmt.Errorf("invalid per_page: must be a number")
 		}
-		if perPage < 1 || perPage > 100 {
-			return nil, fmt.Errorf("invalid per_page: must be between 1 and 100")
+		if perPage < 1 || perPage > 250 {
+			return nil, fmt.Errorf("invalid per_page: must be between 1 and 250")
 		}
 		filters.PerPage = perPage
 	} else {
 		filters.PerPage = 50 // Default
+	}
+
+	// Parse and validate skip
+	if skipParam != "" {
+		skip, err := strconv.Atoi(skipParam)
+		if err != nil {
+			return nil, fmt.Errorf("invalid skip: must be a number")
+		}
+		if skip < 0 {
+			return nil, fmt.Errorf("invalid skip: must be non-negative")
+		}
+		filters.Skip = skip
 	}
 
 	return filters, nil

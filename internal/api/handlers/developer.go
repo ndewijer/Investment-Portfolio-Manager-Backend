@@ -90,6 +90,7 @@ func (h *DeveloperHandler) GetLogs(w http.ResponseWriter, r *http.Request) {
 		r.URL.Query().Get("sortDir"),
 		r.URL.Query().Get("cursor"),
 		r.URL.Query().Get("perPage"),
+		r.URL.Query().Get("skip"),
 	)
 	if err != nil {
 		response.RespondError(w, http.StatusBadRequest, "Invalid filter parameters", err.Error())

@@ -87,12 +87,12 @@ func (r *DeveloperRepository) GetLogs(filters *model.LogFilters) (*model.LogResp
 	// 3. Date range filtering
 	if filters.StartDate != nil {
 		whereClauses = append(whereClauses, "timestamp >= ?")
-		args = append(args, filters.StartDate.Format(time.RFC3339))
+		args = append(args, filters.StartDate.Format("2006-01-02 15:04:05"))
 	}
 
 	if filters.EndDate != nil {
 		whereClauses = append(whereClauses, "timestamp <= ?")
-		args = append(args, filters.EndDate.Format(time.RFC3339))
+		args = append(args, filters.EndDate.Format("2006-01-02 15:04:05"))
 	}
 
 	// 4. Source filtering (partial match)
@@ -119,14 +119,14 @@ func (r *DeveloperRepository) GetLogs(filters *model.LogFilters) (*model.LogResp
 					// For descending: (timestamp, id) < (cursor_timestamp, cursor_id)
 					whereClauses = append(whereClauses,
 						"(timestamp < ? OR (timestamp = ? AND id < ?))")
-					args = append(args, timestamp.Format(time.RFC3339),
-						timestamp.Format(time.RFC3339), id)
+					args = append(args, timestamp.Format("2006-01-02 15:04:05"),
+						timestamp.Format("2006-01-02 15:04:05"), id)
 				} else {
 					// For ascending: (timestamp, id) > (cursor_timestamp, cursor_id)
 					whereClauses = append(whereClauses,
 						"(timestamp > ? OR (timestamp = ? AND id > ?))")
-					args = append(args, timestamp.Format(time.RFC3339),
-						timestamp.Format(time.RFC3339), id)
+					args = append(args, timestamp.Format("2006-01-02 15:04:05"),
+						timestamp.Format("2006-01-02 15:04:05"), id)
 				}
 			}
 		}
@@ -146,15 +146,23 @@ func (r *DeveloperRepository) GetLogs(filters *model.LogFilters) (*model.LogResp
 
 	// Build complete query
 	//nolint:gosec // G202: SQL concatenation is safe - whereSQL and orderSQL contain no user input, all user values are parameterized
+	// Build LIMIT/OFFSET clause
+	limitOffsetSQL := "LIMIT ?"
+	limitOffsetArgs := []interface{}{filters.PerPage + 1}
+	if filters.Skip > 0 {
+		limitOffsetSQL = "LIMIT ? OFFSET ?"
+		limitOffsetArgs = []interface{}{filters.PerPage + 1, filters.Skip}
+	}
+
 	query := `
 		SELECT id, timestamp, level, category, message, details, source,
 		       request_id, stack_trace, http_status, ip_address, user_agent
 		FROM log
 		` + whereSQL + `
 		` + orderSQL + `
-		LIMIT ?
+		` + limitOffsetSQL + `
 	`
-	args = append(args, filters.PerPage+1)
+	args = append(args, limitOffsetArgs...)
 
 	// Execute query
 	rows, err := r.getQuerier().Query(query, args...)
