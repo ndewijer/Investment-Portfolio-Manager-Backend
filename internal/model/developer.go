@@ -74,6 +74,7 @@ type LogFilters struct {
 	SortDir    string     // Sort direction: "asc" or "desc" (default: "desc")
 	Cursor     string     // Pagination cursor from previous response (format: "timestamp_id")
 	PerPage    int        // Number of results per page (1-100, default: 50)
+	Skip       int        // Number of entries to skip before returning results (for page jumping)
 }
 
 // LogResponse represents a paginated response containing log entries.

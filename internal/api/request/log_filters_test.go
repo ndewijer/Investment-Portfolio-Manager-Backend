@@ -7,7 +7,7 @@ import (
 //nolint:gocyclo // Test functions naturally have high complexity due to many test cases
 func TestParseLogFilters(t *testing.T) {
 	t.Run("default values when no parameters provided", func(t *testing.T) {
-		filters, err := ParseLogFilters("", "", "", "", "", "", "", "", "")
+		filters, err := ParseLogFilters("", "", "", "", "", "", "", "", "", "")
 		if err != nil {
 			t.Fatalf("Expected no error, got %v", err)
 		}
@@ -30,7 +30,7 @@ func TestParseLogFilters(t *testing.T) {
 	})
 
 	t.Run("single level filter", func(t *testing.T) {
-		filters, err := ParseLogFilters("error", "", "", "", "", "", "", "", "")
+		filters, err := ParseLogFilters("error", "", "", "", "", "", "", "", "", "")
 		if err != nil {
 			t.Fatalf("Expected no error, got %v", err)
 		}
@@ -45,7 +45,7 @@ func TestParseLogFilters(t *testing.T) {
 	})
 
 	t.Run("multiple levels filter", func(t *testing.T) {
-		filters, err := ParseLogFilters("error,critical,warning", "", "", "", "", "", "", "", "")
+		filters, err := ParseLogFilters("error,critical,warning", "", "", "", "", "", "", "", "", "")
 		if err != nil {
 			t.Fatalf("Expected no error, got %v", err)
 		}
@@ -63,14 +63,14 @@ func TestParseLogFilters(t *testing.T) {
 	})
 
 	t.Run("invalid level returns error", func(t *testing.T) {
-		_, err := ParseLogFilters("invalid_level", "", "", "", "", "", "", "", "")
+		_, err := ParseLogFilters("invalid_level", "", "", "", "", "", "", "", "", "")
 		if err == nil {
 			t.Error("Expected error for invalid level, got nil")
 		}
 	})
 
 	t.Run("single category filter", func(t *testing.T) {
-		filters, err := ParseLogFilters("", "portfolio", "", "", "", "", "", "", "")
+		filters, err := ParseLogFilters("", "portfolio", "", "", "", "", "", "", "", "")
 		if err != nil {
 			t.Fatalf("Expected no error, got %v", err)
 		}
@@ -85,7 +85,7 @@ func TestParseLogFilters(t *testing.T) {
 	})
 
 	t.Run("multiple categories filter", func(t *testing.T) {
-		filters, err := ParseLogFilters("", "portfolio,fund,transaction", "", "", "", "", "", "", "")
+		filters, err := ParseLogFilters("", "portfolio,fund,transaction", "", "", "", "", "", "", "", "")
 		if err != nil {
 			t.Fatalf("Expected no error, got %v", err)
 		}
@@ -103,7 +103,7 @@ func TestParseLogFilters(t *testing.T) {
 	})
 
 	t.Run("invalid category returns error", func(t *testing.T) {
-		_, err := ParseLogFilters("", "invalid_category", "", "", "", "", "", "", "")
+		_, err := ParseLogFilters("", "invalid_category", "", "", "", "", "", "", "", "")
 		if err == nil {
 			t.Error("Expected error for invalid category, got nil")
 		}
@@ -113,7 +113,7 @@ func TestParseLogFilters(t *testing.T) {
 		startDate := "2024-01-01T00:00:00Z"
 		endDate := "2024-12-31T23:59:59Z"
 
-		filters, err := ParseLogFilters("", "", startDate, endDate, "", "", "", "", "")
+		filters, err := ParseLogFilters("", "", startDate, endDate, "", "", "", "", "", "")
 		if err != nil {
 			t.Fatalf("Expected no error, got %v", err)
 		}
@@ -136,21 +136,21 @@ func TestParseLogFilters(t *testing.T) {
 	})
 
 	t.Run("invalid start date returns error", func(t *testing.T) {
-		_, err := ParseLogFilters("", "", "invalid-date", "", "", "", "", "", "")
+		_, err := ParseLogFilters("", "", "invalid-date", "", "", "", "", "", "", "")
 		if err == nil {
 			t.Error("Expected error for invalid start_date, got nil")
 		}
 	})
 
 	t.Run("invalid end date returns error", func(t *testing.T) {
-		_, err := ParseLogFilters("", "", "", "invalid-date", "", "", "", "", "")
+		_, err := ParseLogFilters("", "", "", "invalid-date", "", "", "", "", "", "")
 		if err == nil {
 			t.Error("Expected error for invalid end_date, got nil")
 		}
 	})
 
 	t.Run("source filter", func(t *testing.T) {
-		filters, err := ParseLogFilters("", "", "", "", "PortfolioHandler", "", "", "", "")
+		filters, err := ParseLogFilters("", "", "", "", "PortfolioHandler", "", "", "", "", "")
 		if err != nil {
 			t.Fatalf("Expected no error, got %v", err)
 		}
@@ -161,7 +161,7 @@ func TestParseLogFilters(t *testing.T) {
 	})
 
 	t.Run("message filter", func(t *testing.T) {
-		filters, err := ParseLogFilters("", "", "", "", "", "failed to connect", "", "", "")
+		filters, err := ParseLogFilters("", "", "", "", "", "failed to connect", "", "", "", "")
 		if err != nil {
 			t.Fatalf("Expected no error, got %v", err)
 		}
@@ -172,7 +172,7 @@ func TestParseLogFilters(t *testing.T) {
 	})
 
 	t.Run("sort direction asc", func(t *testing.T) {
-		filters, err := ParseLogFilters("", "", "", "", "", "", "asc", "", "")
+		filters, err := ParseLogFilters("", "", "", "", "", "", "asc", "", "", "")
 		if err != nil {
 			t.Fatalf("Expected no error, got %v", err)
 		}
@@ -183,7 +183,7 @@ func TestParseLogFilters(t *testing.T) {
 	})
 
 	t.Run("sort direction desc", func(t *testing.T) {
-		filters, err := ParseLogFilters("", "", "", "", "", "", "desc", "", "")
+		filters, err := ParseLogFilters("", "", "", "", "", "", "desc", "", "", "")
 		if err != nil {
 			t.Fatalf("Expected no error, got %v", err)
 		}
@@ -194,14 +194,14 @@ func TestParseLogFilters(t *testing.T) {
 	})
 
 	t.Run("invalid sort direction returns error", func(t *testing.T) {
-		_, err := ParseLogFilters("", "", "", "", "", "", "invalid", "", "")
+		_, err := ParseLogFilters("", "", "", "", "", "", "invalid", "", "", "")
 		if err == nil {
 			t.Error("Expected error for invalid sort_dir, got nil")
 		}
 	})
 
 	t.Run("custom per_page", func(t *testing.T) {
-		filters, err := ParseLogFilters("", "", "", "", "", "", "", "", "25")
+		filters, err := ParseLogFilters("", "", "", "", "", "", "", "", "25", "")
 		if err != nil {
 			t.Fatalf("Expected no error, got %v", err)
 		}
@@ -212,21 +212,21 @@ func TestParseLogFilters(t *testing.T) {
 	})
 
 	t.Run("per_page too low returns error", func(t *testing.T) {
-		_, err := ParseLogFilters("", "", "", "", "", "", "", "", "0")
+		_, err := ParseLogFilters("", "", "", "", "", "", "", "", "0", "")
 		if err == nil {
 			t.Error("Expected error for per_page < 1, got nil")
 		}
 	})
 
 	t.Run("per_page too high returns error", func(t *testing.T) {
-		_, err := ParseLogFilters("", "", "", "", "", "", "", "", "101")
+		_, err := ParseLogFilters("", "", "", "", "", "", "", "", "251", "")
 		if err == nil {
-			t.Error("Expected error for per_page > 100, got nil")
+			t.Error("Expected error for per_page > 250, got nil")
 		}
 	})
 
 	t.Run("invalid per_page returns error", func(t *testing.T) {
-		_, err := ParseLogFilters("", "", "", "", "", "", "", "", "not-a-number")
+		_, err := ParseLogFilters("", "", "", "", "", "", "", "", "not-a-number", "")
 		if err == nil {
 			t.Error("Expected error for non-numeric per_page, got nil")
 		}
@@ -234,7 +234,7 @@ func TestParseLogFilters(t *testing.T) {
 
 	t.Run("cursor is stored", func(t *testing.T) {
 		cursor := "2024-01-15T10:30:00Z_uuid-here"
-		filters, err := ParseLogFilters("", "", "", "", "", "", "", cursor, "")
+		filters, err := ParseLogFilters("", "", "", "", "", "", "", cursor, "", "")
 		if err != nil {
 			t.Fatalf("Expected no error, got %v", err)
 		}
@@ -255,6 +255,7 @@ func TestParseLogFilters(t *testing.T) {
 			"asc",
 			"",
 			"20",
+			"",
 		)
 		if err != nil {
 			t.Fatalf("Expected no error, got %v", err)
@@ -282,6 +283,42 @@ func TestParseLogFilters(t *testing.T) {
 
 		if filters.PerPage != 20 {
 			t.Errorf("Expected PerPage 20, got %d", filters.PerPage)
+		}
+	})
+
+	t.Run("valid skip parameter", func(t *testing.T) {
+		filters, err := ParseLogFilters("", "", "", "", "", "", "", "", "", "100")
+		if err != nil {
+			t.Fatalf("Expected no error, got %v", err)
+		}
+
+		if filters.Skip != 100 {
+			t.Errorf("Expected Skip 100, got %d", filters.Skip)
+		}
+	})
+
+	t.Run("invalid skip - not a number", func(t *testing.T) {
+		_, err := ParseLogFilters("", "", "", "", "", "", "", "", "", "abc")
+		if err == nil {
+			t.Error("Expected error for non-numeric skip, got nil")
+		}
+	})
+
+	t.Run("invalid skip - negative", func(t *testing.T) {
+		_, err := ParseLogFilters("", "", "", "", "", "", "", "", "", "-1")
+		if err == nil {
+			t.Error("Expected error for negative skip, got nil")
+		}
+	})
+
+	t.Run("skip defaults to 0", func(t *testing.T) {
+		filters, err := ParseLogFilters("", "", "", "", "", "", "", "", "", "")
+		if err != nil {
+			t.Fatalf("Expected no error, got %v", err)
+		}
+
+		if filters.Skip != 0 {
+			t.Errorf("Expected Skip 0, got %d", filters.Skip)
 		}
 	})
 }
