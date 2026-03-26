@@ -22,54 +22,43 @@ func EnsureDir(dbPath string) error {
 
 // Open opens a connection to the SQLite database.
 func Open(dbPath string) (*sql.DB, error) {
-	// Build DSN with _texttotime=1 so the driver auto-parses DATE/DATETIME
-	// TEXT columns into time.Time (modernc.org/sqlite v1.46.0+).
-	dsn := dbPath
-	if strings.Contains(dsn, "?") {
-		dsn += "&_texttotime=1"
-	} else {
-		dsn += "?_texttotime=1"
+	// Build DSN with per-connection PRAGMA parameters.
+	//
+	// Critically, PRAGMAs must be in the DSN rather than executed via db.Exec
+	// after opening, because db.Exec only runs on one connection from the pool.
+	// Every subsequent connection the pool opens would miss those settings,
+	// causing SQLITE_BUSY failures when busy_timeout is absent or foreign-key
+	// violations when foreign_keys is unset.
+	//
+	// The modernc.org/sqlite driver applies _pragma= parameters to every new
+	// connection and always sorts busy_timeout first (before journal_mode, etc.)
+	// so the timeout is active before any locking occurs.
+	//
+	// Parameters:
+	//   _texttotime=1          — auto-parse DATE/DATETIME TEXT columns to time.Time (v1.46.0+)
+	//   busy_timeout(5000)     — wait up to 5 s when another writer holds the lock
+	//   foreign_keys(on)       — enforce FK constraints (off by default in SQLite)
+	//   journal_mode(WAL)      — WAL allows concurrent readers alongside a writer
+	//   wal_autocheckpoint(100)— checkpoint every ~400 KB instead of the default 4 MB;
+	//                            keeps the WAL file small and changes visible sooner
+	sep := "?"
+	if strings.Contains(dbPath, "?") {
+		sep = "&"
 	}
+	dsn := dbPath + sep +
+		"_texttotime=1" +
+		"&_pragma=busy_timeout(5000)" +
+		"&_pragma=foreign_keys(on)" +
+		"&_pragma=journal_mode(WAL)" +
+		"&_pragma=wal_autocheckpoint(100)"
 
-	// Open database connection
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
-	// Test the connection
 	if err := db.Ping(); err != nil {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
-	}
-
-	// Enable foreign keys
-	if _, err := db.Exec("PRAGMA foreign_keys = ON"); err != nil {
-		return nil, fmt.Errorf("failed to enable foreign keys: %w", err)
-	}
-
-	// Set timezone to UTC
-	if _, err := db.Exec("PRAGMA timezone = 'UTC'"); err != nil {
-		return nil, fmt.Errorf("failed to set timezone: %w", err)
-	}
-
-	// Enable WAL mode for concurrent read/write support. Without this,
-	// background goroutines (e.g., materialized view regeneration) that
-	// attempt writes while another transaction is open get SQLITE_BUSY.
-	if _, err := db.Exec("PRAGMA journal_mode = WAL"); err != nil {
-		return nil, fmt.Errorf("failed to enable WAL mode: %w", err)
-	}
-
-	// Checkpoint the WAL back to the main DB file every 100 pages (~400 KB)
-	// instead of the default 1000. Keeps the WAL small and ensures changes
-	// are visible to external readers (e.g. DB browser) without long delays.
-	if _, err := db.Exec("PRAGMA wal_autocheckpoint = 100"); err != nil {
-		return nil, fmt.Errorf("failed to set wal_autocheckpoint: %w", err)
-	}
-
-	// Set busy timeout so concurrent writers queue instead of failing
-	// immediately with SQLITE_BUSY. 5 seconds is generous for background jobs.
-	if _, err := db.Exec("PRAGMA busy_timeout = 5000"); err != nil {
-		return nil, fmt.Errorf("failed to set busy timeout: %w", err)
 	}
 
 	return db, nil

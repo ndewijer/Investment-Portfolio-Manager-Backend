@@ -28,29 +28,21 @@ func SetupTestDB(t *testing.T) *sql.DB {
 	// the same data, so transactions see schema and test data without needing
 	// to pin to a single connection. Each test gets a unique name so they
 	// remain fully isolated from one another.
-	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared&_texttotime=1", uuid.New().String())
+	//
+	// _pragma= parameters are applied to every new connection the pool opens,
+	// matching the production Open() behaviour. journal_mode is omitted because
+	// in-memory databases do not support WAL and silently downgrade to "memory".
+	dsn := fmt.Sprintf(
+		"file:%s?mode=memory&cache=shared&_texttotime=1&_pragma=busy_timeout(5000)&_pragma=foreign_keys(on)",
+		uuid.New().String(),
+	)
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		t.Fatalf("Failed to open test database: %v", err)
 	}
 
-	// Test connection
 	if err := db.Ping(); err != nil {
 		t.Fatalf("Failed to ping test database: %v", err)
-	}
-
-	// Configure SQLite for testing
-	pragmas := []string{
-		"PRAGMA foreign_keys = ON",
-		"PRAGMA timezone = 'UTC'",
-		"PRAGMA journal_mode = WAL",
-		"PRAGMA busy_timeout = 5000",
-	}
-
-	for _, pragma := range pragmas {
-		if _, err := db.Exec(pragma); err != nil {
-			t.Fatalf("Failed to set pragma: %v", err)
-		}
 	}
 
 	// Create schema

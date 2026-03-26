@@ -304,6 +304,7 @@ func TestMaterializedRepository_GetMaterializedHistory(t *testing.T) {
 // GetLatestMaterializedDate
 // ---------------------------------------------------------------------------
 
+//nolint:gocyclo // Comprehensive integration test with multiple subtests
 func TestMaterializedRepository_GetLatestMaterializedDate(t *testing.T) {
 	t.Run("empty portfolioIDs returns false", func(t *testing.T) {
 		db := testutil.SetupTestDB(t)
@@ -359,6 +360,81 @@ func TestMaterializedRepository_GetLatestMaterializedDate(t *testing.T) {
 		}
 		if !latestDate.Equal(date2) {
 			t.Errorf("expected latest date=%v, got %v", date2, latestDate)
+		}
+	})
+
+	// These two tests cover the bug fixed in GetLatestMaterializedDate: the query
+	// must return MIN(per-portfolio MAX(date)) so that a lagging portfolio (e.g.
+	// one whose background regen failed) is not masked by a fully-covered portfolio.
+
+	t.Run("returns minimum coverage date when portfolios lag", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		repo := repository.NewMaterializedRepository(db)
+		ctx := context.Background()
+
+		// Portfolio A covered through March 26, portfolio B only through March 25.
+		portfolioA := testutil.NewPortfolio().Build(t, db)
+		portfolioB := testutil.NewPortfolio().Build(t, db)
+		fund := testutil.NewFund().Build(t, db)
+		pfA := testutil.NewPortfolioFund(portfolioA.ID, fund.ID).Build(t, db)
+		pfB := testutil.NewPortfolioFund(portfolioB.ID, fund.ID).Build(t, db)
+
+		dateAhead := time.Date(2026, 3, 26, 0, 0, 0, 0, time.UTC)
+		dateBehind := time.Date(2026, 3, 25, 0, 0, 0, 0, time.UTC)
+
+		entries := []model.FundHistoryEntry{
+			{ID: testutil.MakeID(), PortfolioFundID: pfA.ID, FundID: fund.ID, Date: dateBehind, Shares: 10, Price: 10, Value: 100, Cost: 90},
+			{ID: testutil.MakeID(), PortfolioFundID: pfA.ID, FundID: fund.ID, Date: dateAhead, Shares: 10, Price: 11, Value: 110, Cost: 90},
+			{ID: testutil.MakeID(), PortfolioFundID: pfB.ID, FundID: fund.ID, Date: dateBehind, Shares: 20, Price: 10, Value: 200, Cost: 180},
+			// pfB has no entry for dateAhead — simulates a failed regen
+		}
+		if err := repo.InsertMaterializedEntries(ctx, entries); err != nil {
+			t.Fatalf("InsertMaterializedEntries: %v", err)
+		}
+
+		latestDate, _, ok, err := repo.GetLatestMaterializedDate([]string{portfolioA.ID, portfolioB.ID})
+		if err != nil {
+			t.Fatalf("GetLatestMaterializedDate: %v", err)
+		}
+		if !ok {
+			t.Fatal("expected ok=true")
+		}
+		// Must return dateBehind (the minimum), not dateAhead.
+		// Before the fix this returned dateAhead, hiding that portfolioB was stale.
+		if !latestDate.Equal(dateBehind) {
+			t.Errorf("expected minimum coverage date=%v, got %v (portfolioB lag was masked)", dateBehind, latestDate)
+		}
+	})
+
+	t.Run("returns shared date when all portfolios have equal coverage", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		repo := repository.NewMaterializedRepository(db)
+		ctx := context.Background()
+
+		portfolioA := testutil.NewPortfolio().Build(t, db)
+		portfolioB := testutil.NewPortfolio().Build(t, db)
+		fund := testutil.NewFund().Build(t, db)
+		pfA := testutil.NewPortfolioFund(portfolioA.ID, fund.ID).Build(t, db)
+		pfB := testutil.NewPortfolioFund(portfolioB.ID, fund.ID).Build(t, db)
+
+		date := time.Date(2026, 3, 26, 0, 0, 0, 0, time.UTC)
+		entries := []model.FundHistoryEntry{
+			{ID: testutil.MakeID(), PortfolioFundID: pfA.ID, FundID: fund.ID, Date: date, Shares: 10, Price: 10, Value: 100, Cost: 90},
+			{ID: testutil.MakeID(), PortfolioFundID: pfB.ID, FundID: fund.ID, Date: date, Shares: 20, Price: 10, Value: 200, Cost: 180},
+		}
+		if err := repo.InsertMaterializedEntries(ctx, entries); err != nil {
+			t.Fatalf("InsertMaterializedEntries: %v", err)
+		}
+
+		latestDate, _, ok, err := repo.GetLatestMaterializedDate([]string{portfolioA.ID, portfolioB.ID})
+		if err != nil {
+			t.Fatalf("GetLatestMaterializedDate: %v", err)
+		}
+		if !ok {
+			t.Fatal("expected ok=true")
+		}
+		if !latestDate.Equal(date) {
+			t.Errorf("expected date=%v, got %v", date, latestDate)
 		}
 	})
 }

@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/model"
+	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/repository"
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/testutil"
 )
 
@@ -540,6 +542,121 @@ func TestMaterializedService_StaleDetection(t *testing.T) {
 
 		if len(result) == 0 {
 			t.Error("Expected fallback results after new prices, got empty")
+		}
+	})
+
+	t.Run("lagging portfolio falls back to on-demand and background regen repairs the gap", func(t *testing.T) {
+		// Scenario: two portfolios whose materialized caches were computed on different
+		// days. portfolioA has today's data; portfolioB only has yesterday's — exactly
+		// the production bug where a SQLITE_BUSY error caused one portfolio's
+		// regen to fail and the global MAX(date) stale check masked the gap.
+		//
+		// Checks:
+		//  1. GetPortfolioHistoryWithFallback returns today's data for BOTH portfolios
+		//     (the fallback path, not the stale materialized view).
+		//  2. After the background regen triggered by the fallback completes,
+		//     portfolioB's materialized coverage catches up to today.
+		//  3. A second call uses the repaired materialized view — both portfolios
+		//     present for every date including today.
+		db := testutil.SetupTestDB(t)
+		svc := testutil.NewTestMaterializedService(t, db)
+
+		fundA := testutil.NewFund().Build(t, db)
+		fundB := testutil.NewFund().Build(t, db)
+		portfolioA := testutil.NewPortfolio().WithName("Portfolio A").Build(t, db)
+		portfolioB := testutil.NewPortfolio().WithName("Portfolio B").Build(t, db)
+		pfA := testutil.NewPortfolioFund(portfolioA.ID, fundA.ID).Build(t, db)
+		pfB := testutil.NewPortfolioFund(portfolioB.ID, fundB.ID).Build(t, db)
+
+		today := time.Now().UTC().Truncate(24 * time.Hour)
+		yesterday := today.AddDate(0, 0, -1)
+		twoDaysAgo := today.AddDate(0, 0, -2)
+
+		for _, d := range []time.Time{twoDaysAgo, yesterday, today} {
+			testutil.NewFundPrice(fundA.ID).WithDate(d).WithPrice(10.0).Build(t, db)
+			testutil.NewFundPrice(fundB.ID).WithDate(d).WithPrice(20.0).Build(t, db)
+		}
+		testutil.NewTransaction(pfA.ID).WithDate(twoDaysAgo).WithShares(100).WithCostPerShare(10.0).Build(t, db)
+		testutil.NewTransaction(pfB.ID).WithDate(twoDaysAgo).WithShares(50).WithCostPerShare(20.0).Build(t, db)
+
+		// Populate both portfolios through today.
+		for _, pid := range []string{portfolioA.ID, portfolioB.ID} {
+			if err := svc.RegenerateMaterializedTable(context.Background(), twoDaysAgo, []string{pid}, "", ""); err != nil {
+				t.Fatalf("initial regen %s: %v", pid, err)
+			}
+		}
+
+		// Simulate a failed regen for portfolioB: delete today's entry so it only
+		// covers through yesterday, mimicking the SQLITE_BUSY failure from production.
+		if _, err := db.Exec(
+			`DELETE FROM fund_history_materialized WHERE portfolio_fund_id = ? AND date = ?`,
+			pfB.ID, today.Format("2006-01-02"),
+		); err != nil {
+			t.Fatalf("simulate lag: %v", err)
+		}
+
+		// ── 1. Fallback returns data for both portfolios on today ─────────────────
+		result, err := svc.GetPortfolioHistoryWithFallback(twoDaysAgo, today, "")
+		if err != nil {
+			t.Fatalf("GetPortfolioHistoryWithFallback: %v", err)
+		}
+
+		var todayEntry *model.PortfolioHistory
+		for i := range result {
+			if result[i].Date == today.Format("2006-01-02") {
+				todayEntry = &result[i]
+				break
+			}
+		}
+		if todayEntry == nil {
+			t.Fatalf("fallback produced no entry for today (%s); got dates: %v",
+				today.Format("2006-01-02"), func() (ds []string) {
+					for _, h := range result {
+						ds = append(ds, h.Date)
+					}
+					return
+				}())
+		}
+		if len(todayEntry.Portfolios) != 2 {
+			t.Errorf("today's entry: expected 2 portfolios, got %d — lagging portfolio was masked",
+				len(todayEntry.Portfolios))
+		}
+
+		// ── 2. Background regen catches portfolioB up to today ───────────────────
+		matRepo := repository.NewMaterializedRepository(db)
+		deadline := time.Now().Add(5 * time.Second)
+		for time.Now().Before(deadline) {
+			latestDate, _, ok, err := matRepo.GetLatestMaterializedDate([]string{portfolioB.ID})
+			if err != nil {
+				t.Fatalf("GetLatestMaterializedDate: %v", err)
+			}
+			if ok && !latestDate.Before(today) {
+				break
+			}
+			time.Sleep(25 * time.Millisecond)
+		}
+
+		latestDate, _, ok, err := matRepo.GetLatestMaterializedDate([]string{portfolioB.ID})
+		if err != nil {
+			t.Fatalf("GetLatestMaterializedDate post-regen: %v", err)
+		}
+		if !ok || latestDate.Before(today) {
+			t.Errorf("background regen did not bring portfolioB up to today: latest=%v, expected>=%v",
+				latestDate.Format("2006-01-02"), today.Format("2006-01-02"))
+		}
+
+		// ── 3. Second call uses the repaired materialized view ───────────────────
+		result2, err := svc.GetPortfolioHistoryWithFallback(twoDaysAgo, today, "")
+		if err != nil {
+			t.Fatalf("second GetPortfolioHistoryWithFallback: %v", err)
+		}
+		for i := range result2 {
+			if result2[i].Date == today.Format("2006-01-02") {
+				if len(result2[i].Portfolios) != 2 {
+					t.Errorf("after regen: today still has %d portfolios, expected 2", len(result2[i].Portfolios))
+				}
+				break
+			}
 		}
 	})
 
