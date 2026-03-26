@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// Fund represents a fund from the database
+// Fund represents a fund from the database.
 type Fund struct {
 	ID             string  `json:"id"`
 	Name           string  `json:"name"`
@@ -18,14 +18,14 @@ type Fund struct {
 	LatestPrice    float64 `json:"latestPrice,omitempty"`
 }
 
-// PortfolioFund represends a portfolio_fund record from the database
+// PortfolioFund represents a portfolio_fund record from the database
 type PortfolioFund struct {
 	ID          string
 	PortfolioID string
 	FundID      string
 }
 
-// PortfolioFund represents a fund held within a portfolio with calculated metrics.
+// PortfolioFundResponse represents a fund held within a portfolio with calculated metrics.
 // Used for detailed portfolio fund breakdowns with shares, values, and gains/losses.
 type PortfolioFundResponse struct {
 	ID                 string  `json:"id"`
@@ -109,11 +109,13 @@ type Symbol struct {
 	IsValid     bool      `json:"isValid"`
 }
 
+// FundUsage describes whether a fund is in use and which portfolios hold it.
 type FundUsage struct {
 	InUsage    bool                   `json:"inUse"`
 	Portfolios []PortfolioTransaction `json:"portfolios,omitempty"`
 }
 
+// PortfolioTransaction summarises the transaction count for a portfolio that holds a fund.
 type PortfolioTransaction struct {
 	ID               string `json:"id"`
 	Name             string `json:"name"`

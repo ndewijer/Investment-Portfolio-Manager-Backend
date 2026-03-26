@@ -12,6 +12,7 @@ import (
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/yahoo"
 )
 
+// NewTestPortfolioService creates a PortfolioService wired to the provided test database.
 func NewTestPortfolioService(t *testing.T, db *sql.DB) *service.PortfolioService {
 	t.Helper()
 
@@ -25,6 +26,7 @@ func NewTestPortfolioService(t *testing.T, db *sql.DB) *service.PortfolioService
 	)
 }
 
+// NewTestRealizedGainLossService creates a RealizedGainLossService wired to the provided test database.
 func NewTestRealizedGainLossService(t *testing.T, db *sql.DB) *service.RealizedGainLossService {
 	t.Helper()
 
@@ -35,6 +37,7 @@ func NewTestRealizedGainLossService(t *testing.T, db *sql.DB) *service.RealizedG
 	)
 }
 
+// NewTestTransactionService creates a TransactionService wired to the provided test database.
 func NewTestTransactionService(t *testing.T, db *sql.DB) *service.TransactionService {
 	t.Helper()
 
@@ -52,6 +55,7 @@ func NewTestTransactionService(t *testing.T, db *sql.DB) *service.TransactionSer
 	)
 }
 
+// NewTestDividendService creates a DividendService wired to the provided test database.
 func NewTestDividendService(t *testing.T, db *sql.DB) *service.DividendService {
 	t.Helper()
 
@@ -67,6 +71,7 @@ func NewTestDividendService(t *testing.T, db *sql.DB) *service.DividendService {
 	)
 }
 
+// NewTestDataloaderService creates a DataLoaderService wired to the provided test database.
 func NewTestDataloaderService(t *testing.T, db *sql.DB) *service.DataLoaderService {
 	t.Helper()
 
@@ -77,6 +82,7 @@ func NewTestDataloaderService(t *testing.T, db *sql.DB) *service.DataLoaderServi
 	)
 }
 
+// NewTestFundService creates a FundService wired to the provided test database.
 func NewTestFundService(t *testing.T, db *sql.DB) *service.FundService {
 	t.Helper()
 
@@ -124,6 +130,7 @@ func NewTestFundServiceWithMockYahoo(t *testing.T, db *sql.DB, mockYahoo yahoo.C
 	)
 }
 
+// NewTestMaterializedService creates a MaterializedService wired to the provided test database.
 func NewTestMaterializedService(t *testing.T, db *sql.DB) *service.MaterializedService {
 	t.Helper()
 
@@ -162,6 +169,7 @@ func NewTestMaterializedService(t *testing.T, db *sql.DB) *service.MaterializedS
 	)
 }
 
+// NewTestIbkrService creates an IbkrService wired to the provided test database.
 func NewTestIbkrService(t *testing.T, db *sql.DB, opts ...service.IbkrServiceOption) *service.IbkrService {
 	t.Helper()
 	return NewTestIbkrServiceWithMockIBKR(t, db, ibkr.NewFinanceClient(), opts...)
@@ -193,12 +201,14 @@ func NewTestIbkrServiceWithMockIBKR(t *testing.T, db *sql.DB, mockIBKR ibkr.Clie
 	return service.NewIbkrService(db, append(base, opts...)...)
 }
 
+// NewTestSystemService creates a SystemService wired to the provided test database.
 func NewTestSystemService(t *testing.T, db *sql.DB) *service.SystemService {
 	t.Helper()
 
 	return service.NewSystemService(db)
 }
 
+// NewTestDeveloperService creates a DeveloperService wired to the provided test database.
 func NewTestDeveloperService(t *testing.T, db *sql.DB) *service.DeveloperService {
 	t.Helper()
 

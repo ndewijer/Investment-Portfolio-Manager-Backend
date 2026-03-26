@@ -1,3 +1,4 @@
+// Package yahoo provides an HTTP client for querying historical price data from Yahoo Finance.
 package yahoo
 
 import (

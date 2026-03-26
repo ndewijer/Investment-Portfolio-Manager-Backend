@@ -66,7 +66,7 @@ func (h *DeveloperHandler) GetLogFilterOptions(w http.ResponseWriter, r *http.Re
 //   - message: Filter by message content (partial match)
 //   - sortDir: Sort direction (asc or desc, default: desc)
 //   - cursor: Pagination cursor from previous response
-//   - perPage: Number of results per page (1-100, default: 50)
+//   - perPage: Number of results per page (1-250, default: 50)
 //
 // Endpoint: GET /api/developer/logs
 // Response: 200 OK with LogResponse containing logs, pagination info

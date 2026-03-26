@@ -60,6 +60,7 @@ func NewRequestWithQueryParams(method, path string, queryParams map[string]strin
 	return req
 }
 
+// NewRequestWithQueryAndURLParams creates an HTTP request with both URL path parameters and query string parameters.
 func NewRequestWithQueryAndURLParams(method, path string, URLparams map[string]string, queryParams map[string]string) *http.Request {
 	req := httptest.NewRequest(method, path, nil)
 

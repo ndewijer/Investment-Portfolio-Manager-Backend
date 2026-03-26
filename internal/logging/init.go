@@ -1,3 +1,6 @@
+// Package logging provides a structured, database-backed slog handler with configurable
+// levels and categories. Log entries are asynchronously persisted to the SQLite database
+// and can be queried via the developer API.
 package logging
 
 import (

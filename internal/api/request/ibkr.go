@@ -1,5 +1,6 @@
 package request
 
+// UpdateIbkrConfigRequest is the request body for creating or updating the IBKR configuration.
 type UpdateIbkrConfigRequest struct {
 	Enabled                  *bool        `json:"enabled"`
 	FlexToken                *string      `json:"flexToken"`
@@ -10,6 +11,7 @@ type UpdateIbkrConfigRequest struct {
 	DefaultAllocations       []Allocation `json:"defaultAllocations,omitempty"`
 }
 
+// Allocation represents a percentage allocation of an IBKR transaction to a portfolio-fund pair.
 type Allocation struct {
 	PortfolioID *string  `json:"portfolioId"`
 	Percentage  *float64 `json:"percentage"`

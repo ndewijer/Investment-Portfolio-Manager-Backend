@@ -9,6 +9,8 @@ import (
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/request"
 )
 
+// ValidateUpdateIbkrConfig validates an UpdateIbkrConfigRequest.
+//
 //nolint:gocyclo // Comprehensive validation of ibkr config updates, cannot be split well.
 func ValidateUpdateIbkrConfig(req request.UpdateIbkrConfigRequest) error {
 	errors := make(map[string]string)

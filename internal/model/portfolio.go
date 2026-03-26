@@ -2,7 +2,7 @@ package model
 
 import "time"
 
-// Portfolio represents a portfolio from the database
+// Portfolio represents a portfolio from the database.
 type Portfolio struct {
 	ID                  string `json:"id"`
 	Name                string `json:"name"`
@@ -11,13 +11,13 @@ type Portfolio struct {
 	ExcludeFromOverview bool   `json:"excludeFromOverview"`
 }
 
-// PortfolioFilter for querying portfolios
+// PortfolioFilter holds filter options for querying portfolios.
 type PortfolioFilter struct {
 	IncludeArchived bool
 	IncludeExcluded bool
 }
 
-// PortfolioSummary represents the current state of a portfolio at x point.
+// PortfolioSummary represents the current state of a portfolio at a specific point in time.
 // It includes valuation, cost basis, gains/losses (both realized and unrealized),
 // dividends, and sale information. All monetary values are rounded to two decimal places.
 type PortfolioSummary struct {

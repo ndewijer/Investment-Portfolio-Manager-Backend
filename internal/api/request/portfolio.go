@@ -7,6 +7,7 @@ type CreatePortfolioRequest struct {
 	ExcludeFromOverview bool   `json:"excludeFromOverview"`
 }
 
+// UpdatePortfolioRequest is the request body for updating an existing portfolio.
 type UpdatePortfolioRequest struct {
 	Name                *string `json:"name,omitempty"`
 	Description         *string `json:"description,omitempty"`
@@ -14,6 +15,7 @@ type UpdatePortfolioRequest struct {
 	ExcludeFromOverview *bool   `json:"excludeFromOverview,omitempty"`
 }
 
+// CreatePortfolioFundRequest is the request body for adding a fund to a portfolio.
 type CreatePortfolioFundRequest struct {
 	PortfolioID string `json:"portfolioId"`
 	FundID      string `json:"fundId"`

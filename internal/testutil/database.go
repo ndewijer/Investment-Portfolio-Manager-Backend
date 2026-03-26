@@ -1,3 +1,5 @@
+// Package testutil provides shared test helpers, database setup, factory builders, and
+// mock implementations for use across the service and repository test suites.
 package testutil
 
 import (

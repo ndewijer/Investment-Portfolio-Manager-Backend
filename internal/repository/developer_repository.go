@@ -54,7 +54,7 @@ func (r *DeveloperRepository) getQuerier() Querier {
 //
 // The pagination uses cursor-based approach for efficiency with large result sets.
 // Returns one extra record beyond perPage to determine if more results exist.
-//
+
 //nolint:gocyclo,funlen // Complex filtering logic with dynamic WHERE clause requires length
 func (r *DeveloperRepository) GetLogs(filters *model.LogFilters) (*model.LogResponse, error) {
 	devLog.Debug("getting logs", "per_page", filters.PerPage, "sort_dir", filters.SortDir)
@@ -349,6 +349,7 @@ func (r *DeveloperRepository) GetLoggingConfig() (model.LoggingSetting, error) {
 	return conf, nil
 }
 
+// SetLoggingConfig persists a new logging configuration setting to the database.
 func (r *DeveloperRepository) SetLoggingConfig(ctx context.Context, setting model.SystemSetting) error {
 	devLog.DebugContext(ctx, "setting logging config", "key", setting.Key, "value", setting.Value)
 	query := `

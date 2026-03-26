@@ -1,3 +1,6 @@
+// Package validation provides input validation helpers used by service and handler layers.
+// It defines reusable error types and functions for validating UUIDs, date ranges, and other
+// common inputs before they reach the repository layer.
 package validation
 
 import (

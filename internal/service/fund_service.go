@@ -227,7 +227,7 @@ func (s *FundService) GetPortfolioFunds(portfolioID string) ([]model.PortfolioFu
 	return s.enrichPortfolioFundsWithMetrics(data, realizedGainsByPF)
 }
 
-// loadFundPrices retrieves fund prices for the given fund IDs within the specified date range.
+// LoadFundPrices retrieves fund prices for the given fund IDs within the specified date range.
 // Prices are sorted by date based on the ascending parameter (true=ASC, false=DESC).
 // Results are grouped by fund ID, allowing per-fund price lookups.
 //

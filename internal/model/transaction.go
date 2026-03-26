@@ -5,6 +5,7 @@ import "time"
 // TransactionType represents an allowed transaction type value.
 type TransactionType string
 
+// Transaction type constants define the valid values for the Type field of a [Transaction].
 const (
 	TransactionTypeBuy      TransactionType = "buy"
 	TransactionTypeSell     TransactionType = "sell"

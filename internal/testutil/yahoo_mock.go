@@ -7,7 +7,7 @@ import (
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/yahoo"
 )
 
-// MockYahooClient is a mock implementation of yahoo.FinanceClient for testing.
+// MockYahooClient is a mock implementation of the [yahoo.Client] interface for testing.
 // It returns predefined test data instead of making actual API calls.
 type MockYahooClient struct {
 	// MockResponse is the response to return from query methods

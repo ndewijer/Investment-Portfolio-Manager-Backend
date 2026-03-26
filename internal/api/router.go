@@ -1,3 +1,5 @@
+// Package api wires together all HTTP route definitions for the Investment Portfolio Manager.
+// It creates a Chi router with global middleware and mounts sub-routers for each domain.
 package api //nolint:revive // var-naming: api is a standard package name
 
 import (
@@ -12,7 +14,7 @@ import (
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/service"
 )
 
-// NewRouter creates and configures the HTTP router
+// NewRouter creates and configures the HTTP router.
 //
 //nolint:funlen // Needs to be in the same function
 func NewRouter(

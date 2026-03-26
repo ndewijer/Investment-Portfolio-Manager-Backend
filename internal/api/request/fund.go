@@ -1,5 +1,6 @@
 package request
 
+// CreateFundRequest is the request body for creating a new fund.
 type CreateFundRequest struct {
 	Name           string `json:"name"`
 	Isin           string `json:"isin"`
@@ -10,6 +11,7 @@ type CreateFundRequest struct {
 	InvestmentType string `json:"investmentType"`
 }
 
+// UpdateFundRequest is the request body for updating an existing fund.
 type UpdateFundRequest struct {
 	Name           *string `json:"name,omitempty"`
 	Isin           *string `json:"isin,omitempty"`

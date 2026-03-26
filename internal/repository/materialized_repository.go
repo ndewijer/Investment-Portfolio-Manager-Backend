@@ -427,6 +427,7 @@ func (r *MaterializedRepository) InvalidateMaterializedTable(ctx context.Context
 	return nil
 }
 
+// InsertMaterializedEntries bulk-inserts pre-calculated materialized view entries into the database.
 func (r *MaterializedRepository) InsertMaterializedEntries(ctx context.Context, fundHistoryEntries []model.FundHistoryEntry) error {
 	matLog.DebugContext(ctx, "inserting materialized entries", "count", len(fundHistoryEntries))
 

@@ -1,3 +1,4 @@
+// Package ibkr provides an HTTP client for retrieving and parsing IBKR Flex Query reports.
 package ibkr
 
 import (
