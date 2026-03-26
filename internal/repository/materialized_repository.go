@@ -288,8 +288,11 @@ func (r *MaterializedRepository) GetFundHistoryMaterialized(
 	return nil
 }
 
-// GetLatestMaterializedDate returns the most recent date and calculated_at timestamp
-// from the materialized table for the given portfolio IDs. If no rows exist, returns
+// GetLatestMaterializedDate returns the minimum of per-portfolio maximum dates and the
+// global maximum calculated_at timestamp for the given portfolio IDs. Using the minimum
+// of per-portfolio maximums ensures that if any single portfolio lags behind (e.g. due
+// to a failed regeneration), the stale check correctly detects the gap rather than
+// masking it with a higher-coverage portfolio's date. If no rows exist, returns
 // zero-value times and false.
 func (r *MaterializedRepository) GetLatestMaterializedDate(portfolioIDs []string) (latestDate time.Time, latestCalc time.Time, ok bool, err error) {
 	matLog.Debug("getting latest materialized date", "portfolio_count", len(portfolioIDs))
@@ -304,11 +307,17 @@ func (r *MaterializedRepository) GetLatestMaterializedDate(portfolioIDs []string
 		args[i] = id
 	}
 
+	// MIN(max_date per portfolio) — if any portfolio lags, the group is stale.
+	// MAX(max_calc per portfolio) — most recent recalculation time for source-data comparison.
 	query := fmt.Sprintf(`
-		SELECT MAX(date), MAX(calculated_at)
-		FROM fund_history_materialized fhm
-		JOIN portfolio_fund pf ON fhm.portfolio_fund_id = pf.id
-		WHERE pf.portfolio_id IN (%s)
+		SELECT MIN(max_date), MAX(max_calc)
+		FROM (
+			SELECT MAX(fhm.date) AS max_date, MAX(fhm.calculated_at) AS max_calc
+			FROM fund_history_materialized fhm
+			JOIN portfolio_fund pf ON fhm.portfolio_fund_id = pf.id
+			WHERE pf.portfolio_id IN (%s)
+			GROUP BY pf.portfolio_id
+		) per_portfolio
 	`, strings.Join(placeholders, ","))
 
 	// MAX() aggregates lose column type information, so _texttotime won't
