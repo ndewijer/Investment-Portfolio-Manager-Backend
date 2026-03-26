@@ -11,7 +11,7 @@ import (
 
 var rglLog = logging.NewLogger("transaction")
 
-// RealizedGainLossService handles fund-related business logic operations.
+// RealizedGainLossService handles realized gain/loss calculations and record management.
 type RealizedGainLossService struct {
 	realizedgainlossRepo *repository.RealizedGainLossRepository
 }
@@ -36,7 +36,7 @@ func (s *RealizedGainLossService) loadRealizedGainLoss(portfolio []string, start
 	return result, nil
 }
 
-// ProcessRealizedGainLossForDate calculates cumulative realized gains/losses as of the specified date.
+// processRealizedGainLossForDate calculates cumulative realized gains/losses as of the specified date.
 // Only realized gains from sales that occurred on or before the target date are included.
 // Returns (totalRealizedGainLoss, totalSaleProceeds, totalCostBasis, error).
 func (s *RealizedGainLossService) processRealizedGainLossForDate(realizedGainLoss []model.RealizedGainLoss, date time.Time) (float64, float64, float64, error) {

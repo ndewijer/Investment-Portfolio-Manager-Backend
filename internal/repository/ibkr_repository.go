@@ -382,7 +382,7 @@ func (r *IbkrRepository) GetIbkrTransaction(transactionID string) (model.IBKRTra
 	return t, nil
 }
 
-// CompareIbkrTransaction checks whether a transaction already exists in the database by ibkr_transaction_id.
+// CompareIbkrTransaction reports whether a transaction already exists in the database by ibkr_transaction_id.
 // Returns true if the transaction exists or if a query error occurs.
 // Intentional design: on DB error, we treat the transaction as already existing (fail-safe) to avoid duplicate
 // inserts. The unique constraint on ibkr_transaction_id will catch any actual duplicates, and a future

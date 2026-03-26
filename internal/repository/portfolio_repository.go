@@ -94,6 +94,7 @@ func (r *PortfolioRepository) GetPortfolios(filter model.PortfolioFilter) ([]mod
 	return portfolios, nil
 }
 
+// GetPortfolioOnID retrieves a single portfolio by its ID.
 func (r *PortfolioRepository) GetPortfolioOnID(portfolioID string) (model.Portfolio, error) {
 	portfolioLog.Debug("getting portfolio by ID", "portfolio_id", portfolioID)
 	query := `
@@ -171,6 +172,7 @@ func (r *PortfolioRepository) GetPortfoliosByFundID(fundID string) ([]model.Port
 	return portfolios, nil
 }
 
+// InsertPortfolio inserts a new portfolio record and returns its generated ID.
 func (r *PortfolioRepository) InsertPortfolio(ctx context.Context, p *model.Portfolio) error {
 	portfolioLog.DebugContext(ctx, "inserting portfolio", "portfolio_id", p.ID, "name", p.Name)
 	query := `
@@ -193,6 +195,7 @@ func (r *PortfolioRepository) InsertPortfolio(ctx context.Context, p *model.Port
 	return nil
 }
 
+// UpdatePortfolio updates the name, description, and flags of an existing portfolio.
 func (r *PortfolioRepository) UpdatePortfolio(ctx context.Context, p *model.Portfolio) error {
 	portfolioLog.DebugContext(ctx, "updating portfolio", "portfolio_id", p.ID)
 	query := `
@@ -225,6 +228,7 @@ func (r *PortfolioRepository) UpdatePortfolio(ctx context.Context, p *model.Port
 	return nil
 }
 
+// DeletePortfolio removes a portfolio record from the database by its ID.
 func (r *PortfolioRepository) DeletePortfolio(ctx context.Context, portfolioID string) error {
 	portfolioLog.DebugContext(ctx, "deleting portfolio", "portfolio_id", portfolioID)
 	query := `DELETE FROM portfolio WHERE id = ?`

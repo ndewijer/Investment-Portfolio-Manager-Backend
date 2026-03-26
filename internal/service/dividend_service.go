@@ -51,7 +51,7 @@ func (s *DividendService) SetMaterializedInvalidator(m MaterializedInvalidator) 
 	s.materializedInvalidator = m
 }
 
-// GetAllDividends retrieves all dividend records from the database.
+// GetAllDividend retrieves all dividend records from the database.
 // Returns raw dividend data without fund enrichment.
 func (s *DividendService) GetAllDividend() ([]model.Dividend, error) {
 	divLog.Debug("retrieving all dividends")
@@ -90,7 +90,7 @@ func (s *DividendService) GetDividendFund(portfolioID, fundID string) ([]model.D
 	return dividendFund, nil
 }
 
-// loadDividend retrieves dividends for the given portfolio_fund IDs within the specified date range.
+// loadDividendPerPF retrieves dividends for the given portfolio_fund IDs within the specified date range.
 // Results are grouped by portfolio_fund ID, allowing callers to decide how to aggregate.
 func (s *DividendService) loadDividendPerPF(pfIDs []string, startDate, endDate time.Time) (map[string][]model.Dividend, error) {
 	result, err := s.dividendRepo.GetDividendPerPF(pfIDs, startDate, endDate)
@@ -100,7 +100,7 @@ func (s *DividendService) loadDividendPerPF(pfIDs []string, startDate, endDate t
 	return result, nil
 }
 
-// ProcessDividendSharesForDate calculates shares acquired through dividend reinvestment as of the specified date.
+// processDividendSharesForDate calculates shares acquired through dividend reinvestment as of the specified date.
 // Only dividends with ex-dividend dates on or before the target date are included.
 // Returns a map of portfolio_fund ID to total reinvested shares.
 func (s *DividendService) processDividendSharesForDate(dividendMap map[string][]model.Dividend, transactions []model.Transaction, date time.Time) (map[string]float64, error) {
@@ -129,7 +129,7 @@ func (s *DividendService) processDividendSharesForDate(dividendMap map[string][]
 	return totalDividendMap, nil
 }
 
-// ProcessDividendAmountForDate calculates the cumulative dividend amount as of the specified date.
+// processDividendAmountForDate calculates the cumulative dividend amount as of the specified date.
 // Only dividends with ex-dividend dates on or before the target date are included.
 func (s *DividendService) processDividendAmountForDate(dividend []model.Dividend, date time.Time) (float64, error) {
 	if len(dividend) == 0 {

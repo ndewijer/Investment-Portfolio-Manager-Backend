@@ -1,3 +1,4 @@
+// Package database manages the SQLite database connection and schema migrations for the application.
 package database
 
 import (
@@ -10,6 +11,7 @@ import (
 	_ "modernc.org/sqlite" // SQLite driver
 )
 
+// EnsureDir creates the directory tree for the given database file path if it does not already exist.
 func EnsureDir(dbPath string) error {
 	dir := filepath.Dir(dbPath)
 	if dir == "" || dir == "." {
@@ -18,7 +20,7 @@ func EnsureDir(dbPath string) error {
 	return os.MkdirAll(dir, 0o750)
 }
 
-// Open opens a connection to the SQLite database
+// Open opens a connection to the SQLite database.
 func Open(dbPath string) (*sql.DB, error) {
 	// Build DSN with _texttotime=1 so the driver auto-parses DATE/DATETIME
 	// TEXT columns into time.Time (modernc.org/sqlite v1.46.0+).
@@ -73,7 +75,7 @@ func Open(dbPath string) (*sql.DB, error) {
 	return db, nil
 }
 
-// HealthCheck performs a simple health check on the database
+// HealthCheck performs a simple health check on the database.
 func HealthCheck(db *sql.DB) error {
 	return db.Ping()
 }

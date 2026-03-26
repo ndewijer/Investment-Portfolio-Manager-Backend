@@ -2,6 +2,7 @@ package model
 
 import "time"
 
+// RealizedGainLoss records the realized profit or loss from selling shares of a fund.
 type RealizedGainLoss struct {
 	ID               string
 	PortfolioID      string

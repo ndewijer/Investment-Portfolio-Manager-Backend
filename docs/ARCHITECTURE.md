@@ -5,7 +5,7 @@
 ```
 HTTP Request → Router → Handler → Service → Repository → Database
                 ↓
-          Middleware (logging, CORS, recovery, UUID validation)
+          Middleware (request ID injection, real IP extraction, logging, CORS, panic recovery, UUID validation, API key authentication)
 ```
 
 **Handler** — Parses HTTP requests, calls services, writes responses. No business logic.
@@ -80,3 +80,7 @@ IBKR credentials are encrypted at rest using Fernet symmetric encryption. The ke
 ### Database Migrations
 
 Managed by Goose, embedded in the binary. Migrations run automatically on startup. The base migration (`162_base.sql`) establishes the full schema matching the original Python backend's database.
+
+### Go-Based Migrations
+
+In addition to Goose SQL migrations, the application supports Go-coded migrations for operations that require application logic (e.g., data backfills). These are registered via `registerGoMigrationVersion` in the `database` package and run automatically alongside SQL migrations.

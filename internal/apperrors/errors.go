@@ -1,3 +1,6 @@
+// Package apperrors defines typed sentinel errors used across the application.
+// Errors are grouped by domain (not found, business logic, validation, operation failures)
+// and are intended to be matched with [errors.Is] at service and handler boundaries.
 package apperrors
 
 import "errors"
@@ -77,16 +80,18 @@ var (
 	// ErrFundInUse indicates that a fund cannot be deleted because it is being used by portfolios.
 	ErrFundInUse = errors.New("fund is in use")
 
-	// Validation errors for required fields
+	// Generic operation failure constants
+	ErrFailedToRetrieve = errors.New("failed to retrieve data")
+)
+
+// Validation errors are returned when input fails structural or type-level validation.
+var (
 	ErrInvalidPortfolioID   = errors.New("portfolio ID is required")
 	ErrInvalidFundID        = errors.New("fund ID is required")
 	ErrInvalidSymbol        = errors.New("symbol is required")
 	ErrInvalidTransactionID = errors.New("transaction ID is required")
 	ErrInvalidCurrency      = errors.New("currency parameter is required")
 	ErrInvalidDate          = errors.New("date parameter is required")
-
-	// Generic operation failure constants
-	ErrFailedToRetrieve = errors.New("failed to retrieve data")
 )
 
 // Operation failure errors represent system-level failures when retrieving or processing data.

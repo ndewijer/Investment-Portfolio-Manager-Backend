@@ -6,6 +6,7 @@ import (
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/api/request"
 )
 
+// ValidateCreatePortfolio validates a CreatePortfolioRequest.
 func ValidateCreatePortfolio(req request.CreatePortfolioRequest) error {
 	errors := make(map[string]string)
 
@@ -27,6 +28,7 @@ func ValidateCreatePortfolio(req request.CreatePortfolioRequest) error {
 	return nil
 }
 
+// ValidateUpdatePortfolio validates an UpdatePortfolioRequest.
 func ValidateUpdatePortfolio(req request.UpdatePortfolioRequest) error {
 	errors := make(map[string]string)
 
@@ -49,6 +51,7 @@ func ValidateUpdatePortfolio(req request.UpdatePortfolioRequest) error {
 	return nil
 }
 
+// ValidateCreatePortfolioFund validates a CreatePortfolioFundRequest.
 func ValidateCreatePortfolioFund(req request.CreatePortfolioFundRequest) error {
 	fundErr := ValidateUUID(req.FundID)
 	if fundErr != nil {

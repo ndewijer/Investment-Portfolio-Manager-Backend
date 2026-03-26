@@ -309,7 +309,7 @@ func (r *FundRepository) GetFundPrice(fundIDs []string, startDate, endDate time.
 }
 
 // GetSymbol retrieves symbol information by ticker symbol from the symbol_info table.
-// Returns nil, nil if the symbol is not found.
+// Returns nil and [apperrors.ErrSymbolNotFound] if the symbol is not found.
 // Returns nil, error if a database error occurs.
 func (r *FundRepository) GetSymbol(symbol string) (*model.Symbol, error) {
 	fundLog.Debug("getting symbol", "symbol", symbol)

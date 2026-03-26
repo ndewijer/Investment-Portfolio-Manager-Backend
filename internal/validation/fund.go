@@ -98,7 +98,7 @@ func ValidateCreateFund(req request.CreateFundRequest) error {
 //   - symbol: Max 10 characters if provided
 //
 // Returns a validation Error with field-specific error messages if validation fails.
-
+//
 //nolint:gocyclo // Comprehensive validation of fund updates, cannot be split well.
 func ValidateUpdateFund(req request.UpdateFundRequest) error {
 	errors := make(map[string]string)

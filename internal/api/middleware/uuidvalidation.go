@@ -9,16 +9,14 @@ import (
 	"github.com/ndewijer/Investment-Portfolio-Manager-Backend/internal/validation"
 )
 
-// ValidatePortfolioIDMiddleware validates that the portfolioId URL parameter is present and is a valid UUID.
-// Returns 400 Bad Request if the portfolio ID is missing or invalid.
-// This middleware should be applied to routes that require a valid portfolio ID in the URL path.
+// ValidateUUIDMiddleware validates that the uuid URL parameter is a well-formed UUID.
+// It reads the "uuid" Chi URL parameter and returns 400 Bad Request if it is absent or malformed.
 //
-// Example usage in router:
+// Usage:
 //
-//	r.Route("/{portfolioId}", func(r chi.Router) {
-//	    r.Use(middleware.ValidatePortfolioIDMiddleware)
-//	    r.Get("/", handler.GetPortfolio)
-//	    r.Put("/", handler.UpdatePortfolio)
+//	r.Route("/{uuid}", func(r chi.Router) {
+//	    r.Use(middleware.ValidateUUIDMiddleware)
+//	    r.Get("/", handler.Get)
 //	})
 func ValidateUUIDMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

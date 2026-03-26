@@ -42,7 +42,7 @@ func (r *DividendRepository) getQuerier() Querier {
 	return r.db
 }
 
-// GetDividend retrieves all dividends.
+// GetAllDividend retrieves all dividends.
 // Dividends are filtered by ex-dividend date and sorted in ascending order by that date.
 //
 // Returns []Dividend.

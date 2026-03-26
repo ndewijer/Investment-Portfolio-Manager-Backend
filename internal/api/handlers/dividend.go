@@ -29,7 +29,7 @@ func NewDividendHandler(dividendService *service.DividendService) *DividendHandl
 	}
 }
 
-// Dividends handles GET requests to retrieve all dividends.
+// GetAllDividend handles GET requests to retrieve all dividends.
 // Returns a list of all available dividends that can be held in portfolios.
 //
 // Endpoint: GET /api/dividend

@@ -1,3 +1,4 @@
+// Package config loads and exposes application configuration from environment variables and .env files.
 package config
 
 import (
@@ -9,7 +10,7 @@ import (
 	"github.com/joho/godotenv"
 )
 
-// Config holds all configuration for the application
+// Config holds all configuration for the application.
 type Config struct {
 	Server         ServerConfig
 	Database       DatabaseConfig
@@ -19,29 +20,29 @@ type Config struct {
 	InternalAPIKey string // INTERNAL_API_KEY
 }
 
-// ServerConfig holds server-specific configuration
+// ServerConfig holds server-specific configuration.
 type ServerConfig struct {
 	Port string
 	Host string
 	Addr string // Combined host:port for convenience
 }
 
-// DatabaseConfig holds database-specific configuration
+// DatabaseConfig holds database-specific configuration.
 type DatabaseConfig struct {
 	Path string
 }
 
-// LogConfig holds log-specific configuration
+// LogConfig holds log-specific configuration.
 type LogConfig struct {
 	Dir string
 }
 
-// CORSConfig holds CORS-specific configuration
+// CORSConfig holds CORS-specific configuration.
 type CORSConfig struct {
 	AllowedOrigins []string
 }
 
-// Get Allowed Origins from environment
+// getCORSOrigins returns the allowed CORS origins from environment variables.
 func getCORSOrigins() []string {
 	// Check for explicit CORS config first
 	if origins := os.Getenv("CORS_ALLOWED_ORIGINS"); origins != "" {
@@ -59,7 +60,7 @@ func getCORSOrigins() []string {
 	return []string{"http://localhost:3000"}
 }
 
-// Load reads configuration from environment variables and .env file
+// Load reads configuration from environment variables and .env file.
 func Load() (*Config, error) {
 	// Try to load .env file (ignore error if it doesn't exist)
 	if err := godotenv.Load(); err != nil {

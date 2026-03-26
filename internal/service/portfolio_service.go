@@ -135,6 +135,7 @@ func (s *PortfolioService) GetPortfoliosForRequest(portfolioID string) ([]model.
 	return result, nil
 }
 
+// CreatePortfolio creates a new portfolio record and returns the created portfolio.
 func (s *PortfolioService) CreatePortfolio(ctx context.Context, req request.CreatePortfolioRequest) (*model.Portfolio, error) {
 	pfLog.DebugContext(ctx, "creating portfolio", "name", req.Name)
 	portfolio := &model.Portfolio{
@@ -153,6 +154,7 @@ func (s *PortfolioService) CreatePortfolio(ctx context.Context, req request.Crea
 	return portfolio, nil
 }
 
+// UpdatePortfolio updates the name, description, and flags of an existing portfolio.
 func (s *PortfolioService) UpdatePortfolio(
 	ctx context.Context,
 	id string,
@@ -196,6 +198,7 @@ func (s *PortfolioService) UpdatePortfolio(
 	return &portfolio, nil
 }
 
+// DeletePortfolio deletes a portfolio and all associated portfolio-fund relationships.
 func (s *PortfolioService) DeletePortfolio(ctx context.Context, id string) error {
 	pfLog.DebugContext(ctx, "deleting portfolio", "portfolioID", id)
 

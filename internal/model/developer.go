@@ -5,6 +5,7 @@ import "time"
 // LogLevel represents an allowed log level value.
 type LogLevel string
 
+// Log level constants define the valid severity levels for structured log entries.
 const (
 	LogLevelDebug    LogLevel = "debug"
 	LogLevelInfo     LogLevel = "info"
@@ -26,6 +27,7 @@ var ValidLogLevels = map[LogLevel]bool{
 // LogCategory represents an allowed log category value.
 type LogCategory string
 
+// Log category constants define the valid categories that classify log entries by domain.
 const (
 	LogCategoryPortfolio   LogCategory = "portfolio"
 	LogCategoryFund        LogCategory = "fund"
