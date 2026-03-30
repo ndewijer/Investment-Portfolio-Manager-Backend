@@ -78,6 +78,7 @@ func newDeveloperHandler(t *testing.T) *handlers.DeveloperHandler {
 
 // ---- GetLogs ----
 
+//nolint:gocyclo // Comprehensive handler test with multiple subtests and assertions, cannot be split well.
 func TestDeveloperHandler_GetLogs(t *testing.T) {
 	t.Run("returns empty logs list", func(t *testing.T) {
 		handler := newDeveloperHandler(t)
