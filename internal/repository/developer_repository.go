@@ -144,16 +144,35 @@ func (r *DeveloperRepository) GetLogs(filters *model.LogFilters) (*model.LogResp
 		orderSQL = "ORDER BY timestamp ASC, id ASC"
 	}
 
-	// Build complete query
-	//nolint:gosec // G202: SQL concatenation is safe - whereSQL and orderSQL contain no user input, all user values are parameterized
+	// Handle skip with overshoot protection
+	actualSkip := filters.Skip
+	if filters.Skip > 0 {
+		// Count total matching rows to avoid skipping past the end
+		//nolint:gosec // G202: SQL concatenation is safe
+		countQuery := "SELECT COUNT(*) FROM log " + whereSQL
+		var total int
+		err := r.getQuerier().QueryRow(countQuery, args...).Scan(&total)
+		if err != nil {
+			return nil, fmt.Errorf("failed to count logs: %w", err)
+		}
+		if filters.Skip >= total {
+			// Skip would overshoot - return the last page instead
+			actualSkip = total - filters.PerPage
+			if actualSkip < 0 {
+				actualSkip = 0
+			}
+		}
+	}
+
 	// Build LIMIT/OFFSET clause
 	limitOffsetSQL := "LIMIT ?"
 	limitOffsetArgs := []interface{}{filters.PerPage + 1}
-	if filters.Skip > 0 {
+	if actualSkip > 0 {
 		limitOffsetSQL = "LIMIT ? OFFSET ?"
-		limitOffsetArgs = []interface{}{filters.PerPage + 1, filters.Skip}
+		limitOffsetArgs = []interface{}{filters.PerPage + 1, actualSkip}
 	}
 
+	//nolint:gosec // G202: SQL concatenation is safe - whereSQL and orderSQL contain no user input, all user values are parameterized
 	query := `
 		SELECT id, timestamp, level, category, message, details, source,
 		       request_id, stack_trace, http_status, ip_address, user_agent
