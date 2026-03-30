@@ -43,7 +43,7 @@ func (r *DeveloperRepository) getQuerier() Querier {
 	return r.db
 }
 
-// GetLogs retrieves log entries from the database with dynamic filtering and cursor-based pagination.
+// GetLogs retrieves log entries from the database with dynamic filtering and pagination.
 // Builds a WHERE clause dynamically based on provided filters and supports multiple filter types:
 //   - Level filtering: Filters by one or more log levels (debug, info, warning, error, critical)
 //   - Category filtering: Filters by one or more categories (portfolio, fund, transaction, etc.)
@@ -51,9 +51,13 @@ func (r *DeveloperRepository) getQuerier() Querier {
 //   - Source filtering: Partial match on source field using LIKE
 //   - Message filtering: Partial match on message content using LIKE
 //   - Cursor pagination: Supports efficient pagination using timestamp+id cursor
+//   - Skip pagination: Offset-based pagination that can be combined with cursor filtering.
+//     Includes overshoot protection: if skip exceeds the total matching rows, the offset is
+//     clamped so the last page of results is returned instead of an empty set.
 //
-// The pagination uses cursor-based approach for efficiency with large result sets.
-// Returns one extra record beyond perPage to determine if more results exist.
+// The pagination uses a cursor-based approach for efficiency with large result sets,
+// optionally combined with a skip offset. Returns one extra record beyond perPage to
+// determine if more results exist.
 
 //nolint:gocyclo,funlen // Complex filtering logic with dynamic WHERE clause requires length
 func (r *DeveloperRepository) GetLogs(filters *model.LogFilters) (*model.LogResponse, error) {
@@ -144,16 +148,41 @@ func (r *DeveloperRepository) GetLogs(filters *model.LogFilters) (*model.LogResp
 		orderSQL = "ORDER BY timestamp ASC, id ASC"
 	}
 
-	// Build complete query
-	//nolint:gosec // G202: SQL concatenation is safe - whereSQL and orderSQL contain no user input, all user values are parameterized
+	// Handle skip with overshoot protection.
+	// Note: when both Cursor and Skip are provided, the count and offset apply
+	// to the cursor-filtered result set (rows after the cursor), not the full table.
+	actualSkip := filters.Skip
+	if filters.Skip > 0 {
+		// Count total matching rows to avoid skipping past the end
+		//nolint:gosec // G202: SQL concatenation is safe
+		countQuery := "SELECT COUNT(*) FROM log " + whereSQL
+		var total int
+		err := r.getQuerier().QueryRow(countQuery, args...).Scan(&total)
+		if err != nil {
+			devLog.Error("failed to count logs for skip overshoot check", "error", err)
+			return nil, fmt.Errorf("failed to count logs: %w", err)
+		}
+		if filters.Skip >= total {
+			// Skip would overshoot - return the last page instead
+			devLog.Debug("skip overshoot detected, clamping to last page",
+				"requested_skip", filters.Skip, "total", total, "per_page", filters.PerPage)
+			lastPage := total - filters.PerPage
+			if lastPage < 0 || filters.PerPage == 0 {
+				lastPage = 0
+			}
+			actualSkip = lastPage
+		}
+	}
+
 	// Build LIMIT/OFFSET clause
 	limitOffsetSQL := "LIMIT ?"
 	limitOffsetArgs := []interface{}{filters.PerPage + 1}
-	if filters.Skip > 0 {
+	if actualSkip > 0 {
 		limitOffsetSQL = "LIMIT ? OFFSET ?"
-		limitOffsetArgs = []interface{}{filters.PerPage + 1, filters.Skip}
+		limitOffsetArgs = []interface{}{filters.PerPage + 1, actualSkip}
 	}
 
+	//nolint:gosec // G202: SQL concatenation is safe - whereSQL and orderSQL contain no user input, all user values are parameterized
 	query := `
 		SELECT id, timestamp, level, category, message, details, source,
 		       request_id, stack_trace, http_status, ip_address, user_agent

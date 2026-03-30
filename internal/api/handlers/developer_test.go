@@ -175,6 +175,27 @@ func TestDeveloperHandler_GetLogs(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("skip parameter passed through URL", func(t *testing.T) {
+		handler := newDeveloperHandler(t)
+		req := testutil.NewRequestWithQueryParams(http.MethodGet, "/api/developer/logs",
+			map[string]string{"skip": "200", "perPage": "50"})
+		w := httptest.NewRecorder()
+
+		handler.GetLogs(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+
+		var resp model.LogResponse
+		if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+			t.Fatalf("failed to decode response: %v", err)
+		}
+		if resp.HasMore {
+			t.Error("expected has_more=false for skip beyond available logs")
+		}
+	})
 }
 
 // ---- GetLoggingConfig ----

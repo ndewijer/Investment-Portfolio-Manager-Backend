@@ -7,7 +7,7 @@ A Go backend for managing investment fund portfolios, transactions, dividend tra
 ### Prerequisites
 
 - Go 1.26+
-- SQLite database (created automatically on first run)
+- SQLite database (created automatically on first run.)
 
 ### Run Locally
 

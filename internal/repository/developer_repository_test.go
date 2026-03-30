@@ -339,6 +339,121 @@ func TestDeveloperRepository_GetLogs_Filters(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// GetLogs – skip / overshoot protection
+// ---------------------------------------------------------------------------
+
+//nolint:gocyclo // Test function with multiple subtests and assertions.
+func TestDeveloperRepository_GetLogs_SkipOvershoot(t *testing.T) {
+	t.Run("skip returns correct offset results", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		repo := repository.NewDeveloperRepository(db)
+		ctx := context.Background()
+
+		base := time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC)
+		for i := range 10 {
+			log := model.Log{
+				ID:        testutil.MakeID(),
+				Timestamp: base.Add(time.Duration(i) * time.Second),
+				Level:     "INFO",
+				Category:  "SYSTEM",
+				Message:   "msg",
+				Source:    "src",
+			}
+			if err := repo.AddLog(ctx, log); err != nil {
+				t.Fatalf("AddLog: %v", err)
+			}
+		}
+
+		filters := &model.LogFilters{
+			Skip:    3,
+			PerPage: 3,
+			SortDir: "desc",
+		}
+		resp, err := repo.GetLogs(filters)
+		if err != nil {
+			t.Fatalf("GetLogs: %v", err)
+		}
+		if resp.Count != 3 {
+			t.Errorf("expected 3 logs, got %d", resp.Count)
+		}
+	})
+
+	t.Run("skip overshoot returns last page", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		repo := repository.NewDeveloperRepository(db)
+		ctx := context.Background()
+
+		base := time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC)
+		for i := range 5 {
+			log := model.Log{
+				ID:        testutil.MakeID(),
+				Timestamp: base.Add(time.Duration(i) * time.Second),
+				Level:     "INFO",
+				Category:  "SYSTEM",
+				Message:   "msg",
+				Source:    "src",
+			}
+			if err := repo.AddLog(ctx, log); err != nil {
+				t.Fatalf("AddLog: %v", err)
+			}
+		}
+
+		filters := &model.LogFilters{
+			Skip:    100,
+			PerPage: 3,
+			SortDir: "desc",
+		}
+		resp, err := repo.GetLogs(filters)
+		if err != nil {
+			t.Fatalf("GetLogs: %v", err)
+		}
+		if resp.Count == 0 {
+			t.Error("expected non-empty result when skip overshoots total")
+		}
+		if resp.HasMore {
+			t.Error("expected HasMore=false for last page")
+		}
+	})
+
+	t.Run("skip overshoot with fewer than perpage", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		repo := repository.NewDeveloperRepository(db)
+		ctx := context.Background()
+
+		base := time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC)
+		for i := range 2 {
+			log := model.Log{
+				ID:        testutil.MakeID(),
+				Timestamp: base.Add(time.Duration(i) * time.Second),
+				Level:     "INFO",
+				Category:  "SYSTEM",
+				Message:   "msg",
+				Source:    "src",
+			}
+			if err := repo.AddLog(ctx, log); err != nil {
+				t.Fatalf("AddLog: %v", err)
+			}
+		}
+
+		filters := &model.LogFilters{
+			Skip:    100,
+			PerPage: 50,
+			SortDir: "desc",
+		}
+		resp, err := repo.GetLogs(filters)
+		if err != nil {
+			t.Fatalf("GetLogs: %v", err)
+		}
+		if resp.Count != 2 {
+			t.Errorf("expected 2 logs, got %d", resp.Count)
+		}
+		if resp.HasMore {
+			t.Error("expected HasMore=false when total < perPage")
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
 // GetLoggingConfig / SetLoggingConfig
 // ---------------------------------------------------------------------------
 
