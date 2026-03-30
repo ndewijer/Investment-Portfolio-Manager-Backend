@@ -342,6 +342,7 @@ func TestDeveloperRepository_GetLogs_Filters(t *testing.T) {
 // GetLogs – skip / overshoot protection
 // ---------------------------------------------------------------------------
 
+//nolint:gocyclo // Test function with multiple subtests and assertions.
 func TestDeveloperRepository_GetLogs_SkipOvershoot(t *testing.T) {
 	t.Run("skip returns correct offset results", func(t *testing.T) {
 		db := testutil.SetupTestDB(t)

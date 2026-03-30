@@ -186,6 +186,14 @@ func TestDeveloperHandler_GetLogs(t *testing.T) {
 		if w.Code != http.StatusOK {
 			t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
 		}
+
+		var resp model.LogResponse
+		if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+			t.Fatalf("failed to decode response: %v", err)
+		}
+		if resp.HasMore {
+			t.Error("expected has_more=false for skip beyond available logs")
+		}
 	})
 }
 
