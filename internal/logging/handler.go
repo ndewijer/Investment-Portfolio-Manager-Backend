@@ -298,7 +298,7 @@ func (w *writerCore) flushBatch(batch []model.Log) {
 			}
 		}
 
-		_, execErr := stmt.ExecContext(ctx, e.ID, e.Timestamp.Format("2006-01-02 15:04:05"),
+		_, execErr := stmt.ExecContext(ctx, e.ID, e.Timestamp.Format("2006-01-02 15:04:05.000"),
 			e.Level, e.Category, e.Message, e.Details,
 			e.Source, e.RequestID, e.StackTrace, httpStatus, e.IPAddress, e.UserAgent)
 		if execErr != nil {

@@ -91,12 +91,12 @@ func (r *DeveloperRepository) GetLogs(filters *model.LogFilters) (*model.LogResp
 	// 3. Date range filtering
 	if filters.StartDate != nil {
 		whereClauses = append(whereClauses, "timestamp >= ?")
-		args = append(args, filters.StartDate.Format("2006-01-02 15:04:05"))
+		args = append(args, filters.StartDate.Format("2006-01-02 15:04:05.000"))
 	}
 
 	if filters.EndDate != nil {
 		whereClauses = append(whereClauses, "timestamp <= ?")
-		args = append(args, filters.EndDate.Format("2006-01-02 15:04:05"))
+		args = append(args, filters.EndDate.Format("2006-01-02 15:04:05.000"))
 	}
 
 	// 4. Source filtering (partial match)
@@ -123,14 +123,14 @@ func (r *DeveloperRepository) GetLogs(filters *model.LogFilters) (*model.LogResp
 					// For descending: (timestamp, id) < (cursor_timestamp, cursor_id)
 					whereClauses = append(whereClauses,
 						"(timestamp < ? OR (timestamp = ? AND id < ?))")
-					args = append(args, timestamp.Format("2006-01-02 15:04:05"),
-						timestamp.Format("2006-01-02 15:04:05"), id)
+					args = append(args, timestamp.Format("2006-01-02 15:04:05.000"),
+						timestamp.Format("2006-01-02 15:04:05.000"), id)
 				} else {
 					// For ascending: (timestamp, id) > (cursor_timestamp, cursor_id)
 					whereClauses = append(whereClauses,
 						"(timestamp > ? OR (timestamp = ? AND id > ?))")
-					args = append(args, timestamp.Format("2006-01-02 15:04:05"),
-						timestamp.Format("2006-01-02 15:04:05"), id)
+					args = append(args, timestamp.Format("2006-01-02 15:04:05.000"),
+						timestamp.Format("2006-01-02 15:04:05.000"), id)
 				}
 			}
 		}
@@ -496,7 +496,7 @@ func (r *DeveloperRepository) AddLog(ctx context.Context, logEntry model.Log) er
 
 	_, err := r.getQuerier().ExecContext(ctx, query,
 		logEntry.ID,
-		logEntry.Timestamp.Format("2006-01-02 15:04:05"),
+		logEntry.Timestamp.Format("2006-01-02 15:04:05.000"),
 		logEntry.Level,
 		logEntry.Category,
 		logEntry.Message,

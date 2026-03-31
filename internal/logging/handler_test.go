@@ -123,6 +123,34 @@ func TestDBHandler_WritesToDB(t *testing.T) {
 	}
 }
 
+func TestDBHandler_TimestampHasMillisecondPrecision(t *testing.T) {
+	db := setupTestDB(t)
+	h := NewLogHandler(db)
+	defer h.Close()
+	h.SetLevel(slog.LevelDebug)
+
+	// Use a known timestamp with 456ms to verify milliseconds survive the round-trip.
+	knownTime := time.Date(2026, 3, 27, 0, 55, 0, 456_000_000, time.UTC)
+	rec := slog.NewRecord(knownTime, slog.LevelInfo, "millis check", 0)
+	if err := h.Handle(context.Background(), rec); err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	h.Flush()
+
+	// Scan into time.Time — the driver auto-parses DATETIME with _texttotime=1.
+	var ts time.Time
+	err := db.QueryRow(`SELECT timestamp FROM log ORDER BY rowid DESC LIMIT 1`).Scan(&ts)
+	if err != nil {
+		t.Fatalf("query timestamp: %v", err)
+	}
+
+	// Verify the millisecond component survived the round-trip (not truncated to .000).
+	gotMs := ts.UnixMilli() % 1000
+	if gotMs != 456 {
+		t.Errorf("expected 456ms, got %dms — timestamp was %v", gotMs, ts)
+	}
+}
+
 func TestDBHandler_CategoryFromWithAttrs(t *testing.T) {
 	db := setupTestDB(t)
 	h := NewLogHandler(db)
