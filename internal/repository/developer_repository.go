@@ -115,7 +115,7 @@ func (r *DeveloperRepository) GetLogs(filters *model.LogFilters) (*model.LogResp
 	if filters.Cursor != "" {
 		parts := strings.Split(filters.Cursor, "_")
 		if len(parts) == 2 {
-			timestamp, err := time.Parse(time.RFC3339, parts[0])
+			timestamp, err := time.Parse(time.RFC3339Nano, parts[0])
 			if err == nil {
 				id := parts[1]
 
@@ -260,7 +260,7 @@ func (r *DeveloperRepository) GetLogs(filters *model.LogFilters) (*model.LogResp
 	if hasMore {
 		last := logs[filters.PerPage-1]
 		nextCursor = fmt.Sprintf("%s_%s",
-			last.Timestamp.Format(time.RFC3339),
+			last.Timestamp.Format(time.RFC3339Nano),
 			last.ID)
 		logs = logs[:filters.PerPage]
 	}

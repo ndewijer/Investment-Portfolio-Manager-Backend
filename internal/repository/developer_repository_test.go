@@ -157,13 +157,8 @@ func TestDeveloperRepository_GetLogs_Filters(t *testing.T) {
 			}
 		}
 
-		// NOTE: AddLog stores timestamps as "2006-01-02 15:04:05" but GetLogs
-		// compares with RFC3339 (e.g. "2026-03-11T12:00:00Z"). SQLite string
-		// comparison means space (0x20) < 'T' (0x54), so stored timestamps at
-		// the exact start boundary are excluded. This is a known format mismatch.
-		// Using a range that spans day 0.5 to day 3.5 to reliably capture days 1-3.
-		start := base.Add(12 * time.Hour) // day 0 + 12h = halfway between day 0 and day 1
-		end := base.Add(4*24*time.Hour - 12*time.Hour)
+		start := base.Add(1 * 24 * time.Hour) // day 1
+		end := base.Add(3 * 24 * time.Hour)   // day 3
 		filters := &model.LogFilters{
 			StartDate: &start,
 			EndDate:   &end,
