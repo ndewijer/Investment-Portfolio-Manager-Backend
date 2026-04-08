@@ -1712,6 +1712,7 @@ func TestIbkrService_MatchDividend(t *testing.T) {
 
 // --- ImportFlexReport Tests ---
 
+//nolint:gocyclo // Test function with multiple subtests and assertions.
 func TestIbkrService_ImportFlexReport(t *testing.T) {
 	t.Run("imports flex report from mock client", func(t *testing.T) {
 		db := testutil.SetupTestDB(t)
