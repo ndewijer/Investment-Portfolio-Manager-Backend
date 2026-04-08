@@ -385,6 +385,17 @@ func (s *IbkrService) ImportFlexReport(ctx context.Context) (int, int, error) {
 		if err := s.AddIbkrTransactions(ctx, missingTransactions); err != nil {
 			return 0, 0, fmt.Errorf("add transactions: %w", err)
 		}
+
+		if config.DefaultAllocationEnabled && len(config.DefaultAllocations) > 0 {
+			ibkrLog.InfoContext(ctx, "auto-allocating imported transactions", "count", len(missingTransactions))
+			for _, tx := range missingTransactions {
+				if err := s.AllocateIbkrTransaction(ctx, tx.ID, nil); err != nil {
+					ibkrLog.ErrorContext(ctx, "auto-allocation failed", "transactionID", tx.ID, "symbol", tx.Symbol, "error", err)
+				} else {
+					ibkrLog.DebugContext(ctx, "auto-allocated transaction", "transactionID", tx.ID, "symbol", tx.Symbol)
+				}
+			}
+		}
 	}
 
 	if len(rates) > 0 {
