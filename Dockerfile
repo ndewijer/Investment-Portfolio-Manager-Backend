@@ -1,5 +1,5 @@
 # Multi-stage build for optimal image size
-FROM golang:1.26.1-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 WORKDIR /app
 
@@ -16,7 +16,7 @@ RUN go build \
     ./cmd/server/main.go
 
 # Final stage — minimal image
-FROM alpine:3.21
+FROM alpine:3.23
 
 # ca-certificates for outbound HTTPS (Yahoo Finance, IBKR)
 RUN apk add --no-cache ca-certificates tzdata
