@@ -1712,6 +1712,7 @@ func TestIbkrService_MatchDividend(t *testing.T) {
 
 // --- ImportFlexReport Tests ---
 
+//nolint:gocyclo // Test function with multiple subtests and assertions.
 func TestIbkrService_ImportFlexReport(t *testing.T) {
 	t.Run("imports flex report from mock client", func(t *testing.T) {
 		db := testutil.SetupTestDB(t)
@@ -1876,6 +1877,100 @@ func TestIbkrService_ImportFlexReport(t *testing.T) {
 
 		// Should still be 1 total
 		testutil.AssertRowCount(t, db, "ibkr_transaction", 1)
+	})
+
+	t.Run("auto-allocates when default allocation enabled", func(t *testing.T) {
+		db := testutil.SetupTestDB(t)
+		key := generateFernetKey(t)
+
+		plainToken := "test-ibkr-token" //nolint:gosec // G101: Test credential, not a real secret
+		encToken, err := fernet.EncryptAndSign([]byte(plainToken), key)
+		if err != nil {
+			t.Fatalf("failed to encrypt token: %v", err)
+		}
+
+		portfolio := testutil.NewPortfolio().Build(t, db)
+		fund := testutil.NewFund().WithISIN("US0378331005").WithSymbol("AAPL.NASDAQ").Build(t, db)
+		testutil.NewPortfolioFund(portfolio.ID, fund.ID).Build(t, db)
+
+		defaultAlloc := fmt.Sprintf(`[{"portfolioId":"%s","percentage":100}]`, portfolio.ID)
+		insertIbkrConfigWithDefaultAllocations(t, db, testutil.MakeID(), string(encToken), "54321", true, defaultAlloc)
+
+		flexResponse := ibkr.FlexQueryResponse{
+			ImportedAt: time.Now().UTC(),
+			QueryID:    54321,
+		}
+		flexResponse.FlexStatements.FlexStatement.Trades.Trade = []struct {
+			Text            string  `xml:",chardata"`
+			Currency        string  `xml:"currency,attr"`
+			CurrencyPrimary string  `xml:"currencyPrimary,attr"`
+			Symbol          string  `xml:"symbol,attr"`
+			Description     string  `xml:"description,attr"`
+			Isin            string  `xml:"isin,attr"`
+			Quantity        float64 `xml:"quantity,attr"`
+			TradePrice      float64 `xml:"tradePrice,attr"`
+			IbCommission    float64 `xml:"ibCommission,attr"`
+			NetCash         float64 `xml:"netCash,attr"`
+			IbOrderID       int64   `xml:"ibOrderID,attr"`
+			TransactionID   int64   `xml:"transactionID,attr"`
+			TradeDate       string  `xml:"tradeDate,attr"`
+			Notes           string  `xml:"notes,attr"`
+			BuySell         string  `xml:"buySell,attr"`
+			ReportDate      string  `xml:"reportDate,attr"`
+		}{
+			{
+				CurrencyPrimary: "USD",
+				Symbol:          "AAPL",
+				Isin:            "US0378331005",
+				Quantity:        10,
+				TradePrice:      150,
+				IbCommission:    -1,
+				NetCash:         -1500,
+				IbOrderID:       100,
+				TransactionID:   200,
+				TradeDate:       "20240115",
+				BuySell:         "BUY",
+				ReportDate:      "20240115",
+			},
+		}
+
+		mock := &mockIBKRClient{
+			retreiveFunc: func(_ context.Context, _, _ string) (ibkr.FlexQueryResponse, []byte, error) {
+				return flexResponse, []byte(`<xml/>`), nil
+			},
+		}
+
+		svc := testutil.NewTestIbkrServiceWithMockIBKR(t, db, mock,
+			service.IbkrWithEncryptionKey(key))
+
+		imported, _, err := svc.ImportFlexReport(context.Background())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if imported != 1 {
+			t.Errorf("expected 1 imported, got %d", imported)
+		}
+
+		// Transaction should be auto-allocated (status = processed)
+		var status string
+		if err := db.QueryRow(`SELECT status FROM ibkr_transaction LIMIT 1`).Scan(&status); err != nil {
+			t.Fatalf("scan status: %v", err)
+		}
+		if status != "processed" {
+			t.Errorf("expected status=processed after auto-allocation, got %s", status)
+		}
+
+		// Should have allocation records (trade + fee)
+		testutil.AssertRowCount(t, db, "ibkr_transaction_allocation", 2)
+
+		// Should have created transactions
+		var txCount int
+		if err := db.QueryRow(`SELECT COUNT(*) FROM "transaction"`).Scan(&txCount); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		if txCount < 1 {
+			t.Errorf("expected at least 1 transaction, got %d", txCount)
+		}
 	})
 
 	t.Run("returns error when no config", func(t *testing.T) {
